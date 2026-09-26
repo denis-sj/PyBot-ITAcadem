@@ -81,6 +81,22 @@ class UserRepository:
 
         return user
 
+    async def find_all_users(
+        self,
+        db: AsyncSession,
+    ) -> Sequence[User]:
+        """Получает список всех пользователей.
+
+        Args:
+            db: Асинхронная сессия базы данных.
+
+        Returns:
+            Sequence[User]: Список всех пользователей (или пустой кортеж/список).
+        """
+        stmt = select(User)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
     async def get_all_users(
         self,
         db: AsyncSession,
@@ -96,13 +112,9 @@ class UserRepository:
         Raises:
             UsersNotFoundError: Если в системе нет ни одного пользователя.
         """
-        stmt = select(User)
-        result = await db.execute(stmt)
-        users = result.scalars().all()
-
+        users = await self.find_all_users(db)
         if not users:
             raise UsersNotFoundError()
-
         return users
 
     async def get_all_users_with_role(

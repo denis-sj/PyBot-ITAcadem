@@ -1,4 +1,5 @@
 from .competence import CompetenceService as CompetenceService
+from .attendance_service import AttendanceService as AttendanceService
 from .leaderboard import LeaderboardService as LeaderboardService
 from .levels import LevelService as LevelService
 from .points import PointsService as PointsService
@@ -12,6 +13,7 @@ from .user_services import UserRegistrationService as UserRegistrationService
 
 __all__ = [
     "CompetenceService",
+    "AttendanceService",
     "LeaderboardService",
     "LevelService",
     "PointsService",

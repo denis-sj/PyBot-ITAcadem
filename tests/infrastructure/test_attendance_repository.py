@@ -1,0 +1,260 @@
+"""Unit tests for AttendanceRepository."""
+
+from datetime import date, datetime, time
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from pybot.db.models import AttendanceImport, AttendanceImportStatus, AttendanceRecord, User
+from pybot.domain.exceptions import AttendanceDraftNotFoundError
+from pybot.infrastructure.attendance_repository import AttendanceRepository
+
+
+@pytest.fixture
+def repository() -> AttendanceRepository:
+    return AttendanceRepository()
+
+
+@pytest.mark.asyncio
+async def test_create_draft_persists_new_draft(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    db.add = MagicMock()
+    draft = await repository.create_draft(
+        db=db,
+        author_tg_id=123456,
+        photo_data=b"image_bytes",
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha256_dummy",
+        raw_ai_json='{"quality": {"isGood": true}}',
+        draft_state_json='{"dates": []}',
+    )
+    db.add.assert_called_once()
+    db.flush.assert_awaited_once()
+    assert draft.author_tg_id == 123456
+    assert draft.status == AttendanceImportStatus.DRAFT.value
+    assert draft.photo_data == b"image_bytes"
+
+
+@pytest.mark.asyncio
+async def test_find_draft_by_id_returns_none_when_missing(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    result = await repository.find_draft_by_id(db, import_id=999)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_find_draft_by_id_returns_entity_when_found(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    mock_draft = AttendanceImport(id=42, author_tg_id=123)
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = mock_draft
+    db.execute.return_value = result_mock
+
+    result = await repository.find_draft_by_id(db, import_id=42)
+
+    assert result is not None
+    assert result.id == 42
+
+
+@pytest.mark.asyncio
+async def test_get_draft_by_id_raises_when_missing_per_adr_008(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    with pytest.raises(AttendanceDraftNotFoundError) as exc_info:
+        await repository.get_draft_by_id(db, import_id=999)
+
+    assert exc_info.value.details["import_id"] == 999
+
+
+@pytest.mark.asyncio
+async def test_get_draft_by_id_returns_entity_when_found(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    mock_draft = AttendanceImport(id=10, author_tg_id=456)
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = mock_draft
+    db.execute.return_value = result_mock
+
+    result = await repository.get_draft_by_id(db, import_id=10)
+
+    assert result.id == 10
+
+
+@pytest.mark.asyncio
+async def test_update_draft_state_executes_and_flushes(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    await repository.update_draft_state(db, import_id=1, draft_state_json='{"status": "ready"}')
+
+    db.execute.assert_awaited_once()
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancel_draft_clears_photo_data_and_flushes(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    await repository.cancel_draft(db, import_id=5)
+
+    db.execute.assert_awaited_once()
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expire_stale_drafts_returns_rowcount(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.rowcount = 3
+    db.execute.return_value = result_mock
+
+    count = await repository.expire_stale_drafts(db, older_than=datetime(2026, 9, 20))
+
+    assert count == 3
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_is_date_processed(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    db.scalar.return_value = 1
+
+    processed = await repository.is_date_processed(db, visit_date=date(2026, 9, 25))
+
+    assert processed is True
+
+    db.scalar.return_value = 0
+    assert await repository.is_date_processed(db, visit_date=date(2026, 9, 26)) is False
+
+
+@pytest.mark.asyncio
+async def test_save_confirmed_import(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    db.add = MagicMock()
+    date_result_mock = MagicMock()
+    date_result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = date_result_mock
+
+    confirmed_dates = [
+        (
+            date(2026, 9, 25),
+            [
+                {
+                    "user_id": 100,
+                    "start_time": time(18, 0),
+                    "end_time": time(20, 0),
+                    "duration_minutes": 120,
+                    "is_empty_time": False,
+                    "source": "photo_ai",
+                }
+            ],
+        )
+    ]
+
+    await repository.save_confirmed_import(
+        db=db,
+        import_id=1,
+        confirmed_by_tg_id=777,
+        confirmed_dates=confirmed_dates,
+    )
+
+    # Added AttendanceDate + AttendanceRecord
+    assert db.add.call_count == 2
+    assert db.flush.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_find_user_attendance_in_month(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    mock_record = AttendanceRecord(id=1, user_id=10, duration_minutes=90)
+    result_mock.scalars.return_value.all.return_value = [mock_record]
+    db.execute.return_value = result_mock
+
+    records = await repository.find_user_attendance_in_month(
+        db=db,
+        user_id=10,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+
+    assert len(records) == 1
+    assert records[0].id == 1
+
+
+@pytest.mark.asyncio
+async def test_get_user_monthly_summary(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    # 3 participants: uid 10 (300 min, 3 visits), uid 20 (200 min, 2 visits), uid 30 (100 min, 1 visit)
+    result_mock.all.return_value = [
+        (10, 300, 3),
+        (20, 200, 2),
+        (30, 100, 1),
+    ]
+    db.execute.return_value = result_mock
+
+    total_min, rank, total_part, visits = await repository.get_user_monthly_summary(
+        db=db,
+        user_id=20,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+
+    assert total_min == 200
+    assert rank == 2
+    assert total_part == 3
+    assert visits == 2
+
+    # User not in list (0 attendance)
+    total_min, rank, total_part, visits = await repository.get_user_monthly_summary(
+        db=db,
+        user_id=999,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+    assert total_min == 0
+    assert rank == 0
+    assert total_part == 3
+    assert visits == 0
+
+
+@pytest.mark.asyncio
+async def test_get_monthly_rankings(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    mock_user = User(id=1, first_name="Иван")
+    result_mock.all.return_value = [(mock_user, 120, 2)]
+    db.execute.return_value = result_mock
+
+    rankings = await repository.get_monthly_rankings(
+        db=db,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+
+    assert len(rankings) == 1
+    user, total_min, visits = rankings[0]
+    assert user.id == 1
+    assert total_min == 120
+    assert visits == 2
+
+
+@pytest.mark.asyncio
+async def test_find_import_photo(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.first.return_value = (b"photo_bytes_content", "image/png")
+    db.execute.return_value = result_mock
+
+    photo_info = await repository.find_import_photo(db, import_id=1)
+
+    assert photo_info == (b"photo_bytes_content", "image/png")
+
+    result_mock.first.return_value = None
+    assert await repository.find_import_photo(db, import_id=2) is None

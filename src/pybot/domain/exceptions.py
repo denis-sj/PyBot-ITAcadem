@@ -382,3 +382,151 @@ class CompetenceNotFoundError(DomainError, ValueError):
             return
 
         super().__init__("Competence was not found")
+
+
+# ============ ОШИБКИ УЧЁТА ПОСЕЩАЕМОСТИ ============
+
+
+class AttendanceDomainError(DomainError):
+    """Базовое исключение для ошибок учёта посещаемости."""
+
+    def __init__(
+        self,
+        message: str = "Ошибка учёта посещаемости",
+        *,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code=code, details=details)
+
+
+class AttendanceRecognitionError(AttendanceDomainError):
+    """Ошибка распознавания листа посещаемости через нейросеть."""
+
+    def __init__(
+        self,
+        message: str = "Ошибка распознавания фото посещаемости",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code="ATTENDANCE_RECOGNITION_ERROR", details=details)
+
+
+class AttendanceNetworkError(AttendanceDomainError):
+    """Сетевая ошибка при обращении к API распознавания."""
+
+    def __init__(
+        self,
+        message: str = "Сетевая ошибка при обращении к сервису распознавания",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code="ATTENDANCE_NETWORK_ERROR", details=details)
+
+
+class AttendanceDraftNotFoundError(AttendanceDomainError):
+    """Черновик импорта посещаемости не найден."""
+
+    def __init__(
+        self,
+        message: str = "Черновик импорта посещаемости не найден",
+        *,
+        import_id: int | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged_details = dict(details or {})
+        if import_id is not None:
+            merged_details["import_id"] = import_id
+        super().__init__(message, code="ATTENDANCE_DRAFT_NOT_FOUND", details=merged_details)
+
+
+class AttendanceDraftExpiredError(AttendanceDomainError):
+    """Черновик импорта посещаемости истёк."""
+
+    def __init__(
+        self,
+        message: str = "Срок действия черновика импорта истёк",
+        *,
+        import_id: int | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged_details = dict(details or {})
+        if import_id is not None:
+            merged_details["import_id"] = import_id
+        super().__init__(message, code="ATTENDANCE_DRAFT_EXPIRED", details=merged_details)
+
+
+class AttendanceDateAlreadyProcessedError(AttendanceDomainError):
+    """Дата посещаемости уже была обработана ранее."""
+
+    def __init__(
+        self,
+        message: str = "Посещаемость за эту дату уже была учтена",
+        *,
+        processed_date: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged_details = dict(details or {})
+        if processed_date is not None:
+            merged_details["processed_date"] = processed_date
+        super().__init__(message, code="ATTENDANCE_DATE_ALREADY_PROCESSED", details=merged_details)
+
+
+class AttendanceDateOutOfRangeError(AttendanceDomainError):
+    """Дата посещаемости выходит за допустимые границы."""
+
+    def __init__(
+        self,
+        message: str = "Дата посещаемости выходит за допустимый диапазон",
+        *,
+        target_date: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged_details = dict(details or {})
+        if target_date is not None:
+            merged_details["target_date"] = target_date
+        super().__init__(message, code="ATTENDANCE_DATE_OUT_OF_RANGE", details=merged_details)
+
+
+class AttendancePhotoEmptyError(AttendanceDomainError):
+    """Фотография пуста или отсутствует."""
+
+    def __init__(
+        self,
+        message: str = "Файл фотографии пуст или не содержит данных",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code="ATTENDANCE_PHOTO_EMPTY", details=details)
+
+
+class AttendanceUserNotFoundError(AttendanceDomainError):
+    """Пользователь для строки посещаемости не найден."""
+
+    def __init__(
+        self,
+        message: str = "Пользователь не найден среди участников клуба",
+        *,
+        raw_name: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged_details = dict(details or {})
+        if raw_name is not None:
+            merged_details["raw_name"] = raw_name
+        super().__init__(message, code="ATTENDANCE_USER_NOT_FOUND", details=merged_details)
+
+
+class AttendanceUnauthorizedError(AttendanceDomainError):
+    """Действие с учётом посещаемости не авторизовано."""
+
+    def __init__(
+        self,
+        message: str = "У вас нет прав для работы с учётом посещаемости",
+        *,
+        user_tg_id: int | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        merged_details = dict(details or {})
+        if user_tg_id is not None:
+            merged_details["user_tg_id"] = user_tg_id
+        super().__init__(message, code="ATTENDANCE_UNAUTHORIZED", details=merged_details)

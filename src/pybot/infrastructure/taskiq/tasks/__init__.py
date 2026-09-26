@@ -6,7 +6,7 @@ from typing import Any
 from taskiq import AsyncBroker, AsyncTaskiqDecoratedTask
 
 from ....core.config import AppSettings
-from . import broadcast, leaderboard, notification, system
+from . import attendance, broadcast, leaderboard, notification, system
 
 
 @dataclass(slots=True)
@@ -15,6 +15,7 @@ class TaskRegistry:
     notification_task: AsyncTaskiqDecoratedTask[..., Any]
     system_task: AsyncTaskiqDecoratedTask[..., Any]
     weekly_leaderboard_task: AsyncTaskiqDecoratedTask[..., Any]
+    attendance_cleanup_task: AsyncTaskiqDecoratedTask[..., int]
 
 
 def register_all_tasks(*, broker: AsyncBroker, settings: AppSettings) -> TaskRegistry:
@@ -23,6 +24,7 @@ def register_all_tasks(*, broker: AsyncBroker, settings: AppSettings) -> TaskReg
         notification_task=notification.register_tasks(broker=broker),
         system_task=system.register_tasks(broker=broker),
         weekly_leaderboard_task=leaderboard.register_tasks(broker=broker, settings=settings),
+        attendance_cleanup_task=attendance.register_tasks(broker=broker, settings=settings),
     )
 
 

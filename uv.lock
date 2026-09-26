@@ -1259,7 +1259,7 @@ wheels = [
 
 [[package]]
 name = "pybot-itacadem"
-version = "0.32.4"
+version = "0.33.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiocache" },

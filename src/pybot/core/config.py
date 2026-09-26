@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 from typing import Annotated, Literal, Self
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_extra_types.cron import CronStr
 from pydantic_extra_types.timezone_name import TimeZoneName
 from pydantic_settings import (
@@ -243,6 +243,37 @@ class AppSettings(BaseSettings):
         description="Broadcast body length before adding crop suffix",
         ge=1,
         le=4096,
+    )
+
+    # Polza.ai and Attendance settings
+    polza_api_key: SecretStr | None = Field(None, alias="POLZA_API_KEY", description="Polza.ai API key")
+    polza_base_url: str = Field("https://polza.ai/api/v1", alias="POLZA_BASE_URL", description="Polza.ai API base URL")
+    polza_vision_model: str = Field(
+        "google/gemini-2.5-flash",
+        alias="POLZA_VISION_MODEL",
+        description="Vision model for attendance sheet recognition",
+    )
+    polza_timeout_s: int = Field(
+        60,
+        alias="POLZA_TIMEOUT_S",
+        ge=5,
+        le=300,
+        description="Polza.ai request timeout in seconds",
+    )
+    attendance_timezone: TimeZoneName = Field(
+        default_factory=lambda: TimeZoneName("Asia/Yekaterinburg"),
+        alias="ATTENDANCE_TIMEZONE",
+        description="Timezone for attendance accounting",
+    )
+    attendance_stale_draft_cleanup_enabled: bool = Field(
+        True,
+        alias="ATTENDANCE_STALE_DRAFT_CLEANUP_ENABLED",
+        description="Enable periodic cleanup of stale attendance drafts",
+    )
+    attendance_stale_draft_cleanup_cron: CronStr = Field(
+        default_factory=lambda: CronStr("0 * * * *"),
+        alias="ATTENDANCE_STALE_DRAFT_CLEANUP_CRON",
+        description="Cron schedule for stale draft cleanup",
     )
 
     @property

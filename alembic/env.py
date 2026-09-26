@@ -31,6 +31,13 @@ target_metadata = Base.metadata
 
 def _configure_database_url() -> str:
     """Resolve DATABASE_URL from runtime settings and write it into Alembic config."""
+    configured_url = config.get_main_option("sqlalchemy.url")
+    if configured_url and not configured_url.startswith("${"):
+        backend_name = make_url(configured_url).get_backend_name()
+        if backend_name != "postgresql":
+            raise ValueError(f"Alembic supports only PostgreSQL for this project; received backend {backend_name!r}.")
+        return configured_url
+
     # Fast path: check env directly to bypass strict Pydantic validation in CI
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
@@ -62,6 +69,9 @@ async def run_migrations_online() -> None:
     url = _configure_database_url() or config.get_main_option("sqlalchemy.url")
     if not url:
         raise ValueError("DATABASE_URL не настроен в alembic.ini / settings")
+
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     connectable = create_async_engine(
         url,

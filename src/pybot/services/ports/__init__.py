@@ -1,4 +1,5 @@
 from .errors import NotificationError as NotificationError
+from .attendance_recognition_port import AttendanceRecognitionPort as AttendanceRecognitionPort
 from .errors import NotificationPermanentError as NotificationPermanentError
 from .errors import NotificationTemporaryError as NotificationTemporaryError
 from .health_probe import SupportsExecute as SupportsExecute
@@ -8,6 +9,7 @@ from .notification_port import NotificationPort
 
 __all__ = [
     "NotificationDispatchPort",
+    "AttendanceRecognitionPort",
     "NotificationError",
     "NotificationPermanentError",
     "NotificationPort",

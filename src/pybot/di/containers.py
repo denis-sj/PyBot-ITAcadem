@@ -13,6 +13,7 @@ from ..core.config import AppSettings, get_settings
 from ..db.database import create_database_engine
 from ..domain.services.level_calculator import LevelCalculator
 from ..infrastructure import (
+    AttendanceRepository,
     CompetenceRepository,
     LevelRepository,
     PointsTransactionRepository,
@@ -21,10 +22,12 @@ from ..infrastructure import (
     UserRepository,
     ValuationRepository,
 )
+from ..infrastructure.adapters import PolzaVisionAdapter
 from ..infrastructure.health import RedisPingProbe, SessionExecutor
 from ..infrastructure.ports import LoggingNotificationService, TelegramNotificationService
 from ..infrastructure.taskiq.taskiq_notification_dispatcher import TaskIQNotificationDispatcher
 from ..services import (
+    AttendanceService,
     LeaderboardService,
     SystemRuntimeAlertsService,
     UserCompetenceService,
@@ -40,7 +43,7 @@ from ..services.health import HealthService
 from ..services.levels import LevelService
 from ..services.notification_facade import NotificationFacade
 from ..services.points import PointsService
-from ..services.ports import NotificationDispatchPort, NotificationPort
+from ..services.ports import AttendanceRecognitionPort, NotificationDispatchPort, NotificationPort
 from ..services.role_request import RoleRequestService
 
 global_engine: AsyncEngine | None = None
@@ -105,6 +108,10 @@ class RepositoryProvider(Provider):
     @provide(scope=Scope.APP)
     def competence_repository(self) -> CompetenceRepository:
         return CompetenceRepository()
+
+    @provide(scope=Scope.APP)
+    def attendance_repository(self) -> AttendanceRepository:
+        return AttendanceRepository()
 
 
 class ServiceProvider(Provider):
@@ -222,6 +229,23 @@ class ServiceProvider(Provider):
             db, user_repository, level_repository, role_repository, competence_repository, settings
         )
 
+    @provide(scope=Scope.REQUEST)
+    def attendance_service(
+        self,
+        db: AsyncSession,
+        attendance_repository: AttendanceRepository,
+        user_repository: UserRepository,
+        recognition_port: AttendanceRecognitionPort,
+        settings: AppSettings,
+    ) -> AttendanceService:
+        return AttendanceService(
+            db=db,
+            attendance_repo=attendance_repository,
+            user_repo=user_repository,
+            recognition_port=recognition_port,
+            settings=settings,
+        )
+
 
 class HealthProvider(Provider):
     """Health API services."""
@@ -296,6 +320,15 @@ class PortsProvider(Provider):
     @provide(scope=Scope.APP)
     async def notification_dispatch_port(self) -> NotificationDispatchPort:
         return TaskIQNotificationDispatcher()
+
+    @provide(scope=Scope.APP)
+    def attendance_recognition_port(self, settings: AppSettings) -> AttendanceRecognitionPort:
+        return PolzaVisionAdapter(
+            api_key=settings.polza_api_key.get_secret_value() if settings.polza_api_key is not None else None,
+            base_url=settings.polza_base_url,
+            model=settings.polza_vision_model,
+            timeout_s=settings.polza_timeout_s,
+        )
 
 
 class FacadeProvider(Provider):

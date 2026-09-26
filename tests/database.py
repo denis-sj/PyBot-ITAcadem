@@ -14,6 +14,10 @@ def validate_test_database_url(database_url: str) -> str:
         raise ValueError(f"{TEST_DATABASE_ENV} must be a valid database URL.") from err
     if url.drivername != "postgresql+asyncpg":
         raise ValueError(f"{TEST_DATABASE_ENV} must use the postgresql+asyncpg driver.")
+    trusted_hosts = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "test-postgres"}  # noqa: S104
+    host = url.host or ""
+    if host not in trusted_hosts:
+        raise ValueError(f"{TEST_DATABASE_ENV} host '{host}' is not a trusted test host.")
 
     database_name = url.database or ""
     if database_name != "test" and not database_name.endswith("_test"):

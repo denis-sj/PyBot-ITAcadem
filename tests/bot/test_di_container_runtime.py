@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from pybot.core.config import AppSettings
 from pybot.di import containers as di_containers
-from pybot.services.user_services import UserService
-
+from pybot.infrastructure import AttendanceRepository
+from pybot.services import AttendanceService, UserService
+from pybot.services.ports import AttendanceRecognitionPort
 
 pytestmark = pytest.mark.integration
 
@@ -34,16 +35,23 @@ async def test_setup_container_smoke_resolves_key_dependencies(
     try:
         bot = await container.get(Bot)
         engine = await container.get(AsyncEngine)
+        attendance_repo = await container.get(AttendanceRepository)
+        recognition_port = await container.get(AttendanceRecognitionPort)
 
         async with container() as request_container:
             session = await request_container.get(AsyncSession)
             user_service = await request_container.get(UserService)
+            attendance_service = await request_container.get(AttendanceService)
 
         assert isinstance(bot, FakeBot)
         assert bot.token == "123456:SMOKE_TOKEN"
         assert engine is patched_public_di_engine
         assert session is not None
         assert isinstance(user_service, UserService)
+        assert isinstance(attendance_repo, AttendanceRepository)
+        assert attendance_repo is not None
+        assert recognition_port is not None
+        assert isinstance(attendance_service, AttendanceService)
     finally:
         await container.close()
 

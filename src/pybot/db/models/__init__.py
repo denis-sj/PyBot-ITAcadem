@@ -3,6 +3,12 @@ from ..base_class import Base
 # Shared (общие) модели
 from .achievement import Achievement
 
+from .attendance import (
+    AttendanceDate,
+    AttendanceImport,
+    AttendanceImportStatus,
+    AttendanceRecord,
+)
 
 # Доменные подпакеты
 from .user_module import (
@@ -52,4 +58,9 @@ __all__ = [
     "Task",
     "TaskSolution",
     "TaskSolutionStatus",
+    # attendance
+    "AttendanceDate",
+    "AttendanceImport",
+    "AttendanceImportStatus",
+    "AttendanceRecord",
 ]

@@ -15,9 +15,10 @@ from dishka.integrations.aiogram import setup_dishka
 from ...core import logger
 from ...core.config import AppSettings, get_settings
 from ...di.containers import setup_container
-from ...services import SystemRuntimeAlertsService
+from ...services import AttendanceService, SystemRuntimeAlertsService
 from .dialogs import user_router
 from .handlers import (
+    attendance_router,
     broadcast_router,
     common_router,
     points_router,
@@ -109,6 +110,7 @@ def setup_handlers(dp: Dispatcher) -> None:
     dp.include_router(user_router)
     dp.include_router(roles_router)
     dp.include_router(broadcast_router)
+    dp.include_router(attendance_router)
     setup_dialogs(dp)
 
 
@@ -119,6 +121,22 @@ async def notify_startup_alert(runtime_alerts_service: SystemRuntimeAlertsServic
         logger.info("event=runtime_alert phase=startup status=completed")
     except Exception:
         logger.exception("event=runtime_alert phase=startup status=failed")
+
+
+async def cleanup_stale_attendance_drafts_on_startup(container: AsyncContainer) -> int:
+    """Clean up expired attendance drafts on bot startup."""
+    try:
+        async with container() as request_container:
+            attendance_service = await request_container.get(AttendanceService)
+            count = await attendance_service.cleanup_stale_drafts()
+            logger.info(
+                "event=attendance_stale_drafts_cleanup phase=startup count={count}",
+                count=count,
+            )
+            return count
+    except Exception:
+        logger.exception("event=attendance_stale_drafts_cleanup phase=startup status=failed")
+        return 0
 
 
 async def notify_shutdown_alert(runtime_alerts_service: SystemRuntimeAlertsService) -> None:
@@ -159,10 +177,8 @@ async def tg_bot_main() -> None:
         runtime_alerts_service = await setup_runtime_alerts_service(container)
         await setup_middlewares(dp, settings)
         setup_handlers(dp)
-        if settings.bot_mode == "prod":
-            await bot.delete_webhook(drop_pending_updates=False)
-        else:
-            await bot.delete_webhook(drop_pending_updates=True)
+        await bot.delete_webhook(drop_pending_updates=settings.bot_mode != "prod")
+        await cleanup_stale_attendance_drafts_on_startup(container)
         logger.info("event=bot_runtime_init status=completed")
         logger.info("event=polling status=started")
         startup_alert_task = asyncio.create_task(notify_startup_alert(runtime_alerts_service))

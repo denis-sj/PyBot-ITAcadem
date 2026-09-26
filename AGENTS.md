@@ -241,6 +241,18 @@ When reporting completed work, the final response should include:
 - Keep ADRs handwritten unless explicitly asked to generate or rewrite them automatically.
 - Do not rewrite broad project documentation unless the task actually requires it.
 
+## Docker
+
+For any task involving Docker, containers, Dockerfiles, Compose,
+Docker Sandboxes, or Docker Agent:
+
+1. Discover and use the relevant installed Docker skill(s).
+2. Follow the recommended Docker skill ordering when multiple skills apply.
+3. Inspect the existing Docker configuration before changing it.
+4. Prefer secure, reproducible, cache-efficient, minimal configurations.
+5. After making changes, validate them using the available Docker CLI tools.
+6. Do not perform destructive Docker operations without explicit confirmation.
+
 ## Security Notes
 
 - Treat `.env` and all secrets as sensitive.

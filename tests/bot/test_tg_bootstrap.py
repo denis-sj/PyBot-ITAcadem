@@ -25,13 +25,14 @@ async def test_tg_bot_main_uses_di_bot_and_closes_container(monkeypatch: pytest.
     setup_runtime_alerts_service_mock = mocker.AsyncMock(return_value=runtime_alerts_service)
     setup_middlewares_mock = mocker.AsyncMock()
     setup_handlers_mock = mocker.Mock()
-
+    cleanup_drafts_mock = mocker.AsyncMock()
     monkeypatch.setattr(tg_bot_run, "setup_dispatcher", setup_dispatcher_mock)
     monkeypatch.setattr(tg_bot_run, "setup_di", setup_di_mock)
     monkeypatch.setattr(tg_bot_run, "setup_bot", setup_bot_mock)
     monkeypatch.setattr(tg_bot_run, "setup_runtime_alerts_service", setup_runtime_alerts_service_mock)
     monkeypatch.setattr(tg_bot_run, "setup_middlewares", setup_middlewares_mock)
     monkeypatch.setattr(tg_bot_run, "setup_handlers", setup_handlers_mock)
+    monkeypatch.setattr(tg_bot_run, "cleanup_stale_attendance_drafts_on_startup", cleanup_drafts_mock)
 
     with pytest.raises(asyncio.CancelledError):
         await tg_bot_run.tg_bot_main()
@@ -39,6 +40,7 @@ async def test_tg_bot_main_uses_di_bot_and_closes_container(monkeypatch: pytest.
     setup_bot_mock.assert_awaited_once_with(fake_container)
     setup_runtime_alerts_service_mock.assert_awaited_once_with(fake_container)
     fake_bot.delete_webhook.assert_awaited_once_with(drop_pending_updates=True)
+    cleanup_drafts_mock.assert_awaited_once_with(fake_container)
     runtime_alerts_service.notify_startup.assert_awaited_once()
     runtime_alerts_service.notify_shutdown.assert_awaited_once()
     fake_dp.start_polling.assert_awaited_once_with(fake_bot)
@@ -72,6 +74,7 @@ async def test_tg_bot_main_keeps_shutdown_running_when_runtime_alert_delivery_fa
     )
     monkeypatch.setattr(tg_bot_run, "setup_middlewares", mocker.AsyncMock())
     monkeypatch.setattr(tg_bot_run, "setup_handlers", mocker.Mock())
+    monkeypatch.setattr(tg_bot_run, "cleanup_stale_attendance_drafts_on_startup", mocker.AsyncMock())
 
     with pytest.raises(asyncio.CancelledError):
         await tg_bot_run.tg_bot_main()

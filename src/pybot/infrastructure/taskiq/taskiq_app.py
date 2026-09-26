@@ -15,6 +15,14 @@ from ...core.config import AppSettings, get_settings
 from ...di.containers import setup_taskiq_container
 from ...dto import NotificationTaskPayload
 from ...services.ports import NotificationTemporaryError
+from .taskiq_attendance_schedule import (
+    ATTENDANCE_CLEANUP_SCHEDULE_ID,
+    ATTENDANCE_CLEANUP_TASK_NAME,
+    AttendanceCleanupScheduleSpec,
+)
+from .taskiq_attendance_schedule import (
+    ensure_attendance_cleanup_schedule as ensure_attendance_cleanup_schedule_in_source,
+)
 from .taskiq_weekly_leaderboard_schedule import (
     LEADERBOARD_WEEKLY_SCHEDULE_ID,
     LEADERBOARD_WEEKLY_TASK_NAME,
@@ -114,6 +122,66 @@ def get_taskiq_weekly_leaderboard_task(
     return get_taskiq_task_registry(settings).weekly_leaderboard_task
 
 
+def get_taskiq_attendance_cleanup_task(
+    settings: AppSettings | None = None,
+) -> AsyncTaskiqDecoratedTask[..., int]:
+    """Возвращает декорированный объект задачи для очистки просроченных черновиков посещаемости.
+
+    Args:
+        settings: Настройки бота.
+
+    Returns:
+        AsyncTaskiqDecoratedTask: Объект задачи TaskIQ.
+    """
+    return get_taskiq_task_registry(settings).attendance_cleanup_task
+
+
+def _resolve_attendance_cleanup_kicker() -> AsyncKicker[Any, Any]:
+    return get_taskiq_attendance_cleanup_task().kicker()
+
+
+async def ensure_attendance_cleanup_schedule(
+    *,
+    broker: AsyncBroker | None = None,
+    schedule_source: ListRedisScheduleSource | None = None,
+    settings: AppSettings | None = None,
+) -> None:
+    """Идемпотентно гарантирует наличие расписания очистки просроченных черновиков.
+
+    Проверяет, является ли текущий процесс планировщиком и включена ли функция в настройках.
+
+    Args:
+        broker: Брокер TaskIQ.
+        schedule_source: Источник расписаний Redis.
+        settings: Настройки бота.
+    """
+    runtime_settings = settings or get_settings()
+    runtime_broker = broker or get_taskiq_broker(runtime_settings)
+    if not runtime_broker.is_scheduler_process:
+        logger.debug("событие=attendance_cleanup_ensure status=skipped причина=not_scheduler_process")
+        return
+
+    if not runtime_settings.attendance_stale_draft_cleanup_enabled:
+        logger.info("событие=attendance_cleanup_ensure status=skipped причина=disabled")
+        return
+
+    source = schedule_source or get_taskiq_schedule_source(runtime_settings)
+    await ensure_attendance_cleanup_schedule_in_source(
+        source=source,
+        spec=AttendanceCleanupScheduleSpec(
+            cron_expression=str(runtime_settings.attendance_stale_draft_cleanup_cron),
+            schedule_id=ATTENDANCE_CLEANUP_SCHEDULE_ID,
+            task_name=ATTENDANCE_CLEANUP_TASK_NAME,
+        ),
+        resolve_kicker=_resolve_attendance_cleanup_kicker,
+    )
+
+
+async def _on_client_startup_attendance(_state: TaskiqState) -> None:
+    """Обработчик события запуска клиента TaskIQ для настройки очистки черновиков."""
+    await ensure_attendance_cleanup_schedule()
+
+
 def _resolve_publish_weekly_leaderboard_kicker() -> AsyncKicker[Any, Any]:
     return get_taskiq_weekly_leaderboard_task().kicker()
 
@@ -186,6 +254,7 @@ def get_taskiq_broker(settings: AppSettings | None = None) -> AsyncBroker:
     )
     broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, _on_worker_startup)
     broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, _on_worker_shutdown)
+    broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_attendance)
     register_weekly_leaderboard_wiring(
         broker,
         ensure_weekly_leaderboard_schedule=ensure_weekly_leaderboard_schedule,

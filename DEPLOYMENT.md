@@ -479,6 +479,96 @@ That service is attached to the `migration` profile, so:
 
 The active migration history begins with the PostgreSQL initial baseline. It is not connected to the removed SQLite migration history. Apply it only to a new PostgreSQL database or to a database already managed by this baseline.
 
+### Attendance Photo Accounting Rollout & Migration Safety
+
+The attendance photo accounting feature introduces revision `8d6ac9f0b6a0_add_attendance_tables`.
+
+#### Pre-Migration Backup (Mandatory)
+Before applying the migration to a production database, create a dedicated custom-format backup of the database. In production, PostgreSQL cluster data resides in the `pybot_postgres_data_prod` volume, and dumps are stored in `pybot_postgres_backups_prod`.
+
+Production backup:
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U pybot -Fc pybot_itacadem > backup_pre_attendance.dump
+```
+Alternatively, trigger the automated backup service in production:
+```bash
+docker compose -f docker-compose.prod.yml --profile backup run --rm backup
+```
+
+Local development backup (`docker-compose.yml`):
+```bash
+docker compose exec -T postgres pg_dump -U pybot -Fc pybot_itacadem > backup_pre_attendance.dump
+# or
+docker compose --profile backup run --rm backup
+```
+
+#### Running the Migration
+Apply the migration using the standard deploy process or one-shot migration runner:
+```bash
+# Production:
+docker compose -f docker-compose.prod.yml --profile migration run --rm migrate
+
+# Local development:
+docker compose --profile migration run --rm migrate
+
+# Or directly with Alembic:
+alembic upgrade head
+```
+
+#### Verification of Data Preservation
+The migration is **strictly additive**:
+- Creates `attendance_imports`, `attendance_dates`, and `attendance_records` tables.
+- Creates unique constraints and indexes for attendance tracking.
+- Does **not** drop, truncate, or alter any existing tables (`users`, `roles`, `levels`, `competencies`, `points_transactions`, `valuations`, etc.).
+- All existing rows and foreign key relationships remain completely intact.
+
+Verify data integrity after migration:
+```bash
+# Production:
+docker compose -f docker-compose.prod.yml exec postgres psql -U pybot -d pybot_itacadem -c "SELECT COUNT(*) FROM users;"
+docker compose -f docker-compose.prod.yml exec postgres psql -U pybot -d pybot_itacadem -c "\d attendance_records"
+
+# Local development:
+docker compose exec postgres psql -U pybot -d pybot_itacadem -c "SELECT COUNT(*) FROM users;"
+docker compose exec postgres psql -U pybot -d pybot_itacadem -c "\d attendance_records"
+```
+
+#### Rollback Procedure
+
+**1. Application Rollback (Non-destructive, Recommended):**
+If only application code needs to be rolled back, use image rollback (`rollback_image_tag`). The older application image works with the existing schema and does not touch or delete any attendance data. All stored records, dates, and photo evidence are fully preserved.
+
+**2. Schema Rollback (DESTRUCTIVE — Extreme Caution):**
+> ⚠️ **CRITICAL WARNING:** `alembic downgrade 1de8107fe120` is a **DESTRUCTIVE schema rollback**!
+> It drops the `attendance_records`, `attendance_dates`, and `attendance_imports` tables, **permanently erasing all stored attendance records and original photo evidence**!
+> Do NOT run a schema downgrade unless you intentionally want to delete all attendance data.
+
+If schema downgrade is explicitly required:
+```bash
+# Production:
+docker compose -f docker-compose.prod.yml --profile migration run --rm migrate alembic downgrade 1de8107fe120
+
+# Local development:
+docker compose --profile migration run --rm migrate alembic downgrade 1de8107fe120
+```
+- The downgrade drops **only** the attendance tables (`attendance_records`, `attendance_dates`, `attendance_imports`) and their indexes from the database (in production, stored on `pybot_postgres_data_prod`).
+- It does **not** touch user, points, or role data.
+- If a complete database restore is needed, use the pre-migration dump:
+```bash
+# Production:
+RESTORE_FILE=backup_pre_attendance.dump CONFIRM_RESTORE=YES docker compose -f docker-compose.prod.yml --profile restore run --rm restore
+
+# Local development:
+RESTORE_FILE=backup_pre_attendance.dump CONFIRM_RESTORE=YES docker compose --profile restore run --rm restore
+```
+#### Environment Configuration
+Add the following optional variables to `.env` if Polza.ai vision recognition is enabled:
+- `POLZA_API_KEY`: API key for Polza.ai (left blank if recognition is disabled).
+- `POLZA_BASE_URL`: API base URL (default: `https://polza.ai/api/v1`).
+- `POLZA_VISION_MODEL`: Model name (default: `google/gemini-2.5-flash`).
+- `POLZA_TIMEOUT_S`: Request timeout in seconds (default: `60`, min 5, max 300).
+- `ATTENDANCE_TIMEZONE`: Timezone for attendance calculation and monthly reports (default: `Asia/Yekaterinburg`).
+
 ## Seed
 
 Seed data is handled by the dedicated `seed` service, not by `bot` startup.

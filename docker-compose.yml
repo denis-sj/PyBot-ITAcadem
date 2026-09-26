@@ -62,6 +62,10 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+    networks:
+      default:
+        aliases:
+          - test-postgres
     healthcheck:
       test:
         [
@@ -166,7 +170,7 @@ services:
       [
         "sh",
         "-ec",
-        "export PYBOT_TEST_DATABASE_URL=\"postgresql+asyncpg://$${POSTGRES_USER:?POSTGRES_USER must be set}:$${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/$${POSTGRES_DB:?POSTGRES_DB must be set}_test\" && sh scripts/ci/ensure_compose_test_database.sh && uv run pytest -m integration",
+        "export PYBOT_TEST_DATABASE_URL=\"postgresql+asyncpg://$${POSTGRES_USER:?POSTGRES_USER must be set}:$${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@test-postgres:5432/$${POSTGRES_DB:?POSTGRES_DB must be set}_test\" && sh scripts/ci/ensure_compose_test_database.sh && uv run pytest -m integration",
       ]
 
   test-coverage:
