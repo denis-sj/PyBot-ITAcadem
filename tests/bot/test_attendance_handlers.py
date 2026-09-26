@@ -3,9 +3,10 @@
 from datetime import UTC, date, datetime, time
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from aiogram.enums import ParseMode
 from aiogram.filters import CommandObject
 from aiogram.types import Chat, Message, PhotoSize, User
-import pytest
 
 from pybot.core.config import AppSettings
 from pybot.core.constants import PointsTypeEnum
@@ -21,6 +22,7 @@ from pybot.dto import (
 )
 from pybot.dto.value_objects import Points
 from pybot.presentation.bot.handlers.attendance.admin_commands import (
+    cb_generate_report,
     cmd_attendance_photo,
     cmd_current_month,
     cmd_report_menu,
@@ -234,6 +236,35 @@ async def test_cmd_report_menu(monkeypatch: pytest.MonkeyPatch) -> None:
 
     answer_mock.assert_awaited_once()
     assert "Отчёты по посещаемости" in answer_mock.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_cb_generate_report_sends_html(monkeypatch: pytest.MonkeyPatch) -> None:
+    callback = _build_callback_mock()
+    edit_text_mock = AsyncMock()
+    monkeypatch.setattr(callback.message, "edit_text", edit_text_mock)
+
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_monthly_report.return_value = AttendanceMonthlyReportDTO(
+        year=2026,
+        month=9,
+        total_club_minutes=0,
+        active_participants_count=0,
+        average_minutes_per_participant=0,
+        rankings=[],
+        records=[],
+    )
+
+    await cb_generate_report(
+        callback,
+        AttendanceReportCB(mode="short"),
+        attendance_service,
+    )
+
+    edit_text_mock.assert_awaited_once()
+    call = edit_text_mock.await_args
+    assert call is not None
+    assert call.kwargs["parse_mode"] == ParseMode.HTML
 
 
 @pytest.mark.asyncio

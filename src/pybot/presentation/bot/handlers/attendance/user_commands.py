@@ -6,6 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import Message
 from dishka.integrations.aiogram import FromDishka
@@ -37,7 +38,7 @@ async def cmd_my_hours(
 
     user = await user_service.find_user_by_telegram_id(message.from_user.id)
     if user is None:
-        await message.answer(_USER_NOT_REGISTERED_MSG)
+        await message.answer(_USER_NOT_REGISTERED_MSG, parse_mode=ParseMode.HTML)
         return
 
     tz = ZoneInfo(str(settings.attendance_timezone))
@@ -50,7 +51,7 @@ async def cmd_my_hours(
             month=now.month,
         )
         text = format_user_summary(summary, month=now.month, year=now.year)
-        await message.answer(text)
+        await message.answer(text, parse_mode=ParseMode.HTML)
     except AttendanceDomainError as exc:
         await message.answer(f"⚠️ {exc.message}")
 
@@ -68,7 +69,7 @@ async def cmd_my_visits(
 
     user = await user_service.find_user_by_telegram_id(message.from_user.id)
     if user is None:
-        await message.answer(_USER_NOT_REGISTERED_MSG)
+        await message.answer(_USER_NOT_REGISTERED_MSG, parse_mode=ParseMode.HTML)
         return
 
     tz = ZoneInfo(str(settings.attendance_timezone))
@@ -81,7 +82,7 @@ async def cmd_my_visits(
             month=now.month,
         )
         text = format_user_visits(visits, month=now.month, year=now.year)
-        await message.answer(text)
+        await message.answer(text, parse_mode=ParseMode.HTML)
     except AttendanceDomainError as exc:
         await message.answer(f"⚠️ {exc.message}")
 
@@ -99,7 +100,7 @@ async def cmd_my_rank(
 
     user = await user_service.find_user_by_telegram_id(message.from_user.id)
     if user is None:
-        await message.answer(_USER_NOT_REGISTERED_MSG)
+        await message.answer(_USER_NOT_REGISTERED_MSG, parse_mode=ParseMode.HTML)
         return
 
     tz = ZoneInfo(str(settings.attendance_timezone))
@@ -112,6 +113,6 @@ async def cmd_my_rank(
             month=now.month,
         )
         text = format_user_rank(summary, month=now.month, year=now.year)
-        await message.answer(text)
+        await message.answer(text, parse_mode=ParseMode.HTML)
     except AttendanceDomainError as exc:
         await message.answer(f"⚠️ {exc.message}")

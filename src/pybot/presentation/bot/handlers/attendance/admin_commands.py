@@ -6,6 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from dishka.integrations.aiogram import FromDishka
@@ -42,7 +43,8 @@ async def cmd_current_month(
         f"• Период: <b>{month_name} {now.year}</b>\n"
         f"• Номер месяца: <b>{now.month}</b>\n"
         f"• Часовой пояс: <code>{tz_name}</code>\n\n"
-        f"<i>Все загруженные фото посещаемости за {now.month}.{now.year} учитываются в этом периоде.</i>"
+        f"<i>Все загруженные фото посещаемости за {now.month}.{now.year} учитываются в этом периоде.</i>",
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -55,6 +57,7 @@ async def cmd_report_menu(message: Message) -> None:
     await message.answer(
         "📊 <b>Отчёты по посещаемости клуба</b>\n\nВыберите тип отчёта за текущий месяц:",
         reply_markup=get_report_keyboard(),
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -78,7 +81,11 @@ async def cb_generate_report(
     try:
         report = await attendance_service.get_monthly_report(detailed=is_detailed)
         text = format_monthly_report(report, detailed=is_detailed)
-        await callback.message.edit_text(text, reply_markup=get_report_keyboard())
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_report_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
     except AttendanceDomainError as exc:
         await callback.message.edit_text(f"⚠️ Ошибка: {exc.message}")
     except Exception:
@@ -101,7 +108,8 @@ async def cmd_attendance_photo(
         await message.answer(
             "⚠️ <b>Укажите номер импорта</b>\n\n"
             "Использование: <code>/attendance_photo &lt;import_id&gt;</code>\n"
-            "Пример: <code>/attendance_photo 42</code>"
+            "Пример: <code>/attendance_photo 42</code>",
+            parse_mode=ParseMode.HTML,
         )
         return
 
@@ -113,6 +121,7 @@ async def cmd_attendance_photo(
         await message.answer_photo(
             photo=file,
             caption=f"📸 <b>Фото-доказательство к импорту #{import_id}</b>",
+            parse_mode=ParseMode.HTML,
         )
     except AttendanceDomainError as exc:
         await message.answer(f"⚠️ {exc.message}")

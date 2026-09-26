@@ -6,7 +6,7 @@ import html
 import io
 
 from aiogram import Bot, F, Router
-from aiogram.enums import ChatType
+from aiogram.enums import ChatType, ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from dishka.integrations.aiogram import FromDishka
@@ -64,7 +64,10 @@ async def handle_attendance_photo(
         return
 
     largest_photo = message.photo[-1]
-    status_msg = await message.answer("🔄 <i>Загружаю и распознаю лист посещаемости...</i>")
+    status_msg = await message.answer(
+        "🔄 <i>Загружаю и распознаю лист посещаемости...</i>",
+        parse_mode=ParseMode.HTML,
+    )
 
     try:
         photo_buffer = io.BytesIO()
@@ -81,17 +84,18 @@ async def handle_attendance_photo(
         keyboard = get_draft_actions_keyboard(draft.draft_id)
 
         await status_msg.delete()
-        await message.answer(preview_text, reply_markup=keyboard)
+        await message.answer(preview_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
     except AttendancePhotoEmptyError:
         await status_msg.edit_text("⚠️ Файл фотографии пуст. Пожалуйста, отправьте корректное изображение.")
     except AttendanceRecognitionError as exc:
         await status_msg.edit_text(
             f"⚠️ <b>Ошибка распознавания листа:</b>\n{html.escape(exc.message)}\n\n"
-            "Пожалуйста, сделайте более четкое фото при хорошем освещении и отправьте снова."
+            "Пожалуйста, сделайте более четкое фото при хорошем освещении и отправьте снова.",
+            parse_mode=ParseMode.HTML,
         )
     except AttendanceDomainError as exc:
-        await status_msg.edit_text(f"⚠️ <b>Ошибка:</b> {html.escape(exc.message)}")
+        await status_msg.edit_text(f"⚠️ <b>Ошибка:</b> {html.escape(exc.message)}", parse_mode=ParseMode.HTML)
     except Exception:
         logger.exception("Unexpected error during attendance photo ingestion")
         await status_msg.edit_text("⚠️ Произошла непредвиденная ошибка при обработке фотографии.")
@@ -126,6 +130,7 @@ async def cb_confirm_draft(
             f"• Добавлено записей: <b>{added_records}</b>\n"
             f"• Пропущено дат: <b>{skipped}</b>",
             reply_markup=None,
+            parse_mode=ParseMode.HTML,
         )
         await callback.answer("Импорт успешно сохранён!")
     except AttendanceDomainError as exc:
@@ -154,6 +159,7 @@ async def cb_cancel_draft(
         await callback.message.edit_text(
             "❌ <b>Импорт отменён.</b>\nЧерновик закрыт, а фото-доказательство удалено.",
             reply_markup=None,
+            parse_mode=ParseMode.HTML,
         )
         await callback.answer("Импорт отменён")
     except AttendanceDomainError as exc:
@@ -180,6 +186,7 @@ async def cb_start_edit_time(
         await callback.message.answer(
             "✏️ <b>Изменение времени</b>\n\nВведите номер строки (1, 2, ...), для которой нужно изменить время:",
             reply_markup=get_cancel_edit_keyboard(),
+            parse_mode=ParseMode.HTML,
         )
 
 
@@ -229,6 +236,7 @@ async def msg_select_row_for_time(
         "Введите новое время в формате <code>18:00-20:00</code>\n"
         "(или <code>-</code> / <code>нет</code>, если время не фиксируется):",
         reply_markup=get_cancel_edit_keyboard(),
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -256,6 +264,7 @@ async def msg_input_new_time(
                 "⚠️ Некорректный формат времени. Введите время в формате <code>18:00-20:00</code> "
                 "или <code>-</code> (для снятия фиксации времени):",
                 reply_markup=get_cancel_edit_keyboard(),
+                parse_mode=ParseMode.HTML,
             )
             return
         start_time, end_time, _ = parsed
@@ -275,7 +284,11 @@ async def msg_input_new_time(
         await state.clear()
         preview = format_draft_preview(updated_draft)
         keyboard = get_draft_actions_keyboard(draft_id)
-        await message.answer(f"✅ Время обновлено!\n\n{preview}", reply_markup=keyboard)
+        await message.answer(
+            f"✅ Время обновлено!\n\n{preview}",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
     except AttendanceDomainError as exc:
         await message.answer(f"⚠️ Ошибка: {exc.message}")
 
@@ -300,6 +313,7 @@ async def cb_start_edit_user(
         await callback.message.answer(
             "👤 <b>Назначение участника</b>\n\nВведите номер строки (1, 2, ...), для которой нужно выбрать участника:",
             reply_markup=get_cancel_edit_keyboard(),
+            parse_mode=ParseMode.HTML,
         )
 
 
@@ -342,6 +356,7 @@ async def msg_select_row_for_user(
         f"Выбрана строка {row_index} (текущий: <i>{html.escape(cur_name)}</i>).\n\n"
         "Введите <b>ID пользователя</b> (или номер телефона):",
         reply_markup=get_cancel_edit_keyboard(),
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -390,6 +405,7 @@ async def msg_input_user_target(
         await message.answer(
             f"✅ Участник назначен: <b>{html.escape(target_user.first_name)}</b>!\n\n{preview}",
             reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
         )
     except (AttendanceDomainError, AttendanceUserNotFoundError) as exc:
         await message.answer(f"⚠️ Ошибка: {exc.message}")
@@ -415,6 +431,7 @@ async def cb_start_exclude(
         await callback.message.answer(
             "🗑 <b>Исключение строки</b>\n\nВведите номер строки (1, 2, ...), которую нужно исключить из импорта:",
             reply_markup=get_cancel_edit_keyboard(),
+            parse_mode=ParseMode.HTML,
         )
 
 
@@ -454,7 +471,11 @@ async def msg_select_row_to_exclude(
         await state.clear()
         preview = format_draft_preview(updated_draft)
         keyboard = get_draft_actions_keyboard(draft_id)
-        await message.answer(f"✅ Строка {row_index} исключена!\n\n{preview}", reply_markup=keyboard)
+        await message.answer(
+            f"✅ Строка {row_index} исключена!\n\n{preview}",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
     except AttendanceDomainError as exc:
         await message.answer(f"⚠️ Ошибка: {exc.message}")
 
