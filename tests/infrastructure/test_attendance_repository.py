@@ -21,7 +21,10 @@ from pybot.db.models import (
     User,
 )
 from pybot.domain.exceptions import AttendanceDraftNotFoundError
-from pybot.infrastructure.attendance_repository import AttendanceRepository
+from pybot.infrastructure.attendance_repository import (
+    AttendanceRepository,
+    _is_attendance_record_duplicate_error,
+)
 
 
 @compiles(BigInteger, "sqlite")
@@ -220,7 +223,16 @@ async def test_save_confirmed_import_skips_dates_without_valid_records(
     date_result_mock = MagicMock()
     date_result_mock.scalar_one_or_none.return_value = None
     db.execute.return_value = date_result_mock
-    db.flush.side_effect = [None, IntegrityError("duplicate", params=None, orig=Exception()), None, None]
+    db.flush.side_effect = [
+        None,
+        IntegrityError(
+            'duplicate key value violates unique constraint "uq_attendance_records_user_date"',
+            params=None,
+            orig=Exception("uq_attendance_records_user_date"),
+        ),
+        None,
+        None,
+    ]
 
     confirmed_dates = [
         (
@@ -379,6 +391,98 @@ async def test_save_confirmed_import_atomic_duplicate_handling_real_db(
         await db.execute(select(AttendanceDate).where(AttendanceDate.date == conflict_date))
     ).scalar_one_or_none()
     assert ad_check is None
+
+
+@pytest.mark.asyncio
+async def test_save_confirmed_import_reraises_non_duplicate_integrity_error(
+    repository: AttendanceRepository,
+    sqlite_session: AsyncSession,
+) -> None:
+    db = sqlite_session
+
+    draft = AttendanceImport(
+        author_tg_id=999,
+        status=AttendanceImportStatus.DRAFT.value,
+        photo_data=b"test_image",
+        photo_mime_type="image/jpeg",
+        photo_file_size=10,
+        photo_checksum="test_sum",
+        raw_ai_json="{}",
+        draft_state_json="{}",
+    )
+    db.add(draft)
+    await db.flush()
+
+    visit_date = date(2026, 9, 25)
+    # user_id is None, triggering NOT NULL constraint violation (non-duplicate IntegrityError)
+    confirmed_dates = [
+        (
+            visit_date,
+            [
+                {
+                    "user_id": None,
+                    "start_time": time(18, 0),
+                    "end_time": time(20, 0),
+                    "duration_minutes": 120,
+                    "is_empty_time": False,
+                    "source": "photo_ai",
+                }
+            ],
+        )
+    ]
+
+    with pytest.raises(IntegrityError):
+        await repository.save_confirmed_import(
+            db=db,
+            import_id=draft.id,
+            confirmed_by_tg_id=999,
+            confirmed_dates=confirmed_dates,
+        )
+
+
+def test_is_attendance_record_duplicate_error_patterns() -> None:
+    # Postgres constraint name
+    pg_exc = IntegrityError(
+        'duplicate key value violates unique constraint "uq_attendance_records_user_date"',
+        params=None,
+        orig=Exception("uq_attendance_records_user_date"),
+    )
+    assert _is_attendance_record_duplicate_error(pg_exc) is True
+
+    # Postgres orig attribute constraint_name
+    class MockOrig:
+        constraint_name = "uq_attendance_records_user_date"
+
+    pg_attr_exc = IntegrityError("duplicate", params=None, orig=MockOrig())  # type: ignore[arg-type]
+    assert _is_attendance_record_duplicate_error(pg_attr_exc) is True
+
+    # SQLite duplicate constraint pattern
+    sqlite_exc = IntegrityError(
+        "(sqlite3.IntegrityError) UNIQUE constraint failed: attendance_records.user_id, attendance_records.date",
+        params=None,
+        orig=Exception("UNIQUE constraint failed: attendance_records.user_id, attendance_records.date"),
+    )
+    assert _is_attendance_record_duplicate_error(sqlite_exc) is True
+
+    # SQLite NOT NULL violation -> False
+    not_null_exc = IntegrityError(
+        "(sqlite3.IntegrityError) NOT NULL constraint failed: attendance_records.user_id",
+        params=None,
+        orig=Exception("NOT NULL constraint failed: attendance_records.user_id"),
+    )
+    assert _is_attendance_record_duplicate_error(not_null_exc) is False
+
+    # SQLite FOREIGN KEY violation -> False
+    fk_exc = IntegrityError(
+        "(sqlite3.IntegrityError) FOREIGN KEY constraint failed",
+        params=None,
+        orig=Exception("FOREIGN KEY constraint failed"),
+    )
+    assert _is_attendance_record_duplicate_error(fk_exc) is False
+
+    # Arbitrary / generic error -> False
+    generic_exc = IntegrityError("other error", params=None, orig=Exception("other error"))
+    assert _is_attendance_record_duplicate_error(generic_exc) is False
 
 
 @pytest.mark.asyncio

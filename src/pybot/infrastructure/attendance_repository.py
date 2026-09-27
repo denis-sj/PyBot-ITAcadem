@@ -23,6 +23,36 @@ from ..db.models import (
 from ..domain.exceptions import AttendanceDraftNotFoundError
 
 
+def _is_attendance_record_duplicate_error(exc: IntegrityError) -> bool:
+    """Check if IntegrityError was caused by uq_attendance_records_user_date violation.
+
+    Matches PostgreSQL (constraint name uq_attendance_records_user_date) and
+    SQLite (unique constraint failed on attendance_records.user_id, attendance_records.date).
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        constraint_name = getattr(orig, "constraint_name", None)
+        if constraint_name == "uq_attendance_records_user_date":
+            return True
+
+    text_parts = [str(exc)]
+    if orig is not None:
+        text_parts.append(str(orig))
+    error_text = " ".join(text_parts).lower()
+
+    if "uq_attendance_records_user_date" in error_text:
+        return True
+
+    return bool(
+        "unique" in error_text
+        and (
+            "unique constraint failed: attendance_records.user_id, attendance_records.date" in error_text
+            or ("attendance_records.user_id" in error_text and "attendance_records.date" in error_text)
+            or ("unique constraint failed" in error_text and "user_id" in error_text and "date" in error_text)
+        )
+    )
+
+
 class AttendanceRepository:
     """Stateless repository for managing attendance imports and records."""
 
@@ -335,7 +365,9 @@ class AttendanceRepository:
                         db.add(record)
                         await db.flush()
                         actually_saved_rows.append(row)
-                except IntegrityError:
+                except IntegrityError as exc:
+                    if not _is_attendance_record_duplicate_error(exc):
+                        raise
                     logger.warning(
                         "Duplicate record detected on insert | user_id={user_id} date={date}",
                         user_id=row["user_id"],
