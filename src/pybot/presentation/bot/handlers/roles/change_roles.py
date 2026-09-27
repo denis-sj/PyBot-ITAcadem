@@ -9,6 +9,7 @@ from dishka.integrations.aiogram import FromDishka
 from .....core import logger
 from .....core.constants import RoleEnum
 from .....domain.exceptions import InvalidRoleChangeError, RoleNotFoundError, UserNotFoundError
+from .....services.role_request import RoleRequestService
 from .....services.user_services import UserRolesService, UserService
 from ....texts import (
     ROLE_COMMAND_INVALID_FORMAT,
@@ -89,12 +90,29 @@ async def _extract_role_and_reason(message: Message) -> tuple[RoleEnum | None, s
     return role, reason
 
 
+async def _try_auto_close_pending_request(
+    role_request_service: RoleRequestService | None,
+    user_id: int | None,
+    role_name: str,
+) -> None:
+    if role_request_service is None or user_id is None:
+        return
+    try:
+        await role_request_service.auto_close_pending_request_on_role_assignment(
+            user_id=user_id,
+            role_name=role_name,
+        )
+    except Exception:
+        logger.exception("Failed to auto-close pending role request on /addrole")
+
+
 @change_role_global_router.message(Command("addrole"), flags={"role": "Admin", "rate_limit": "expensive"})
 async def handle_set_role(
     message: Message,
     user_service: FromDishka[UserService],
     user_roles_service: FromDishka[UserRolesService],
     user_id: int,
+    role_request_service: FromDishka[RoleRequestService] | None = None,
 ) -> None:
     """Форматирует текст для ролей."""
     target_id = await _get_target_user_id_from_reply(message)
@@ -125,6 +143,11 @@ async def handle_set_role(
         await message.reply(ROLE_UNEXPECTED_ERROR)
     else:
         await message.reply(role_add_success(updated_user.first_name, role.value, reason))
+        await _try_auto_close_pending_request(
+            role_request_service=role_request_service,
+            user_id=getattr(updated_user, "id", None),
+            role_name=role.value,
+        )
 
 
 @change_role_global_router.message(Command("removerole"), flags={"role": "Admin", "rate_limit": "expensive"})

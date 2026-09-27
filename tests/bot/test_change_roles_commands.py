@@ -320,6 +320,36 @@ async def test_handle_set_role_with_reply_target_adds_role_and_replies_success(
 
 
 @pytest.mark.asyncio
+async def test_handle_set_role_auto_closes_pending_role_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    updated_user = SimpleNamespace(id=10, first_name="Target")
+    message = _build_message(
+        text='/addrole Mentor "For mentoring"',
+        reply_user_id=850_002,
+        reply_username="target_user",
+    )
+    user_service = StubUserService()
+    user_roles_service = StubUserRolesService(add_user_role=AsyncMock(return_value=updated_user))
+    role_request_service = AsyncMock()
+    reply_mock = AsyncMock()
+    monkeypatch.setattr(Message, "reply", reply_mock)
+
+    await change_roles.handle_set_role(
+        message=message,
+        user_service=user_service,
+        user_roles_service=user_roles_service,
+        user_id=999_999,
+        role_request_service=role_request_service,
+    )
+
+    role_request_service.auto_close_pending_request_on_role_assignment.assert_awaited_once_with(
+        user_id=10,
+        role_name="Mentor",
+    )
+
+
+@pytest.mark.asyncio
 async def test_handle_set_role_when_role_missing_in_service_replies_role_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

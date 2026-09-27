@@ -39,6 +39,13 @@ class NotificationPortSpy(NotificationPort):
     ) -> None:
         return None
 
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        return None
+
 
 @pytest.mark.asyncio
 async def test_runtime_alerts_service_skips_when_alerts_are_disabled(

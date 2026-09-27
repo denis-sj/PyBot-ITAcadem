@@ -68,6 +68,9 @@ class ScriptedNotificationPort(NotificationPort):
     ) -> None:
         return None
 
+    async def update_role_request_message(self, request_id: int, status_text: str) -> None:
+        return None
+
     async def send_message(self, message_data: NotifyDTO) -> None:
         recipient_id = message_data.recipient_id
         self.call_counts[recipient_id] += 1

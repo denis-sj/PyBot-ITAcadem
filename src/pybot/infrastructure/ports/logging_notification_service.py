@@ -149,3 +149,26 @@ class LoggingNotificationService(NotificationPort):
                 import_id=import_id,
             )
             raise NotificationPermanentError(message="Failed to log attendance notification") from exc
+
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        """Логирует обновление сообщения о запросе роли."""
+        event = NotificationLogEvent(
+            event_type="role_request_updated",
+            recipient_id=self._settings.role_request_admin_tg_id,
+            message_text=status_text,
+            request_id=request_id,
+        )
+        try:
+            logger.info(
+                "Role request message updated | request_id={request_id} status_text={status_text}",
+                request_id=request_id,
+                status_text=status_text,
+            )
+            self._events.append(event)
+        except Exception as exc:
+            logger.exception("Failed to log role request message update")
+            raise NotificationPermanentError(message="Failed to log role request message update") from exc

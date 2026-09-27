@@ -179,6 +179,13 @@ class RoleRequestAlreadyExistsError(DomainError):
         )
 
 
+class RoleRequestNotAllowedError(DomainError):
+    """Пользователь не может запросить указанную роль."""
+
+    def __init__(self, message: str = "Нет ролей, которые вы можете запросить.") -> None:
+        super().__init__(message, code="ROLE_REQUEST_NOT_ALLOWED")
+
+
 class RoleRequestAlreadyProcessedError(DomainError):
     """Заявка на роль уже была обработана (принята или отклонена)."""
 

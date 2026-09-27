@@ -259,9 +259,8 @@ ROLE_REQUEST_REJECTED_RECENTLY = (
 ROLE_REQUEST_ALREADY_EXISTS = (
     "Не удалось создать новый запрос: у вас уже есть активная заявка на эту роль.\nДождитесь решения администратора."
 )
-ROLE_REQUEST_ALREADY_ASSIGNED = (
-    "Не удалось создать запрос: эта роль у вас уже есть.\nВыберите другую роль, если это нужно."
-)
+ROLE_REQUEST_NO_ROLES_AVAILABLE = "Нет ролей, которые вы можете запросить."
+ROLE_REQUEST_ALREADY_ASSIGNED = "У вас уже есть роль Mentor."
 ROLE_REQUEST_UNEXPECTED_ERROR = "Не удалось обработать запрос на роль.\nПопробуйте ещё раз позже."
 ROLE_REQUEST_CREATED = "⏳ Запрос на роль {role} отправлен администратору."
 ROLE_REQUEST_ADMIN_APPROVED = "✅ Запрос одобрен"
@@ -297,7 +296,7 @@ ROLE_REQUEST_NOTIFY_ALREADY_ASSIGNED = (
     "У пользователя уже есть эта роль.\nОбновите список заявок, чтобы увидеть актуальный статус."
 )
 ROLE_REQUEST_NOTIFY_UNEXPECTED = "Не удалось обработать запрос.\nПопробуйте ещё раз позже."
-ROLE_REQUEST_COOLDOWN_UNTIL = "Ваш предыдущий запрос недавно отклонили. Повторно отправить запрос можно {available_at}."
+ROLE_REQUEST_COOLDOWN_UNTIL = "Повторный запрос можно отправить после {available_at}."
 
 COMPETENCE_TARGET_REQUIRED = (
     "Не удалось определить пользователя для команды.\n"

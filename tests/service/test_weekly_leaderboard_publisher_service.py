@@ -46,6 +46,9 @@ class NotificationPortSpy(NotificationPort):
     ) -> None:
         return None
 
+    async def update_role_request_message(self, request_id: int, status_text: str) -> None:
+        return None
+
 
 def _row(
     *,

@@ -36,6 +36,21 @@ class FakeNotificationPort(NotificationPort):
             )
         )
 
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        return None
+
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        return None
+
 
 @dataclass(frozen=True, slots=True)
 class RoleRequestNotificationRecord:

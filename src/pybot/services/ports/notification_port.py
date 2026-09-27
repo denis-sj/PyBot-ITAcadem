@@ -62,3 +62,17 @@ class NotificationPort(ABC):
             NotificationPermanentError: Неустранимая ошибка доставки.
         """
         pass
+
+    @abstractmethod
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        """Обновляет сообщение администратора о запросе роли и убирает кнопки.
+
+        Args:
+            request_id: Идентификатор запроса роли.
+            status_text: Текст обновлённого статуса.
+        """
+        pass

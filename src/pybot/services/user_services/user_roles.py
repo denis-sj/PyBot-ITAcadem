@@ -2,12 +2,14 @@ from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...core.constants import RoleEnum
+from ...core.constants import RequestStatus, RoleEnum
 from ...domain.exceptions import RoleNotFoundError, UserNotFoundError
 from ...dto import RoleReadDTO, UserReadDTO
 from ...infrastructure.role_repository import RoleRepository
+from ...infrastructure.roles import RoleRequestRepository
 from ...infrastructure.user_repository import UserRepository
 from ...mappers.user_mappers import map_orm_user_to_user_read_dto
+from ..ports import NotificationPort
 
 
 class UserRolesService:
@@ -21,17 +23,15 @@ class UserRolesService:
         db: AsyncSession,
         user_repository: UserRepository,
         role_repository: RoleRepository,
+        role_request_repository: RoleRequestRepository | None = None,
+        notification_service: NotificationPort | None = None,
     ) -> None:
-        """Инициализирует сервис ролей пользователя.
-
-        Args:
-            db: Асинхронная сессия базы данных.
-            user_repository: Репозиторий пользователей.
-            role_repository: Репозиторий ролей.
-        """
+        """Инициализирует сервис ролей пользователя."""
         self.db: AsyncSession = db
         self.user_repository: UserRepository = user_repository
         self.role_repository: RoleRepository = role_repository
+        self.role_request_repository: RoleRequestRepository | None = role_request_repository
+        self.notification_service: NotificationPort | None = notification_service
 
     async def check_user_role(
         self,
@@ -134,5 +134,17 @@ class UserRolesService:
             raise RoleNotFoundError(new_role.value)
 
         user.add_role(role)
+
+        if self.role_request_repository is not None:
+            pending_request = await self.role_request_repository.find_recent_active_request(self.db, user.id)
+            if pending_request is not None and pending_request.role_id == role.id:
+                pending_request.change_status(RequestStatus.APPROVED)
+                self.db.add(pending_request)
+                if self.notification_service is not None:
+                    await self.notification_service.update_role_request_message(
+                        request_id=pending_request.id,
+                        status_text="Запрос закрыт: роль выдана командой /addrole.",
+                    )
+
         await self.db.commit()
         return await map_orm_user_to_user_read_dto(user)

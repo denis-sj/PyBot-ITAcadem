@@ -131,8 +131,16 @@ class ServiceProvider(Provider):
         db: AsyncSession,
         user_repository: UserRepository,
         role_repository: RoleRepository,
+        role_request_repository: RoleRequestRepository,
+        notification_service: NotificationPort,
     ) -> UserRolesService:
-        return UserRolesService(db, user_repository, role_repository)
+        return UserRolesService(
+            db=db,
+            user_repository=user_repository,
+            role_repository=role_repository,
+            role_request_repository=role_request_repository,
+            notification_service=notification_service,
+        )
 
     @provide(scope=Scope.REQUEST)
     def user_competence_service(
