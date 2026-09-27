@@ -26,6 +26,20 @@ class AttendanceReportCB(CallbackData, prefix="att_rep"):
     mode: str
 
 
+class AttendancePhotoCB(CallbackData, prefix="att_photo"):
+    """Callback data for viewing attendance import photo."""
+
+    import_id: int
+
+
+def get_attendance_photo_button(import_id: int) -> InlineKeyboardButton:
+    """Generate an inline button to view attendance sheet photo."""
+    return InlineKeyboardButton(
+        text=f"📷 Фото импорта #{import_id}",
+        callback_data=AttendancePhotoCB(import_id=import_id).pack(),
+    )
+
+
 def get_draft_actions_keyboard(draft_id: int) -> InlineKeyboardMarkup:
     """Generate action keyboard for attendance draft preview."""
     buttons = [

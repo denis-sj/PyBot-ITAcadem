@@ -27,10 +27,19 @@ from pybot.presentation.bot.handlers.attendance.admin_commands import (
     cmd_current_month,
     cmd_report_menu,
 )
+from pybot.domain.exceptions import AttendancePhotoAccessDeniedError, AttendancePhotoNotFoundError
 from pybot.presentation.bot.handlers.attendance.keyboards import (
     AttendanceDraftCB,
+    AttendancePhotoCB,
     AttendanceReportCB,
+    get_attendance_photo_button,
     get_report_keyboard,
+)
+from pybot.presentation.bot.handlers.attendance.user_commands import (
+    cb_view_attendance_photo,
+    cmd_my_hours,
+    cmd_my_rank,
+    cmd_my_visits,
 )
 from pybot.presentation.bot.handlers.attendance.photo_import import (
     cb_cancel_draft,
@@ -268,6 +277,93 @@ async def test_cmd_my_rank_registered_user_no_visits(
     answer_mock.assert_awaited_once()
     assert "В этом месяце у вас пока нет посещений." in answer_mock.call_args[0][0]
     assert "Место:" not in answer_mock.call_args[0][0]
+
+
+def test_get_attendance_photo_button() -> None:
+    btn = get_attendance_photo_button(import_id=42)
+    assert btn.text == "📷 Фото импорта #42"
+    assert btn.callback_data is not None
+    cb = AttendancePhotoCB.unpack(btn.callback_data)
+    assert cb.import_id == 42
+
+
+@pytest.mark.asyncio
+async def test_cb_view_attendance_photo_success() -> None:
+    callback = _build_callback_mock()
+    callback.from_user.id = 123
+    answer_photo_mock = AsyncMock()
+    callback.message.answer_photo = answer_photo_mock
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
+    user_service.find_all_user_roles.return_value = {"Student"}
+
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_with_access.return_value = (
+        b"photo_data",
+        "image/jpeg",
+        [date(2026, 9, 20), date(2026, 9, 21)],
+    )
+
+    await cb_view_attendance_photo(
+        callback,
+        AttendancePhotoCB(import_id=15),
+        attendance_service,
+        user_service,
+    )
+
+    answer_photo_mock.assert_awaited_once()
+    call_kwargs = answer_photo_mock.call_args.kwargs
+    assert call_kwargs["caption"] == "Импорт #15 · 20.09.2026, 21.09.2026"
+    callback.answer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_cb_view_attendance_photo_access_denied() -> None:
+    callback = _build_callback_mock()
+    callback.from_user.id = 999
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
+    user_service.find_all_user_roles.return_value = set()
+
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_with_access.side_effect = AttendancePhotoAccessDeniedError(
+        "Фото недоступно: посещение удалено."
+    )
+
+    await cb_view_attendance_photo(
+        callback,
+        AttendancePhotoCB(import_id=15),
+        attendance_service,
+        user_service,
+    )
+
+    callback.answer.assert_awaited_once_with("Фото недоступно: посещение удалено.", show_alert=True)
+
+
+@pytest.mark.asyncio
+async def test_cb_view_attendance_photo_not_found() -> None:
+    callback = _build_callback_mock()
+    callback.from_user.id = 123
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
+    user_service.find_all_user_roles.return_value = {"Admin"}
+
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_with_access.side_effect = AttendancePhotoNotFoundError(
+        "Фотография импорта не найдена."
+    )
+
+    await cb_view_attendance_photo(
+        callback,
+        AttendancePhotoCB(import_id=15),
+        attendance_service,
+        user_service,
+    )
+
+    callback.answer.assert_awaited_once_with("Фотография недоступна", show_alert=True)
 
 
 # ============ ADMIN COMMANDS TESTS ============

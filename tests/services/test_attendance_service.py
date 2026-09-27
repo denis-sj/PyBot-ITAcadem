@@ -14,7 +14,9 @@ from pybot.di import containers as di_containers
 from pybot.domain.exceptions import (
     AttendanceDomainError,
     AttendanceDraftExpiredError,
+    AttendancePhotoAccessDeniedError,
     AttendancePhotoEmptyError,
+    AttendancePhotoNotFoundError,
     AttendanceRecognitionError,
     AttendanceUserNotFoundError,
 )
@@ -857,6 +859,7 @@ async def test_get_photo_evidence_happy_path(
     service: AttendanceService,
     mock_attendance_repo: AsyncMock,
 ) -> None:
+    mock_attendance_repo.get_import_photo.return_value = (b"image_bytes", "image/png")
     mock_attendance_repo.find_import_photo.return_value = (b"image_bytes", "image/png")
     photo_data, mime = await service.get_photo_evidence(import_id=1)
     assert photo_data == b"image_bytes"
@@ -868,9 +871,91 @@ async def test_get_photo_evidence_missing_raises(
     service: AttendanceService,
     mock_attendance_repo: AsyncMock,
 ) -> None:
+    mock_attendance_repo.get_import_photo.return_value = None
     mock_attendance_repo.find_import_photo.return_value = None
     with pytest.raises(AttendanceDomainError, match="Фото-доказательство не найдено"):
         await service.get_photo_evidence(import_id=999)
+
+
+@pytest.mark.asyncio
+async def test_get_import_photo_with_access_admin_allowed(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    mock_user_repo.find_user_by_telegram_id.return_value = User(id=1, first_name="Админ")
+    mock_attendance_repo.get_import_photo.return_value = (b"photo_data", "image/jpeg")
+    mock_attendance_repo.get_import_dates.return_value = [date(2026, 9, 20)]
+
+    photo, mime, dates = await service.get_import_photo_with_access(
+        import_id=10,
+        requester_tg_id=123,
+        is_admin=True,
+    )
+    assert photo == b"photo_data"
+    assert mime == "image/jpeg"
+    assert dates == [date(2026, 9, 20)]
+    mock_attendance_repo.has_user_visit_in_import.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_import_photo_with_access_participant_with_visit(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    user = User(id=5, first_name="Студент")
+    mock_user_repo.find_user_by_telegram_id.return_value = user
+    mock_attendance_repo.has_user_visit_in_import.return_value = True
+    mock_attendance_repo.get_import_photo.return_value = (b"student_photo", "image/png")
+    mock_attendance_repo.get_import_dates.return_value = [date(2026, 9, 20), date(2026, 9, 21)]
+
+    photo, mime, dates = await service.get_import_photo_with_access(
+        import_id=10,
+        requester_tg_id=456,
+        is_admin=False,
+    )
+    assert photo == b"student_photo"
+    assert mime == "image/png"
+    assert dates == [date(2026, 9, 20), date(2026, 9, 21)]
+    mock_attendance_repo.has_user_visit_in_import.assert_awaited_once_with(service._db, 5, 10)
+
+
+@pytest.mark.asyncio
+async def test_get_import_photo_with_access_participant_without_visit_denied(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    user = User(id=7, first_name="Чужой")
+    mock_user_repo.find_user_by_telegram_id.return_value = user
+    mock_attendance_repo.has_user_visit_in_import.return_value = False
+
+    with pytest.raises(AttendancePhotoAccessDeniedError, match="Фото недоступно: посещение удалено."):
+        await service.get_import_photo_with_access(
+            import_id=10,
+            requester_tg_id=789,
+            is_admin=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_import_photo_with_access_photo_not_found(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    user = User(id=5, first_name="Студент")
+    mock_user_repo.find_user_by_telegram_id.return_value = user
+    mock_attendance_repo.has_user_visit_in_import.return_value = True
+    mock_attendance_repo.get_import_photo.return_value = None
+
+    with pytest.raises(AttendancePhotoNotFoundError, match="Фотография импорта не найдена."):
+        await service.get_import_photo_with_access(
+            import_id=10,
+            requester_tg_id=456,
+            is_admin=False,
+        )
 
 
 # ============ MONTHLY REPORTS & STATS TESTS ============

@@ -148,6 +148,53 @@ class AttendanceRepository:
         await db.execute(stmt)
         await db.flush()
 
+    async def has_user_visit_in_import(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        import_id: int,
+    ) -> bool:
+        """Check if user has at least one confirmed attendance record in the import.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+            import_id: Import primary key.
+
+        Returns:
+            bool: True if record exists, False otherwise.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(AttendanceRecord)
+            .where(
+                AttendanceRecord.user_id == user_id,
+                AttendanceRecord.import_id == import_id,
+            )
+        )
+        count = await db.scalar(stmt)
+        return bool(count and count > 0)
+
+    async def get_import_dates(
+        self,
+        db: AsyncSession,
+        import_id: int,
+    ) -> list[dt.date]:
+        """Get all dates associated with the given import ordered chronologically.
+
+        Args:
+            db: Database session.
+            import_id: Import primary key.
+
+        Returns:
+            list[dt.date]: Sorted list of unique calendar dates.
+        """
+        stmt = (
+            select(AttendanceDate.date).where(AttendanceDate.import_id == import_id).order_by(AttendanceDate.date.asc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     async def expire_stale_drafts(
         self,
         db: AsyncSession,
@@ -443,3 +490,5 @@ class AttendanceRepository:
         if row is None or row[0] is None or row[1] is None:
             return None
         return (row[0], row[1])
+
+    get_import_photo = find_import_photo

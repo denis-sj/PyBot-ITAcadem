@@ -530,3 +530,27 @@ class AttendanceUnauthorizedError(AttendanceDomainError):
         if user_tg_id is not None:
             merged_details["user_tg_id"] = user_tg_id
         super().__init__(message, code="ATTENDANCE_UNAUTHORIZED", details=merged_details)
+
+
+class AttendancePhotoAccessDeniedError(AttendanceDomainError):
+    """Пользователь не имеет прав доступа к фотографии импорта."""
+
+    def __init__(
+        self,
+        message: str = "Фото недоступно: посещение удалено.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code="ATTENDANCE_PHOTO_ACCESS_DENIED", details=details)
+
+
+class AttendancePhotoNotFoundError(AttendanceDomainError):
+    """Фотография импорта не найдена или была удалена."""
+
+    def __init__(
+        self,
+        message: str = "Фотография импорта не найдена.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code="ATTENDANCE_PHOTO_NOT_FOUND", details=details)

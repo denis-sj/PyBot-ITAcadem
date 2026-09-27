@@ -258,3 +258,24 @@ async def test_find_import_photo(repository: AttendanceRepository) -> None:
 
     result_mock.first.return_value = None
     assert await repository.find_import_photo(db, import_id=2) is None
+
+
+@pytest.mark.asyncio
+async def test_has_user_visit_in_import(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    db.scalar.return_value = 1
+    assert await repository.has_user_visit_in_import(db, user_id=1, import_id=10) is True
+
+    db.scalar.return_value = 0
+    assert await repository.has_user_visit_in_import(db, user_id=2, import_id=10) is False
+
+
+@pytest.mark.asyncio
+async def test_get_import_dates(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.all.return_value = [date(2026, 9, 20), date(2026, 9, 21)]
+    db.execute.return_value = result_mock
+
+    dates = await repository.get_import_dates(db, import_id=10)
+    assert dates == [date(2026, 9, 20), date(2026, 9, 21)]

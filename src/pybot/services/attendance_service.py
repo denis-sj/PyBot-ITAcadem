@@ -18,7 +18,9 @@ from ..db.models import AttendanceImport, AttendanceImportStatus, User
 from ..domain.exceptions import (
     AttendanceDomainError,
     AttendanceDraftExpiredError,
+    AttendancePhotoAccessDeniedError,
     AttendancePhotoEmptyError,
+    AttendancePhotoNotFoundError,
     AttendanceRecognitionError,
     AttendanceUserNotFoundError,
 )
@@ -600,6 +602,39 @@ class AttendanceService:
             records=records,
         )
 
+    async def get_import_photo_with_access(
+        self,
+        import_id: int,
+        requester_tg_id: int,
+        is_admin: bool,
+    ) -> tuple[bytes, str, list[date]]:
+        """Retrieve original photo and confirmed dates with authorization check.
+
+        Rules:
+        - Admin has access to photos of all imports.
+        - Non-admin must be a registered user and have at least one confirmed visit in this import.
+        - If non-admin has no visits in this import: raises AttendancePhotoAccessDeniedError.
+        - If photo bytes are absent or cleared: raises AttendancePhotoNotFoundError.
+
+        Returns:
+            tuple[bytes, str, list[date]]: (photo_bytes, mime_type, sorted_dates).
+        """
+        user = await self._user_repo.find_user_by_telegram_id(self._db, requester_tg_id)
+        if not is_admin:
+            if user is None:
+                raise AttendancePhotoAccessDeniedError("Фото недоступно: посещение удалено.")
+            has_visit = await self._attendance_repo.has_user_visit_in_import(self._db, user.id, import_id)
+            if not has_visit:
+                raise AttendancePhotoAccessDeniedError("Фото недоступно: посещение удалено.")
+
+        photo_info = await self._attendance_repo.get_import_photo(self._db, import_id)
+        if photo_info is None:
+            raise AttendancePhotoNotFoundError("Фотография импорта не найдена.")
+
+        photo_bytes, mime_type = photo_info
+        dates = await self._attendance_repo.get_import_dates(self._db, import_id)
+        return photo_bytes, mime_type, dates
+
     async def get_photo_evidence(self, import_id: int) -> tuple[bytes, str]:
         """Retrieve original photo bytes and MIME type for an import.
 
@@ -612,7 +647,7 @@ class AttendanceService:
         Raises:
             AttendanceDomainError: If photo evidence was cleared or not found.
         """
-        photo_info = await self._attendance_repo.find_import_photo(self._db, import_id)
+        photo_info = await self._attendance_repo.get_import_photo(self._db, import_id)
         if photo_info is None:
             raise AttendanceDomainError(
                 "Фото-доказательство не найдено",
