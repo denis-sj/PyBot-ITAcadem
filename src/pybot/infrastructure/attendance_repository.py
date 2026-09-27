@@ -306,6 +306,9 @@ class AttendanceRepository:
                 await db.flush()
 
             for row in rows:
+                existing_record = await self.find_user_record_on_date(db, row["user_id"], visit_date)
+                if existing_record is not None:
+                    continue
                 record = AttendanceRecord(
                     import_id=import_id,
                     attendance_date_id=attendance_date.id,
@@ -318,7 +321,6 @@ class AttendanceRepository:
                     source=row.get("source", "photo_ai"),
                 )
                 db.add(record)
-
         await db.flush()
 
     async def find_user_attendance_in_month(
@@ -545,6 +547,29 @@ class AttendanceRepository:
 
     get_import_photo = find_import_photo
 
+    async def find_user_record_on_date(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+    ) -> AttendanceRecord | None:
+        """Find existing attendance record for a user on a given date.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+            visit_date: Calendar date to check.
+
+        Returns:
+            AttendanceRecord | None: Found record or None.
+        """
+        stmt = select(AttendanceRecord).where(
+            AttendanceRecord.user_id == user_id,
+            AttendanceRecord.date == visit_date,
+        )
+        res = await db.execute(stmt)
+        return res.scalar_one_or_none()
+
     async def has_user_visit_on_date(
         self,
         db: AsyncSession,
@@ -676,3 +701,30 @@ class AttendanceRepository:
         )
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    async def find_modified_record_ids(
+        self,
+        db: AsyncSession,
+        record_ids: Sequence[int],
+    ) -> set[int]:
+        """Find record IDs that have had their time edited by an administrator.
+
+        Args:
+            db: Database session.
+            record_ids: Sequence of AttendanceRecord primary keys.
+
+        Returns:
+            set[int]: Set of record IDs with 'edit_time' action in change history.
+        """
+        if not record_ids:
+            return set()
+        stmt = (
+            select(AttendanceChangeHistory.record_id)
+            .where(
+                AttendanceChangeHistory.record_id.in_(record_ids),
+                AttendanceChangeHistory.action == "edit_time",
+            )
+            .distinct()
+        )
+        result = await db.scalars(stmt)
+        return {rid for rid in result if rid is not None}

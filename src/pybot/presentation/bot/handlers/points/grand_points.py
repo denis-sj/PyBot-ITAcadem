@@ -168,7 +168,7 @@ async def _prepare_points_command_context(
         if raw_points is not None:
             try:
                 points = Points(value=raw_points, point_type=points_type)
-            except ValidationError, ValueError:
+            except (ValidationError, ValueError):
                 await message.reply(points_invalid_value(raw_points))
             else:
                 recipient_user = await user_service.find_user_by_telegram_id(target_user_id)

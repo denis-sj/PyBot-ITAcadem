@@ -39,7 +39,13 @@ def mock_role_repo() -> AsyncMock:
 
 @pytest.fixture
 def mock_user_repo() -> AsyncMock:
-    return AsyncMock(spec=UserRepository)
+    repo = AsyncMock(spec=UserRepository)
+    repo.has_role.side_effect = lambda _db, _uid, rname: (
+        rname in repo.find_user_roles.return_value
+        if isinstance(getattr(repo.find_user_roles, "return_value", None), (list, set, tuple))
+        else True
+    )
+    return repo
 
 
 @pytest.fixture
@@ -194,3 +200,20 @@ async def test_auto_close_when_no_pending_request(
 
     assert closed is None
     mock_notification_service.update_role_request_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_user_without_student_role_cannot_request_mentor(
+    role_request_service: RoleRequestService,
+    mock_user_repo: AsyncMock,
+) -> None:
+    user = User(id=5, telegram_id=555, first_name="БезРоли")
+    mock_user_repo.get_by_id.return_value = user
+    mock_user_repo.find_user_roles.return_value = []
+    mock_user_repo.has_role.return_value = False
+
+    with pytest.raises(RoleRequestNotAllowedError) as exc_info:
+        await role_request_service.create_role_request(user_id=5, role="Mentor")
+
+    assert exc_info.value.message == "Нет ролей, которые вы можете запросить."
+    mock_user_repo.has_role.assert_awaited_once()

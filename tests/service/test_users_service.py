@@ -578,3 +578,54 @@ async def test_find_all_user_roles_returns_none_when_user_has_no_roles(
 
     # Then
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_add_user_role_commits_before_telegram_update_and_handles_telegram_error() -> None:
+    db = AsyncMock()
+    order_of_events: list[str] = []
+
+    async def fake_commit():
+        order_of_events.append("commit")
+
+    db.commit = fake_commit
+
+    user_repo = AsyncMock(spec=UserRepository)
+    role_repo = AsyncMock(spec=RoleRepository)
+    role_req_repo = AsyncMock(spec=RoleRequestRepository)
+    notification = AsyncMock(spec=NotificationPort)
+
+    user = User(id=1, telegram_id=12345, first_name="Тест")
+    user_repo.get_by_telegram_id.return_value = user
+    user_repo.find_user_roles.return_value = []
+    user_repo.find_user_by_telegram_id.return_value = user
+
+    role = Role(id=10, name="Student")
+    role_repo.find_role_by_name.return_value = role
+
+    pending_req = RoleRequest(id=99, user_id=1, role_id=10, status=RequestStatus.PENDING)
+    role_req_repo.find_recent_active_request.return_value = pending_req
+
+    async def on_update(*args, **kwargs):
+        order_of_events.append("update_message")
+        raise RuntimeError("Telegram timeout or message deleted")
+
+    notification.update_role_request_message.side_effect = on_update
+
+    service = UserRolesService(
+        db=db,
+        user_repository=user_repo,
+        role_repository=role_repo,
+        role_request_repository=role_req_repo,
+        notification_service=notification,
+    )
+
+    # When: add_user_role is called
+    result = await service.add_user_role(telegram_id=12345, new_role=RoleEnum.STUDENT)
+
+    # Then:
+    # 1. db.commit must have been called BEFORE update_role_request_message
+    assert order_of_events == ["commit", "update_message"]
+    # 2. Result is returned successfully despite Telegram error
+    assert result.telegram_id == 12345
+    assert pending_req.status == RequestStatus.APPROVED

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from aiogram import Router
 from aiogram.enums import ParseMode
@@ -12,7 +11,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from dishka.integrations.aiogram import FromDishka
 
 from .....core import logger
-from .....core.config import AppSettings
+from .....core.config import YEKATERINBURG_TZ, AppSettings
 from .....domain.exceptions import AttendanceDomainError
 from .....services.attendance_service import AttendanceService
 from ....texts.attendance import (
@@ -33,8 +32,7 @@ async def cmd_current_month(
     settings: FromDishka[AppSettings],
 ) -> None:
     """Show information about current accounting month."""
-    tz = ZoneInfo(str(settings.attendance_timezone))
-    now = datetime.now(tz)
+    now = datetime.now(YEKATERINBURG_TZ)
     month_name = MONTH_NAMES_RU_CAPITALIZED.get(now.month, f"Месяц {now.month}")
 
     await message.answer(

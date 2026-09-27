@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.enums import ChatType, ParseMode
@@ -12,7 +11,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from dishka.integrations.aiogram import FromDishka
 
 from .....core import logger
-from .....core.config import AppSettings
+from .....core.config import YEKATERINBURG_TZ, AppSettings
 from .....domain.exceptions import AttendanceDomainError, AttendancePhotoAccessDeniedError
 from .....services import UserService
 from .....services.attendance_service import AttendanceService
@@ -54,8 +53,7 @@ async def cmd_my_hours(
         await message.answer(_USER_NOT_REGISTERED_MSG, parse_mode=ParseMode.HTML)
         return
 
-    tz = ZoneInfo(str(settings.attendance_timezone))
-    now = datetime.now(tz)
+    now = datetime.now(YEKATERINBURG_TZ)
 
     try:
         summary = await attendance_service.get_user_monthly_summary(
@@ -127,8 +125,7 @@ async def cmd_my_rank(
         await message.answer(_USER_NOT_REGISTERED_MSG, parse_mode=ParseMode.HTML)
         return
 
-    tz = ZoneInfo(str(settings.attendance_timezone))
-    now = datetime.now(tz)
+    now = datetime.now(YEKATERINBURG_TZ)
 
     try:
         summary = await attendance_service.get_user_monthly_summary(

@@ -189,7 +189,12 @@ def _format_draft_item(item: AttendanceDraftItemDTO, counter: int) -> str:
     else:
         time_display = "время не указано"
     dur_str = format_duration(item.duration_minutes) if item.duration_minutes > 0 else "требует ввода времени"
-    excluded_suffix = " <i>[исключено]</i>" if item.is_excluded else ""
+    if item.exclusion_reason:
+        excluded_suffix = f" <i>[исключено]</i>\n     ↳ <i>{html.escape(item.exclusion_reason)}</i>"
+    elif item.is_excluded:
+        excluded_suffix = " <i>[исключено]</i>"
+    else:
+        excluded_suffix = ""
     return f"  {counter}. {status_icon} {name_display}: {time_display} ({dur_str}){excluded_suffix}"
 
 

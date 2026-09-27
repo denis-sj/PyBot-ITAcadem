@@ -48,7 +48,7 @@ async def map_dialog_data_to_user_create_dto(manager: DialogManager) -> UserCrea
             last_name=last_name,
             patronymic=patronymic,
         )
-    except ValidationError, TypeError:
+    except (ValidationError, TypeError):
         logger.exception("Ошибка валидации данных для создания профиля из dialog_data")
         await manager.done()
         return None
@@ -72,7 +72,7 @@ async def map_dialog_data_to_user_registration_dto(manager: DialogManager) -> Us
             user=user_data,
             competence_ids=raw_competence_ids,
         )
-    except ValidationError, TypeError:
+    except (ValidationError, TypeError):
         logger.exception("Ошибка валидации данных для регистрации пользователя из dialog_data")
         await manager.done()
         return None

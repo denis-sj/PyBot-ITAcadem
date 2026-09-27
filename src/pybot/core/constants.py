@@ -1,4 +1,7 @@
 from enum import StrEnum
+from zoneinfo import ZoneInfo
+
+YEKATERINBURG_TZ = ZoneInfo("Asia/Yekaterinburg")
 
 
 class PointsTypeEnum(StrEnum):

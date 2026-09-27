@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...core import logger
 from ...core.constants import RequestStatus, RoleEnum
 from ...domain.exceptions import RoleNotFoundError, UserNotFoundError
 from ...dto import RoleReadDTO, UserReadDTO
@@ -135,16 +136,27 @@ class UserRolesService:
 
         user.add_role(role)
 
+        closed_request_id: int | None = None
         if self.role_request_repository is not None:
             pending_request = await self.role_request_repository.find_recent_active_request(self.db, user.id)
             if pending_request is not None and pending_request.role_id == role.id:
                 pending_request.change_status(RequestStatus.APPROVED)
                 self.db.add(pending_request)
-                if self.notification_service is not None:
-                    await self.notification_service.update_role_request_message(
-                        request_id=pending_request.id,
-                        status_text="Запрос закрыт: роль выдана командой /addrole.",
-                    )
+                closed_request_id = pending_request.id
 
         await self.db.commit()
+
+        if closed_request_id is not None and self.notification_service is not None:
+            try:
+                await self.notification_service.update_role_request_message(
+                    request_id=closed_request_id,
+                    status_text="Запрос закрыт: роль выдана командой /addrole.",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to update role request message in Telegram | request_id={request_id} error={error}",
+                    request_id=closed_request_id,
+                    error=str(exc),
+                )
+
         return await map_orm_user_to_user_read_dto(user)

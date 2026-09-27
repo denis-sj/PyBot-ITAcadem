@@ -9,12 +9,11 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import logger
-from ..core.config import AppSettings
+from ..core.config import YEKATERINBURG_TZ, AppSettings
 from ..db.models import (
     AttendanceChangeHistory,
     AttendanceImport,
@@ -121,8 +120,7 @@ class AttendanceService:
                 details={"problems": result.quality.problems},
             )
 
-        tz = ZoneInfo(str(self._settings.attendance_timezone))
-        now_tz = datetime.now(tz)
+        now_tz = datetime.now(YEKATERINBURG_TZ)
         current_year, current_month = now_tz.year, now_tz.month
 
         today = now_tz.date()
@@ -288,11 +286,29 @@ class AttendanceService:
                     new_status: Literal["recognized", "needs_manual_review"] = (
                         "recognized" if (item.duration_minutes > 0) else "needs_manual_review"
                     )
+                    is_excluded = item.is_excluded
+                    exclusion_reason = item.exclusion_reason
+                    existing_record = await self._attendance_repo.find_user_record_on_date(
+                        self._db, user_id, block.date
+                    )
+                    if existing_record is not None:
+                        is_excluded = True
+                        source_suffix = (
+                            " (добавлено вручную)"
+                            if (existing_record.source == "manual" or existing_record.import_id is None)
+                            else (f" (импорт #{existing_record.import_id})" if existing_record.import_id else "")
+                        )
+                        exclusion_reason = (
+                            f"У участника {matched_name} уже есть посещение за "
+                            f"{block.date.strftime('%d.%m.%Y')}{source_suffix}."
+                        )
                     updated_item = item.model_copy(
                         update={
                             "matched_user_id": user_id,
                             "matched_user_name": matched_name,
                             "status": new_status,
+                            "is_excluded": is_excluded,
+                            "exclusion_reason": exclusion_reason,
                         }
                     )
                     new_items.append(updated_item)
@@ -716,13 +732,12 @@ class AttendanceService:
             raise AttendanceDomainError("Участник не найден")
 
         # Date validation: cannot be in the future
-        tz = ZoneInfo(str(self._settings.attendance_timezone))
-        today = datetime.now(tz).date()
+        today = datetime.now(YEKATERINBURG_TZ).date()
         if visit_date > today:
             raise AttendanceDomainError("Нельзя добавить посещение в будущую дату.")
 
         # Check user doesn't already have visit on that date
-        has_visit = await self._attendance_repo.has_user_visit_on_date(self._db, user_id, visit_date)
+        has_visit = await self.has_user_visit_on_date(user_id, visit_date)
         if has_visit:
             raise AttendanceDomainError(f"У участника уже есть посещение на дату {visit_date.strftime('%d.%m.%Y')}.")
 
@@ -775,6 +790,18 @@ class AttendanceService:
 
         return record
 
+    async def has_user_visit_on_date(self, user_id: int, visit_date: date) -> bool:
+        """Check if user already has a visit recorded on the given date.
+
+        Args:
+            user_id: User primary key.
+            visit_date: Calendar date to check.
+
+        Returns:
+            bool: True if user already has visit on date.
+        """
+        return await self._attendance_repo.has_user_visit_on_date(self._db, user_id, visit_date)
+
     async def get_user_monthly_visits(
         self,
         user_id: int,
@@ -799,6 +826,9 @@ class AttendanceService:
             end_date=end_date,
         )
 
+        record_ids = [r.id for r in records]
+        modified_ids = await self._attendance_repo.find_modified_record_ids(self._db, record_ids)
+
         return [
             AttendanceRecordReadDTO(
                 id=r.id,
@@ -812,6 +842,7 @@ class AttendanceService:
                 is_empty_time=r.is_empty_time,
                 source=r.source,
                 confirmed_at=r.created_at,
+                is_time_modified=(r.id in modified_ids),
             )
             for r in records
         ]
@@ -1040,8 +1071,7 @@ class AttendanceService:
     ) -> tuple[int, int, date, date]:
         """Calculate year, month, and first/last date of the month."""
         if year is None or month is None:
-            tz = ZoneInfo(str(self._settings.attendance_timezone))
-            now_tz = datetime.now(tz)
+            now_tz = datetime.now(YEKATERINBURG_TZ)
             year = year or now_tz.year
             month = month or now_tz.month
 
@@ -1117,7 +1147,7 @@ class AttendanceService:
             else:
                 items = []
                 for idx, row in enumerate(date_block.rows):
-                    draft_item = self._build_draft_item(
+                    draft_item = await self._build_draft_item(
                         row=row,
                         date_val=date_block.date,
                         row_idx=idx,
@@ -1141,7 +1171,7 @@ class AttendanceService:
 
         return date_blocks
 
-    def _build_draft_item(  # noqa: PLR0913
+    async def _build_draft_item(  # noqa: PLR0913
         self,
         row: AttendanceRecognizedRowDTO,
         date_val: date,
@@ -1177,6 +1207,22 @@ class AttendanceService:
         else:
             status = "recognized"
 
+        is_excluded = False
+        exclusion_reason: str | None = None
+        if matched_user_id is not None:
+            existing_record = await self._attendance_repo.find_user_record_on_date(self._db, matched_user_id, date_val)
+            if existing_record is not None:
+                is_excluded = True
+                source_suffix = (
+                    " (добавлено вручную)"
+                    if (existing_record.source == "manual" or existing_record.import_id is None)
+                    else (f" (импорт #{existing_record.import_id})" if existing_record.import_id else "")
+                )
+                exclusion_reason = (
+                    f"У участника {matched_user_name} уже есть посещение за "
+                    f"{date_val.strftime('%d.%m.%Y')}{source_suffix}."
+                )
+
         item_id = f"{date_val.isoformat()}_{row_idx}_{uuid.uuid4().hex[:6]}"
         return AttendanceDraftItemDTO(
             item_id=item_id,
@@ -1192,7 +1238,8 @@ class AttendanceService:
             status=status,
             is_duplicate_date=is_already_processed,
             is_out_of_month=is_out_of_month,
-            is_excluded=False,
+            is_excluded=is_excluded,
+            exclusion_reason=exclusion_reason,
         )
 
     @staticmethod

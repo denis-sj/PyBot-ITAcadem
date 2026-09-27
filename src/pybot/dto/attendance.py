@@ -126,6 +126,7 @@ class AttendanceDraftItemDTO(BaseDTO):
     is_duplicate_date: bool = False
     is_out_of_month: bool = False
     is_excluded: bool = False
+    exclusion_reason: str | None = None
 
 
 class AttendanceDraftDateBlockDTO(BaseDTO):

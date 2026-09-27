@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import DeleteMessage, EditMessageReplyMarkup
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from pybot.presentation.bot.handlers.common.navigation import cb_close_message
@@ -54,9 +55,11 @@ async def test_cb_close_message_deletes_successfully() -> None:
     callback.message = message_mock
     answer_mock = AsyncMock()
     callback.answer = answer_mock
+    state_mock = AsyncMock(spec=FSMContext)
 
-    await cb_close_message(callback)
+    await cb_close_message(callback, state_mock)
 
+    state_mock.clear.assert_awaited_once()
     delete_mock.assert_awaited_once()
     edit_markup_mock.assert_not_awaited()
     answer_mock.assert_awaited_once()
@@ -78,9 +81,11 @@ async def test_cb_close_message_fallback_to_edit_reply_markup_on_bad_request() -
     callback.message = message_mock
     answer_mock = AsyncMock()
     callback.answer = answer_mock
+    state_mock = AsyncMock(spec=FSMContext)
 
-    await cb_close_message(callback)
+    await cb_close_message(callback, state_mock)
 
+    state_mock.clear.assert_awaited_once()
     delete_mock.assert_awaited_once()
     edit_markup_mock.assert_awaited_once_with(reply_markup=None)
     answer_mock.assert_awaited_once()
@@ -106,10 +111,12 @@ async def test_cb_close_message_suppresses_fallback_exception() -> None:
     callback.message = message_mock
     answer_mock = AsyncMock()
     callback.answer = answer_mock
+    state_mock = AsyncMock(spec=FSMContext)
 
     # Should not raise exception
-    await cb_close_message(callback)
+    await cb_close_message(callback, state_mock)
 
+    state_mock.clear.assert_awaited_once()
     delete_mock.assert_awaited_once()
     edit_markup_mock.assert_awaited_once_with(reply_markup=None)
     answer_mock.assert_awaited_once()
@@ -121,7 +128,9 @@ async def test_cb_close_message_handles_none_message() -> None:
     callback.message = None
     answer_mock = AsyncMock()
     callback.answer = answer_mock
+    state_mock = AsyncMock(spec=FSMContext)
 
-    await cb_close_message(callback)
+    await cb_close_message(callback, state_mock)
 
+    state_mock.clear.assert_awaited_once()
     answer_mock.assert_awaited_once()

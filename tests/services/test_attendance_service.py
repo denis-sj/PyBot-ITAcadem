@@ -54,6 +54,9 @@ def mock_attendance_repo() -> AsyncMock:
     repo = AsyncMock(spec=AttendanceRepository)
     repo.is_date_processed.return_value = False
     repo.find_processed_date.return_value = None
+    repo.find_user_record_on_date.return_value = None
+    repo.has_user_visit_on_date.return_value = False
+    repo.find_modified_record_ids.return_value = set()
     return repo
 
 
@@ -1446,3 +1449,211 @@ async def test_di_container_resolves_attendance_components(
             assert isinstance(service, AttendanceService)
     finally:
         await container.close()
+
+
+@pytest.mark.asyncio
+async def test_ingest_photo_skips_participant_with_existing_manual_visit(
+    service: AttendanceService,
+    mock_db: AsyncMock,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_recognition_port: AsyncMock,
+    settings_obj: AppSettings,
+) -> None:
+    tz = ZoneInfo(str(settings_obj.attendance_timezone))
+    now = datetime.now(tz)
+    today = date(now.year, now.month, 15)
+
+    user1 = User(id=1, first_name="Иван", last_name="Иванов")
+    user2 = User(id=2, first_name="Петр", last_name="Петров")
+    mock_user_repo.find_all_users.return_value = [user1, user2]
+
+    # user1 already has a manual record on today
+    manual_rec = AttendanceRecord(
+        id=101,
+        user_id=1,
+        date=today,
+        start_time=time(10, 0),
+        end_time=time(12, 0),
+        duration_minutes=120,
+        source="manual",
+        import_id=None,
+    )
+
+    async def fake_find_user_rec(_db, uid, dt_val):
+        if uid == 1 and dt_val == today:
+            return manual_rec
+        return None
+
+    mock_attendance_repo.find_user_record_on_date.side_effect = fake_find_user_rec
+
+    mock_recognition_port.recognize_attendance_sheet.return_value = AttendanceRecognitionResultDTO(
+        quality=AttendanceQualityDTO(is_good=True, comment="Четкий снимок", problems=[]),
+        dates=[
+            AttendanceRecognizedDateBlockDTO(
+                date=today,
+                rows=[
+                    AttendanceRecognizedRowDTO(
+                        raw_name="Иванов Иван",
+                        time_raw="18:00-20:00",
+                        confidence=0.95,
+                    ),
+                    AttendanceRecognizedRowDTO(
+                        raw_name="Петров Петр",
+                        time_raw="18:00-20:00",
+                        confidence=0.95,
+                    ),
+                ],
+            )
+        ],
+    )
+
+    mock_draft_record = AttendanceImport(id=55, status=AttendanceImportStatus.DRAFT.value)
+    mock_attendance_repo.create_draft.return_value = mock_draft_record
+
+    draft = await service.ingest_attendance_photo(
+        author_tg_id=777,
+        photo_bytes=b"valid_photo_bytes",
+        mime_type="image/jpeg",
+    )
+
+    items = draft.dates[0].items
+    assert len(items) == 2
+
+    # Item for user1 must be excluded with reason
+    user1_item = next(it for it in items if it.matched_user_id == 1)
+    assert user1_item.is_excluded is True
+    assert "У участника Иванов Иван уже есть посещение за" in (user1_item.exclusion_reason or "")
+    assert "(добавлено вручную)" in (user1_item.exclusion_reason or "")
+
+    # Item for user2 must NOT be excluded
+    user2_item = next(it for it in items if it.matched_user_id == 2)
+    assert user2_item.is_excluded is False
+    assert user2_item.exclusion_reason is None
+
+    # Now verify confirming draft: excluded item is NOT persisted
+    mock_attendance_repo.get_draft_by_id.return_value = AttendanceImport(
+        id=55,
+        status=AttendanceImportStatus.DRAFT.value,
+        draft_state_json=draft.model_dump_json(),
+    )
+    added_dates, added_records, skipped = await service.confirm_draft(draft_id=55, admin_tg_id=999)
+
+    assert added_dates == 1
+    assert added_records == 1
+    confirmed_call = mock_attendance_repo.save_confirmed_import.call_args[1]
+    saved_dates = confirmed_call["confirmed_dates"]
+    assert len(saved_dates) == 1
+    assert len(saved_dates[0][1]) == 1
+    assert saved_dates[0][1][0]["user_id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_update_draft_item_participant_marks_excluded_if_duplicate(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    visit_date = date(2026, 9, 25)
+    item = AttendanceDraftItemDTO(
+        item_id="i1",
+        date=visit_date,
+        raw_name="Неизвестный",
+        matched_user_id=None,
+        matched_user_name=None,
+        start_time=time(18, 0),
+        end_time=time(20, 0),
+        duration_minutes=120,
+        is_empty_time=False,
+        confidence=0.5,
+        status="needs_manual_review",
+    )
+    date_block = AttendanceDraftDateBlockDTO(date=visit_date, items=[item])
+    draft = AttendanceDraftDTO(
+        draft_id=60,
+        author_tg_id=1,
+        created_at=datetime(2026, 9, 25, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[date_block],
+        status="DRAFT",
+    )
+    mock_attendance_repo.get_draft_by_id.return_value = AttendanceImport(
+        id=60, status="DRAFT", draft_state_json=draft.model_dump_json()
+    )
+
+    user = User(id=42, first_name="Сергей", last_name="Сергеев")
+    mock_user_repo.find_user_by_id.return_value = user
+
+    # User 42 already has a manual record
+    mock_attendance_repo.find_user_record_on_date.return_value = AttendanceRecord(
+        id=12, user_id=42, date=visit_date, source="manual", import_id=None
+    )
+
+    updated_draft = await service.update_draft_item_participant(draft_id=60, item_id="i1", user_id=42)
+    updated_item = updated_draft.dates[0].items[0]
+
+    assert updated_item.matched_user_id == 42
+    assert updated_item.is_excluded is True
+    assert "У участника Сергеев Сергей уже есть посещение за 25.09.2026 (добавлено вручную)." in (
+        updated_item.exclusion_reason or ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_user_monthly_visits_populates_is_time_modified(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    user = User(id=10, first_name="Иван", last_name="Иванов")
+    record1 = AttendanceRecord(
+        id=1,
+        user_id=10,
+        user=user,
+        date=date(2026, 9, 24),
+        start_time=time(14, 0),
+        end_time=time(16, 0),
+        duration_minutes=120,
+        is_empty_time=False,
+        source="photo_ai",
+        import_id=10,
+        created_at=datetime(2026, 9, 24, 20, 0),
+    )
+    record2 = AttendanceRecord(
+        id=2,
+        user_id=10,
+        user=user,
+        date=date(2026, 9, 25),
+        start_time=time(18, 0),
+        end_time=time(20, 0),
+        duration_minutes=120,
+        is_empty_time=False,
+        source="manual",
+        import_id=None,
+        created_at=datetime(2026, 9, 25, 20, 0),
+    )
+    mock_attendance_repo.find_user_attendance_in_month.return_value = [record1, record2]
+    # Record 1 had its time modified by admin
+    mock_attendance_repo.find_modified_record_ids.return_value = {1}
+
+    visits = await service.get_user_monthly_visits(user_id=10, year=2026, month=9)
+
+    assert len(visits) == 2
+    assert visits[0].id == 1
+    assert visits[0].is_time_modified is True
+    assert visits[1].id == 2
+    assert visits[1].is_time_modified is False
+
+
+@pytest.mark.asyncio
+async def test_has_user_visit_on_date_public_method(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_db: AsyncMock,
+) -> None:
+    mock_attendance_repo.has_user_visit_on_date.return_value = True
+    res = await service.has_user_visit_on_date(user_id=7, visit_date=date(2026, 9, 20))
+
+    assert res is True
+    mock_attendance_repo.has_user_visit_on_date.assert_awaited_once_with(mock_db, 7, date(2026, 9, 20))

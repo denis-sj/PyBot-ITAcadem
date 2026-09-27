@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import AppSettings
-from ..core.constants import RequestStatus
+from ..core.constants import RequestStatus, RoleEnum
 from ..db.models.role_module import RoleRequest
 from ..domain.exceptions import (
     RoleAlreadyAssignedError,
@@ -18,7 +18,7 @@ from ..domain.exceptions import (
 from ..dto import NotifyDTO
 from ..dto.role_dto import CreateRoleRequestDTO
 from ..infrastructure import RoleRepository, RoleRequestRepository, UserRepository
-from ..presentation.texts import role_request_user_status
+from ..presentation.texts import ROLE_REQUEST_NO_ROLES_AVAILABLE, role_request_user_status
 from ..services.ports import NotificationPort
 
 
@@ -106,8 +106,9 @@ class RoleRequestService:
         if "Mentor" in user_roles and user_role == "Mentor":
             raise RoleAlreadyAssignedError(user_id=user.id, role_name=user_role)
 
-        if "Admin" in user_roles or "Mentor" in user_roles or user_role != "Mentor":
-            raise RoleRequestNotAllowedError()
+        has_student = await self.user_repository.has_role(self.db, user.id, RoleEnum.STUDENT.value)
+        if not has_student or "Admin" in user_roles or "Mentor" in user_roles or user_role != RoleEnum.MENTOR.value:
+            raise RoleRequestNotAllowedError(ROLE_REQUEST_NO_ROLES_AVAILABLE)
 
         role_check = await self.role_repository.find_role_by_name(self.db, user_role)
         if role_check is None:

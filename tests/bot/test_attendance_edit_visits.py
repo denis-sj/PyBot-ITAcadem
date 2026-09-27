@@ -458,7 +458,7 @@ async def test_manual_add_flow(monkeypatch: pytest.MonkeyPatch, settings_obj: Ap
     assert "Нельзя добавить посещение в будущую дату." in answer_mock.call_args[0][0]
 
     # 4. Input valid date
-    attendance_service._attendance_repo.has_user_visit_on_date.return_value = False
+    attendance_service.has_user_visit_on_date.return_value = False
     answer_mock.reset_mock()
     msg = _build_tg_message(text="15.09.2026")
     await msg_input_manual_date(msg, state, attendance_service, settings_obj)

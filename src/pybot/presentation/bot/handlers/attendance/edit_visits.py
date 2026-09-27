@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, time
-from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.enums import ChatType, ParseMode
@@ -13,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from dishka.integrations.aiogram import FromDishka
 
-from .....core.config import AppSettings
+from .....core.config import YEKATERINBURG_TZ, AppSettings
 from .....domain.exceptions import AttendanceDomainError
 from .....services.attendance_service import AttendanceService
 from ....texts.attendance import (
@@ -617,8 +616,7 @@ async def msg_input_manual_date(
         )
         return
 
-    tz = ZoneInfo(str(settings.attendance_timezone))
-    today = datetime.now(tz).date()
+    today = datetime.now(YEKATERINBURG_TZ).date()
     if visit_date > today:
         keyboard = get_edit_visits_cancel_keyboard(action="user", user_id=user_id)
         await message.answer(
@@ -629,9 +627,7 @@ async def msg_input_manual_date(
         return
 
     # Check user doesn't already have visit on that date
-    has_visit = await attendance_service._attendance_repo.has_user_visit_on_date(
-        attendance_service._db, user_id, visit_date
-    )
+    has_visit = await attendance_service.has_user_visit_on_date(user_id, visit_date)
     if has_visit:
         keyboard = get_edit_visits_cancel_keyboard(action="user", user_id=user_id)
         await message.answer(

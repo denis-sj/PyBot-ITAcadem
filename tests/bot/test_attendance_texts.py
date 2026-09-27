@@ -203,6 +203,40 @@ def test_format_draft_preview_past_month_warning() -> None:
     assert "15.08.2026" in rendered
 
 
+def test_format_draft_preview_with_excluded_item_and_reason() -> None:
+    item = AttendanceDraftItemDTO(
+        item_id="i1",
+        date=date(2026, 9, 25),
+        raw_name="Иванов И.",
+        matched_user_id=1,
+        matched_user_name="Иванов Иван",
+        start_time=time(18, 0),
+        end_time=time(20, 0),
+        duration_minutes=120,
+        is_empty_time=False,
+        confidence=0.95,
+        status="recognized",
+        is_excluded=True,
+        exclusion_reason="У участника Иванов Иван уже есть посещение за 25.09.2026 (добавлено вручную).",
+    )
+    block = AttendanceDraftDateBlockDTO(date=date(2026, 9, 25), items=[item])
+    draft = AttendanceDraftDTO(
+        draft_id=12,
+        author_tg_id=1,
+        created_at=datetime(2026, 9, 25, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[block],
+        status="DRAFT",
+    )
+    rendered = format_draft_preview(draft)
+
+    assert "🚫" in rendered
+    assert "[исключено]" in rendered
+    assert "У участника Иванов Иван уже есть посещение за 25.09.2026 (добавлено вручную)." in rendered
+
+
 def test_format_user_summary() -> None:
     summary = AttendanceUserSummaryDTO(
         user_id=10,
