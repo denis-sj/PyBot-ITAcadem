@@ -57,6 +57,13 @@ def mock_attendance_repo() -> AsyncMock:
     repo.find_user_record_on_date.return_value = None
     repo.has_user_visit_on_date.return_value = False
     repo.find_modified_record_ids.return_value = set()
+
+    async def _mock_save(
+        db: Any, import_id: int, confirmed_by_tg_id: int, confirmed_dates: list[tuple[date, list[dict[str, Any]]]]
+    ) -> list[tuple[date, list[dict[str, Any]]]]:
+        return confirmed_dates
+
+    repo.save_confirmed_import.side_effect = _mock_save
     return repo
 
 
@@ -1657,3 +1664,264 @@ async def test_has_user_visit_on_date_public_method(
 
     assert res is True
     mock_attendance_repo.has_user_visit_on_date.assert_awaited_once_with(mock_db, 7, date(2026, 9, 20))
+
+
+@pytest.mark.asyncio
+async def test_confirm_draft_all_excluded_date_not_added_and_not_blocked(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_notification_service: AsyncMock,
+) -> None:
+    date1 = date(2026, 9, 25)
+    date2 = date(2026, 9, 26)
+    draft = AttendanceDraftDTO(
+        draft_id=30,
+        author_tg_id=100,
+        created_at=datetime(2026, 9, 25, 12, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=100,
+        photo_checksum="sha",
+        status=AttendanceImportStatus.DRAFT.value,
+        dates=[
+            # Date 1: all items are excluded -> 0 records to add
+            AttendanceDraftDateBlockDTO(
+                date=date1,
+                is_ignored=False,
+                items=[
+                    AttendanceDraftItemDTO(
+                        item_id="item_1",
+                        date=date1,
+                        raw_name="Иванов И.",
+                        matched_user_id=1,
+                        matched_user_name="Иванов",
+                        start_time=time(18, 0),
+                        end_time=time(19, 0),
+                        duration_minutes=60,
+                        is_empty_time=False,
+                        confidence=0.9,
+                        status="recognized",
+                        is_excluded=True,
+                        exclusion_reason="Уже есть посещение",
+                    )
+                ],
+            ),
+            # Date 2: has valid item
+            AttendanceDraftDateBlockDTO(
+                date=date2,
+                is_ignored=False,
+                items=[
+                    AttendanceDraftItemDTO(
+                        item_id="item_2",
+                        date=date2,
+                        raw_name="Петров П.",
+                        matched_user_id=2,
+                        matched_user_name="Петров",
+                        start_time=time(18, 0),
+                        end_time=time(20, 0),
+                        duration_minutes=120,
+                        is_empty_time=False,
+                        confidence=0.9,
+                        status="recognized",
+                        is_excluded=False,
+                    )
+                ],
+            ),
+        ],
+    )
+    mock_attendance_repo.get_draft_by_id.return_value = AttendanceImport(
+        id=30,
+        status=AttendanceImportStatus.DRAFT.value,
+        draft_state_json=draft.model_dump_json(),
+    )
+    mock_user_repo.find_user_by_id.return_value = User(id=2, telegram_id=888, first_name="Петр")
+
+    added_dates, added_records, skipped = await service.confirm_draft(draft_id=30, admin_tg_id=999)
+
+    assert added_dates == 1
+    assert added_records == 1
+    assert skipped == 1  # date1 was skipped
+
+    # save_confirmed_import should only receive date2, NOT date1
+    mock_attendance_repo.save_confirmed_import.assert_awaited_once()
+    confirmed_call = mock_attendance_repo.save_confirmed_import.call_args[1]
+    saved_dates = confirmed_call["confirmed_dates"]
+    assert len(saved_dates) == 1
+    assert saved_dates[0][0] == date2
+
+    # Notifications should only be sent for user 2 on date2
+    mock_notification_service.send_attendance_notification.assert_awaited_once()
+    notif_call = mock_notification_service.send_attendance_notification.call_args[1]
+    assert notif_call["recipient_tg_id"] == 888
+
+
+@pytest.mark.asyncio
+async def test_confirm_draft_skipped_by_repository_if_records_already_exist(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_notification_service: AsyncMock,
+) -> None:
+    date1 = date(2026, 9, 25)
+    date2 = date(2026, 9, 26)
+    draft = AttendanceDraftDTO(
+        draft_id=31,
+        author_tg_id=100,
+        created_at=datetime(2026, 9, 25, 12, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=100,
+        photo_checksum="sha",
+        status=AttendanceImportStatus.DRAFT.value,
+        dates=[
+            AttendanceDraftDateBlockDTO(
+                date=date1,
+                is_ignored=False,
+                items=[
+                    AttendanceDraftItemDTO(
+                        item_id="item_1",
+                        date=date1,
+                        raw_name="Иванов И.",
+                        matched_user_id=1,
+                        matched_user_name="Иванов",
+                        start_time=time(18, 0),
+                        end_time=time(19, 0),
+                        duration_minutes=60,
+                        is_empty_time=False,
+                        confidence=0.9,
+                        status="recognized",
+                    )
+                ],
+            ),
+            AttendanceDraftDateBlockDTO(
+                date=date2,
+                is_ignored=False,
+                items=[
+                    AttendanceDraftItemDTO(
+                        item_id="item_2",
+                        date=date2,
+                        raw_name="Петров П.",
+                        matched_user_id=2,
+                        matched_user_name="Петров",
+                        start_time=time(18, 0),
+                        end_time=time(20, 0),
+                        duration_minutes=120,
+                        is_empty_time=False,
+                        confidence=0.9,
+                        status="recognized",
+                    )
+                ],
+            ),
+        ],
+    )
+    mock_attendance_repo.get_draft_by_id.return_value = AttendanceImport(
+        id=31,
+        status=AttendanceImportStatus.DRAFT.value,
+        draft_state_json=draft.model_dump_json(),
+    )
+    # Repository simulates date1 rows already having visits in DB, so only date2 is actually saved
+    valid_date2_rows = [
+        {
+            "user_id": 2,
+            "start_time": time(18, 0),
+            "end_time": time(20, 0),
+            "duration_minutes": 120,
+            "is_empty_time": False,
+            "source": "photo_ai",
+        }
+    ]
+    mock_attendance_repo.save_confirmed_import.side_effect = None
+    mock_attendance_repo.save_confirmed_import.return_value = [(date2, valid_date2_rows)]
+    mock_user_repo.find_user_by_id.return_value = User(id=2, telegram_id=888, first_name="Петр")
+
+    added_dates, added_records, skipped = await service.confirm_draft(draft_id=31, admin_tg_id=999)
+
+    assert added_dates == 1
+    assert added_records == 1
+    assert skipped == 1  # date1 was skipped because 0 records were saved
+
+    # Notifications only sent for user 2
+    mock_notification_service.send_attendance_notification.assert_awaited_once()
+    assert mock_notification_service.send_attendance_notification.call_args[1]["recipient_tg_id"] == 888
+
+
+@pytest.mark.asyncio
+async def test_reassign_excluded_draft_item_to_user_without_duplicate_clears_exclusion(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    visit_date = date(2026, 9, 25)
+    item = AttendanceDraftItemDTO(
+        item_id="i1",
+        date=visit_date,
+        raw_name="Иванов И.",
+        matched_user_id=10,
+        matched_user_name="Иванов Иван",
+        start_time=time(18, 0),
+        end_time=time(20, 0),
+        duration_minutes=120,
+        is_empty_time=False,
+        confidence=0.9,
+        status="recognized",
+        is_excluded=True,
+        exclusion_reason="У участника Иванов Иван уже есть посещение за 25.09.2026.",
+    )
+    date_block = AttendanceDraftDateBlockDTO(date=visit_date, items=[item])
+    draft = AttendanceDraftDTO(
+        draft_id=70,
+        author_tg_id=1,
+        created_at=datetime(2026, 9, 25, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[date_block],
+        status="DRAFT",
+    )
+    mock_attendance_repo.get_draft_by_id.return_value = AttendanceImport(
+        id=70, status="DRAFT", draft_state_json=draft.model_dump_json()
+    )
+
+    user20 = User(id=20, first_name="Сидор", last_name="Сидоров")
+    mock_user_repo.find_user_by_id.return_value = user20
+    # User 20 does NOT have a visit on visit_date
+    mock_attendance_repo.find_user_record_on_date.return_value = None
+
+    # Reassign using update_draft_item_participant (or alias update_draft_item_user)
+    updated_draft = await service.update_draft_item_user(draft_id=70, item_id="i1", user_id=20)
+    updated_item = updated_draft.dates[0].items[0]
+
+    assert updated_item.matched_user_id == 20
+    assert updated_item.matched_user_name == "Сидоров Сидор"
+    assert updated_item.is_excluded is False
+    assert updated_item.exclusion_reason is None
+    assert updated_item.status == "recognized"
+
+    # Now if reassigned to user 30 who DOES have a duplicate visit
+    user30 = User(id=30, first_name="Алексей", last_name="Алексеев")
+    mock_user_repo.find_user_by_id.return_value = user30
+    mock_attendance_repo.find_user_record_on_date.return_value = AttendanceRecord(
+        id=55, user_id=30, date=visit_date, source="manual", import_id=None
+    )
+
+    # Prepare draft state with current state
+    mock_attendance_repo.get_draft_by_id.return_value = AttendanceImport(
+        id=70, status="DRAFT", draft_state_json=updated_draft.model_dump_json()
+    )
+    updated_draft2 = await service.update_draft_item_participant(draft_id=70, item_id="i1", user_id=30)
+    updated_item2 = updated_draft2.dates[0].items[0]
+
+    assert updated_item2.matched_user_id == 30
+    assert updated_item2.is_excluded is True
+    assert "У участника Алексеев Алексей уже есть посещение" in (updated_item2.exclusion_reason or "")
+
+    # Now reset user (user_id=None)
+    mock_attendance_repo.get_draft_by_id.return_value = AttendanceImport(
+        id=70, status="DRAFT", draft_state_json=updated_draft2.model_dump_json()
+    )
+    reset_draft = await service.update_draft_item_user(draft_id=70, item_id="i1", user_id=None)
+    reset_item = reset_draft.dates[0].items[0]
+    assert reset_item.matched_user_id is None
+    assert reset_item.matched_user_name is None
+    assert reset_item.status == "needs_manual_review"
+    assert reset_item.is_excluded is False
+    assert reset_item.exclusion_reason is None

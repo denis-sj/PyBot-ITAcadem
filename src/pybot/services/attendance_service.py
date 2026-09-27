@@ -253,14 +253,14 @@ class AttendanceService:
         self,
         draft_id: int,
         item_id: str,
-        user_id: int,
+        user_id: int | None,
     ) -> AttendanceDraftDTO:
-        """Bind an item to a resolved participant user ID.
+        """Bind an item to a resolved participant user ID, or clear user assignment if user_id is None.
 
         Args:
             draft_id: Draft primary key.
             item_id: Unique item identifier.
-            user_id: User primary key to bind to.
+            user_id: User primary key to bind to, or None to clear.
 
         Returns:
             AttendanceDraftDTO: Updated draft.
@@ -270,11 +270,13 @@ class AttendanceService:
         if not draft_record.draft_state_json:
             raise AttendanceDomainError(f"Черновик с ID {draft_id} не содержит сохраненного состояния")
         draft = AttendanceDraftDTO.model_validate_json(draft_record.draft_state_json)
-        user = await self._user_repo.find_user_by_id(self._db, user_id)
-        if user is None:
-            raise AttendanceUserNotFoundError(f"Пользователь с ID {user_id} не найден")
 
-        matched_name = self._format_user_full_name(user)
+        matched_name: str | None = None
+        if user_id is not None:
+            user = await self._user_repo.find_user_by_id(self._db, user_id)
+            if user is None:
+                raise AttendanceUserNotFoundError(f"Пользователь с ID {user_id} не найден")
+            matched_name = self._format_user_full_name(user)
 
         found = False
         new_blocks: list[AttendanceDraftDateBlockDTO] = []
@@ -283,34 +285,47 @@ class AttendanceService:
             for item in block.items:
                 if item.item_id == item_id:
                     found = True
-                    new_status: Literal["recognized", "needs_manual_review"] = (
-                        "recognized" if (item.duration_minutes > 0) else "needs_manual_review"
-                    )
-                    is_excluded = item.is_excluded
-                    exclusion_reason = item.exclusion_reason
-                    existing_record = await self._attendance_repo.find_user_record_on_date(
-                        self._db, user_id, block.date
-                    )
-                    if existing_record is not None:
-                        is_excluded = True
-                        source_suffix = (
-                            " (добавлено вручную)"
-                            if (existing_record.source == "manual" or existing_record.import_id is None)
-                            else (f" (импорт #{existing_record.import_id})" if existing_record.import_id else "")
+                    if user_id is None or matched_name is None:
+                        updated_item = item.model_copy(
+                            update={
+                                "matched_user_id": None,
+                                "matched_user_name": None,
+                                "status": "needs_manual_review",
+                                "is_excluded": False,
+                                "exclusion_reason": None,
+                            }
                         )
-                        exclusion_reason = (
-                            f"У участника {matched_name} уже есть посещение за "
-                            f"{block.date.strftime('%d.%m.%Y')}{source_suffix}."
+                    else:
+                        new_status: Literal["recognized", "needs_manual_review"] = (
+                            "recognized" if (item.duration_minutes > 0) else "needs_manual_review"
                         )
-                    updated_item = item.model_copy(
-                        update={
-                            "matched_user_id": user_id,
-                            "matched_user_name": matched_name,
-                            "status": new_status,
-                            "is_excluded": is_excluded,
-                            "exclusion_reason": exclusion_reason,
-                        }
-                    )
+                        existing_record = await self._attendance_repo.find_user_record_on_date(
+                            self._db, user_id, block.date
+                        )
+                        if existing_record is not None:
+                            is_excluded = True
+                            source_suffix = (
+                                " (добавлено вручную)"
+                                if (existing_record.source == "manual" or existing_record.import_id is None)
+                                else (f" (импорт #{existing_record.import_id})" if existing_record.import_id else "")
+                            )
+                            exclusion_reason = (
+                                f"У участника {matched_name} уже есть посещение за "
+                                f"{block.date.strftime('%d.%m.%Y')}{source_suffix}."
+                            )
+                        else:
+                            is_excluded = False
+                            exclusion_reason = None
+
+                        updated_item = item.model_copy(
+                            update={
+                                "matched_user_id": user_id,
+                                "matched_user_name": matched_name,
+                                "status": new_status,
+                                "is_excluded": is_excluded,
+                                "exclusion_reason": exclusion_reason,
+                            }
+                        )
                     new_items.append(updated_item)
                 else:
                     new_items.append(item)
@@ -327,6 +342,15 @@ class AttendanceService:
         )
         await self._db.commit()
         return updated_draft
+
+    async def update_draft_item_user(
+        self,
+        draft_id: int,
+        item_id: str,
+        user_id: int | None,
+    ) -> AttendanceDraftDTO:
+        """Assign or reassign participant user on a draft item (alias for update_draft_item_participant)."""
+        return await self.update_draft_item_participant(draft_id, item_id, user_id)
 
     async def exclude_draft_item(self, draft_id: int, item_id: str) -> AttendanceDraftDTO:
         """Mark a draft item as excluded from the final import.
@@ -407,45 +431,40 @@ class AttendanceService:
 
         self._assert_no_unresolved_rows(draft)
 
-        added_dates_count = 0
-        added_records_count = 0
-        skipped_dates_count = 0
-
-        confirmed_dates: list[tuple[date, list[dict[str, Any]]]] = []
+        candidate_dates: list[tuple[date, list[dict[str, Any]]]] = []
         for block in draft.dates:
             if block.is_ignored:
-                skipped_dates_count += 1
                 continue
 
             if await self._attendance_repo.is_date_processed(self._db, block.date):
-                skipped_dates_count += 1
                 continue
 
             rows = self._collect_confirmed_user_rows(block.items)
             if not rows:
-                skipped_dates_count += 1
                 continue
 
-            confirmed_dates.append((block.date, rows))
-            added_dates_count += 1
-            added_records_count += len(rows)
+            candidate_dates.append((block.date, rows))
 
-        if not confirmed_dates:
+        if not candidate_dates:
             raise AttendanceDomainError(
                 "Не найдено записей для сохранения: все даты уже обработаны либо все строки исключены."
             )
 
-        await self._attendance_repo.save_confirmed_import(
+        saved_dates = await self._attendance_repo.save_confirmed_import(
             db=self._db,
             import_id=draft_id,
             confirmed_by_tg_id=admin_tg_id,
-            confirmed_dates=confirmed_dates,
+            confirmed_dates=candidate_dates,
         )
 
         await self._db.commit()
 
-        if self._notification_service is not None:
-            await self._send_import_notifications(draft_id, confirmed_dates)
+        if self._notification_service is not None and saved_dates:
+            await self._send_import_notifications(draft_id, saved_dates)
+
+        added_dates_count = len(saved_dates)
+        added_records_count = sum(len(rows) for _, rows in saved_dates)
+        skipped_dates_count = len(draft.dates) - added_dates_count
 
         return added_dates_count, added_records_count, skipped_dates_count
 

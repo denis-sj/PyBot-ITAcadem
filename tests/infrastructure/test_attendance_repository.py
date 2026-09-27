@@ -169,6 +169,44 @@ async def test_save_confirmed_import(repository: AttendanceRepository) -> None:
 
 
 @pytest.mark.asyncio
+async def test_save_confirmed_import_skips_dates_without_valid_records(
+    repository: AttendanceRepository,
+) -> None:
+    db = AsyncMock()
+    db.add = MagicMock()
+    existing_record_mock = MagicMock()
+    existing_record_mock.scalar_one_or_none.return_value = AttendanceRecord(id=99, user_id=100, duration_minutes=60)
+    db.execute.return_value = existing_record_mock
+
+    confirmed_dates = [
+        (
+            date(2026, 9, 25),
+            [
+                {
+                    "user_id": 100,
+                    "start_time": time(18, 0),
+                    "end_time": time(20, 0),
+                    "duration_minutes": 120,
+                    "is_empty_time": False,
+                    "source": "photo_ai",
+                }
+            ],
+        )
+    ]
+
+    saved = await repository.save_confirmed_import(
+        db=db,
+        import_id=1,
+        confirmed_by_tg_id=777,
+        confirmed_dates=confirmed_dates,
+    )
+
+    # 0 records added, so AttendanceDate is NOT added to db
+    assert db.add.call_count == 0
+    assert len(saved) == 0
+
+
+@pytest.mark.asyncio
 async def test_find_user_attendance_in_month(repository: AttendanceRepository) -> None:
     db = AsyncMock()
     result_mock = MagicMock()

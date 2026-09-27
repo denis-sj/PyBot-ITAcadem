@@ -268,12 +268,12 @@ class AttendanceRepository:
         import_id: int,
         confirmed_by_tg_id: int,
         confirmed_dates: list[tuple[dt.date, list[dict[str, Any]]]],
-    ) -> None:
+    ) -> list[tuple[dt.date, list[dict[str, Any]]]]:
         """Persist confirmed import with its dates and records.
 
         - Updates AttendanceImport: status=CONFIRMED, confirmed_at=func.now(), confirmed_by_tg_id.
           Retains photo_data.
-        - Inserts AttendanceDate for each non-duplicate date.
+        - Inserts AttendanceDate ONLY for dates where at least one AttendanceRecord was saved.
         - Inserts AttendanceRecord for each row under the date.
 
         Args:
@@ -281,6 +281,9 @@ class AttendanceRepository:
             import_id: Primary key of the import record.
             confirmed_by_tg_id: Telegram ID of confirming user.
             confirmed_dates: List of (date, rows_dict_list).
+
+        Returns:
+            list[tuple[dt.date, list[dict[str, Any]]]]: Dates and records that were actually saved.
         """
         stmt = (
             update(AttendanceImport)
@@ -293,7 +296,19 @@ class AttendanceRepository:
         )
         await db.execute(stmt)
 
+        actually_saved_dates: list[tuple[dt.date, list[dict[str, Any]]]] = []
+
         for visit_date, rows in confirmed_dates:
+            valid_rows: list[dict[str, Any]] = []
+            for row in rows:
+                existing_record = await self.find_user_record_on_date(db, row["user_id"], visit_date)
+                if existing_record is not None:
+                    continue
+                valid_rows.append(row)
+
+            if not valid_rows:
+                continue
+
             date_stmt = select(AttendanceDate).where(AttendanceDate.date == visit_date)
             date_res = await db.execute(date_stmt)
             attendance_date = date_res.scalar_one_or_none()
@@ -305,10 +320,7 @@ class AttendanceRepository:
                 db.add(attendance_date)
                 await db.flush()
 
-            for row in rows:
-                existing_record = await self.find_user_record_on_date(db, row["user_id"], visit_date)
-                if existing_record is not None:
-                    continue
+            for row in valid_rows:
                 record = AttendanceRecord(
                     import_id=import_id,
                     attendance_date_id=attendance_date.id,
@@ -321,7 +333,11 @@ class AttendanceRepository:
                     source=row.get("source", "photo_ai"),
                 )
                 db.add(record)
+
+            actually_saved_dates.append((visit_date, valid_rows))
+
         await db.flush()
+        return actually_saved_dates
 
     async def find_user_attendance_in_month(
         self,
