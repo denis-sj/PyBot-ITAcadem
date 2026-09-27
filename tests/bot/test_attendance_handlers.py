@@ -537,7 +537,10 @@ async def test_cmd_current_month(
     await cmd_current_month(msg, settings_obj)
 
     answer_mock.assert_awaited_once()
-    assert "Asia/Yekaterinburg" in answer_mock.call_args[0][0]
+    msg_text = answer_mock.call_args[0][0]
+    assert "Asia/Yekaterinburg" not in msg_text
+    assert "Часовой пояс" not in msg_text
+    assert "Текущий расчётный месяц учёта" in msg_text
 
 
 @pytest.mark.asyncio
@@ -852,6 +855,38 @@ async def test_fsm_exclude_flow(monkeypatch: pytest.MonkeyPatch) -> None:
 
     attendance_service.exclude_draft_item.assert_awaited_once_with(15, "item_1")
     state.clear.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fsm_invalid_row_input_includes_cancel_button(monkeypatch: pytest.MonkeyPatch) -> None:
+    msg = _build_message(text="not_a_number")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+    state = AsyncMock()
+    attendance_service = AsyncMock(spec=AttendanceService)
+
+    await msg_select_row_for_time(msg, state, attendance_service)
+
+    answer_mock.assert_awaited_once()
+    assert answer_mock.call_args.kwargs.get("reply_markup") is not None
+    reply_markup = answer_mock.call_args.kwargs["reply_markup"]
+    assert any("Отмена" in btn.text for row in reply_markup.inline_keyboard for btn in row)
+
+
+@pytest.mark.asyncio
+async def test_fsm_invalid_time_input_includes_cancel_button(monkeypatch: pytest.MonkeyPatch) -> None:
+    msg = _build_message(text="invalid_time")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+    state = AsyncMock()
+    attendance_service = AsyncMock(spec=AttendanceService)
+
+    await msg_input_new_time(msg, state, attendance_service)
+
+    answer_mock.assert_awaited_once()
+    assert answer_mock.call_args.kwargs.get("reply_markup") is not None
+    reply_markup = answer_mock.call_args.kwargs["reply_markup"]
+    assert any("Отмена" in btn.text for row in reply_markup.inline_keyboard for btn in row)
 
 
 @pytest.mark.asyncio

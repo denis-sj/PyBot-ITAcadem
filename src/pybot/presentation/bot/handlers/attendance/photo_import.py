@@ -205,7 +205,10 @@ async def msg_select_row_for_time(
     """Select row number for time editing."""
     text = (message.text or "").strip()
     if not text.isdigit():
-        await message.answer("⚠️ Пожалуйста, введите корректный номер строки (число):")
+        await message.answer(
+            "⚠️ Пожалуйста, введите корректный номер строки (число):",
+            reply_markup=get_cancel_edit_keyboard(),
+        )
         return
 
     row_index = int(text)
@@ -221,7 +224,10 @@ async def msg_select_row_for_time(
 
     item = _find_item_by_row_index(draft, row_index)
     if not item:
-        await message.answer(f"⚠️ Строка с номером {row_index} не найдена. Попробуйте еще раз:")
+        await message.answer(
+            f"⚠️ Строка с номером {row_index} не найдена. Попробуйте еще раз:",
+            reply_markup=get_cancel_edit_keyboard(),
+        )
         return
 
     await state.update_data(item_id=item.item_id)
@@ -322,7 +328,10 @@ async def msg_select_row_for_user(
     """Select row number for participant assignment."""
     text = (message.text or "").strip()
     if not text.isdigit():
-        await message.answer("⚠️ Пожалуйста, введите корректный номер строки (число):")
+        await message.answer(
+            "⚠️ Пожалуйста, введите корректный номер строки (число):",
+            reply_markup=get_cancel_edit_keyboard(),
+        )
         return
 
     row_index = int(text)
@@ -338,7 +347,10 @@ async def msg_select_row_for_user(
 
     item = _find_item_by_row_index(draft, row_index)
     if not item:
-        await message.answer(f"⚠️ Строка с номером {row_index} не найдена. Попробуйте еще раз:")
+        await message.answer(
+            f"⚠️ Строка с номером {row_index} не найдена. Попробуйте еще раз:",
+            reply_markup=get_cancel_edit_keyboard(),
+        )
         return
 
     await state.update_data(item_id=item.item_id)
@@ -440,7 +452,10 @@ async def msg_select_row_to_exclude(
     """Mark row as excluded."""
     text = (message.text or "").strip()
     if not text.isdigit():
-        await message.answer("⚠️ Пожалуйста, введите корректный номер строки (число):")
+        await message.answer(
+            "⚠️ Пожалуйста, введите корректный номер строки (число):",
+            reply_markup=get_cancel_edit_keyboard(),
+        )
         return
 
     row_index = int(text)
@@ -456,7 +471,10 @@ async def msg_select_row_to_exclude(
 
     item = _find_item_by_row_index(draft, row_index)
     if not item:
-        await message.answer(f"⚠️ Строка с номером {row_index} не найдена. Попробуйте еще раз:")
+        await message.answer(
+            f"⚠️ Строка с номером {row_index} не найдена. Попробуйте еще раз:",
+            reply_markup=get_cancel_edit_keyboard(),
+        )
         return
 
     try:

@@ -40,3 +40,16 @@ def test_help_private_public_contains_docs_link_block() -> None:
 
 def test_help_group_contains_docs_link_block() -> None:
     assert HELP_PAGE_BLOCK in HELP_GROUP
+
+
+def test_help_private_my_visits_description() -> None:
+    assert "/my_visits - выбор месяца и просмотр посещений" in HELP_PRIVATE
+    assert "за текущий месяц" not in [line for line in HELP_PRIVATE.splitlines() if "/my_visits" in line][0]
+
+
+def test_help_private_contains_edit_visits_command() -> None:
+    assert "/edit_visits - управление посещениями участников" in HELP_PRIVATE
+
+
+def test_help_private_public_my_visits_description() -> None:
+    assert "/my_visits - выбор месяца и просмотр посещений" in HELP_PRIVATE_PUBLIC

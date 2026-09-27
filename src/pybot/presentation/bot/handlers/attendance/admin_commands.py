@@ -33,16 +33,14 @@ async def cmd_current_month(
     settings: FromDishka[AppSettings],
 ) -> None:
     """Show information about current accounting month."""
-    tz_name = str(settings.attendance_timezone)
-    tz = ZoneInfo(tz_name)
+    tz = ZoneInfo(str(settings.attendance_timezone))
     now = datetime.now(tz)
     month_name = MONTH_NAMES_RU_CAPITALIZED.get(now.month, f"Месяц {now.month}")
 
     await message.answer(
         f"📅 <b>Текущий расчётный месяц учёта:</b>\n\n"
         f"• Период: <b>{month_name} {now.year}</b>\n"
-        f"• Номер месяца: <b>{now.month}</b>\n"
-        f"• Часовой пояс: <code>{tz_name}</code>\n\n"
+        f"• Номер месяца: <b>{now.month}</b>\n\n"
         f"<i>Все загруженные фото посещаемости за {now.month}.{now.year} учитываются в этом периоде.</i>",
         parse_mode=ParseMode.HTML,
     )
