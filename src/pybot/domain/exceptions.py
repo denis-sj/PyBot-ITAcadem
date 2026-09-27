@@ -92,6 +92,19 @@ class ZeroPointsAdjustmentError(DomainError):
         super().__init__("Нельзя изменить баллы на 0")
 
 
+class InsufficientPointsBalanceError(DomainError):
+    """Попытка списать больше баллов, чем есть на балансе."""
+
+    def __init__(self, requested: int, current: int) -> None:
+        self.requested = requested
+        self.current = current
+        super().__init__(
+            f"Нельзя списать {requested} баллов: у участника {current}.",
+            code="INSUFFICIENT_POINTS_BALANCE",
+            details={"requested": requested, "current": current},
+        )
+
+
 class IncompatiblePointsTypeError(DomainError):
     """Несовместимые типы баллов при операции."""
 

@@ -10,7 +10,13 @@ from pydantic import ValidationError
 
 from .....core import logger
 from .....core.constants import PointsTypeEnum, TaskScheduleKind
-from .....domain.exceptions import DomainError, InvalidPointsValueError, UserNotFoundError, ZeroPointsAdjustmentError
+from .....domain.exceptions import (
+    DomainError,
+    InsufficientPointsBalanceError,
+    InvalidPointsValueError,
+    UserNotFoundError,
+    ZeroPointsAdjustmentError,
+)
 from .....dto import AdjustUserPointsDTO, UserReadDTO
 from .....dto.value_objects import Points
 from .....services.notification_facade import NotificationFacade, NotifyUserDTO
@@ -201,6 +207,9 @@ async def _handle_points_command(
                 reason=reason,
             ),
         )
+    except InsufficientPointsBalanceError as exc:
+        await message.reply(exc.message)
+        return
     except Exception:
         logger.exception("Error while changing points")
         await message.reply(POINTS_OPERATION_FAILED)
