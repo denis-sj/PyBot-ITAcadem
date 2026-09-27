@@ -32,10 +32,13 @@ from pybot.presentation.bot.handlers.attendance.keyboards import (
     AttendanceDraftCB,
     AttendancePhotoCB,
     AttendanceReportCB,
+    MyVisitsCB,
     get_attendance_photo_button,
     get_report_keyboard,
 )
 from pybot.presentation.bot.handlers.attendance.user_commands import (
+    cb_my_visits_navigation,
+    cb_my_visits_to_months,
     cb_view_attendance_photo,
     cmd_my_hours,
     cmd_my_rank,
@@ -188,9 +191,43 @@ async def test_cmd_my_hours_unregistered_user(
 
 
 @pytest.mark.asyncio
-async def test_cmd_my_visits_registered_user(
+async def test_cmd_my_visits_group_chat_forbidden(
     monkeypatch: pytest.MonkeyPatch,
-    settings_obj: AppSettings,
+) -> None:
+    msg = _build_message(text="/my_visits", chat_type="group")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    user_service = AsyncMock(spec=UserService)
+    attendance_service = AsyncMock(spec=AttendanceService)
+
+    await cmd_my_visits(msg, user_service, attendance_service)
+
+    answer_mock.assert_awaited_once()
+    assert "Откройте /my_visits в личном чате с ботом." in answer_mock.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_cmd_my_visits_unregistered_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = _build_message(text="/my_visits")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = None
+    attendance_service = AsyncMock(spec=AttendanceService)
+
+    await cmd_my_visits(msg, user_service, attendance_service)
+
+    answer_mock.assert_awaited_once()
+    assert "не зарегистрированы" in answer_mock.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_cmd_my_visits_no_visits(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     msg = _build_message(text="/my_visits")
     answer_mock = AsyncMock()
@@ -198,11 +235,39 @@ async def test_cmd_my_visits_registered_user(
 
     user_service = AsyncMock(spec=UserService)
     user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
-
     attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_user_visit_months.return_value = []
+
+    await cmd_my_visits(msg, user_service, attendance_service)
+
+    answer_mock.assert_awaited_once()
+    assert "У вас пока нет подтверждённых посещений." in answer_mock.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_cmd_my_visits_single_month_renders_screen_2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = _build_message(text="/my_visits")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_user_visit_months.return_value = [(2026, 9)]
+    attendance_service.get_user_monthly_summary.return_value = AttendanceUserSummaryDTO(
+        user_id=10,
+        user_full_name="Иванов Иван",
+        total_minutes=120,
+        rank=1,
+        total_participants=3,
+        visits_count=1,
+    )
     attendance_service.get_user_monthly_visits.return_value = [
         AttendanceRecordReadDTO(
             id=1,
+            import_id=5,
             user_id=10,
             user_full_name="Иванов Иван",
             date=date(2026, 9, 25),
@@ -215,11 +280,102 @@ async def test_cmd_my_visits_registered_user(
         )
     ]
 
-    await cmd_my_visits(msg, user_service, attendance_service, settings_obj)
+    await cmd_my_visits(msg, user_service, attendance_service)
 
     answer_mock.assert_awaited_once()
-    assert "25.09.2026" in answer_mock.call_args[0][0]
-    assert "2 ч" in answer_mock.call_args[0][0]
+    text = answer_mock.call_args[0][0]
+    assert "Сентябрь 2026" in text
+    assert "Посещений: 1 · Всего: 2 ч · Место: 1 из 3" in text
+    assert "25.09 — 18:00–20:00 (2 ч) · импорт #5" in text
+
+    reply_markup = answer_mock.call_args.kwargs["reply_markup"]
+    buttons = [b for row in reply_markup.inline_keyboard for b in row]
+    # Has photo button for import 5 and close button (no "to months")
+    assert any(b.text == "📷 Фото импорта #5" for b in buttons)
+    assert any(b.text == "✖ Закрыть" for b in buttons)
+    assert not any(b.text == "← К месяцам" for b in buttons)
+
+
+@pytest.mark.asyncio
+async def test_cmd_my_visits_multiple_months_flow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = _build_message(text="/my_visits")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_user_visit_months.return_value = [(2026, 9), (2026, 6)]
+    attendance_service.get_user_monthly_summary.return_value = AttendanceUserSummaryDTO(
+        user_id=10,
+        user_full_name="Иванов Иван",
+        total_minutes=180,
+        rank=2,
+        total_participants=5,
+        visits_count=2,
+    )
+    attendance_service.get_user_monthly_visits.return_value = [
+        AttendanceRecordReadDTO(
+            id=1,
+            import_id=10,
+            user_id=10,
+            user_full_name="Иванов Иван",
+            date=date(2026, 9, 10),
+            start_time=time(18, 0),
+            end_time=time(21, 0),
+            duration_minutes=180,
+            is_empty_time=False,
+            source="photo_ai",
+            confirmed_at=datetime(2026, 9, 10, 20, 0),
+        )
+    ]
+
+    # Initial command -> Screen 1 (months list)
+    await cmd_my_visits(msg, user_service, attendance_service)
+
+    answer_mock.assert_awaited_once()
+    screen1_text = answer_mock.call_args[0][0]
+    assert "Ваши посещения" in screen1_text
+    screen1_markup = answer_mock.call_args.kwargs["reply_markup"]
+    screen1_buttons = [b for row in screen1_markup.inline_keyboard for b in row]
+    assert any(b.text == "Сентябрь 2026" for b in screen1_buttons)
+    assert any(b.text == "Июнь 2026" for b in screen1_buttons)
+    assert any(b.text == "✖ Закрыть" for b in screen1_buttons)
+
+    # Click month -> Screen 2
+    callback = _build_callback_mock()
+    callback.from_user.id = 12345
+    edit_mock = AsyncMock()
+    callback.message.edit_text = edit_mock
+
+    await cb_my_visits_navigation(
+        callback,
+        MyVisitsCB(action="month", year=2026, month=9, page=0),
+        attendance_service,
+        user_service,
+    )
+
+    edit_mock.assert_awaited_once()
+    screen2_text = edit_mock.call_args[0][0]
+    assert "Сентябрь 2026" in screen2_text
+    screen2_markup = edit_mock.call_args.kwargs["reply_markup"]
+    screen2_buttons = [b for row in screen2_markup.inline_keyboard for b in row]
+    assert any(b.text == "📷 Фото импорта #10" for b in screen2_buttons)
+    assert any(b.text == "← К месяцам" for b in screen2_buttons)
+
+    # Click "← К месяцам" -> Screen 1
+    edit_mock.reset_mock()
+    await cb_my_visits_to_months(
+        callback,
+        MyVisitsCB(action="months", page=0),
+        attendance_service,
+        user_service,
+    )
+    edit_mock.assert_awaited_once()
+    back_text = edit_mock.call_args[0][0]
+    assert "Ваши посещения" in back_text
 
 
 @pytest.mark.asyncio

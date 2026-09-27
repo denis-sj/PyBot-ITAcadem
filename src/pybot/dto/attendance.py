@@ -159,14 +159,16 @@ class AttendanceRecordReadDTO(BaseDTO):
     """Confirmed attendance record read model."""
 
     id: int
+    import_id: int | None = None
     user_id: int
     user_full_name: str
     date: date
     start_time: time | None
     end_time: time | None
     duration_minutes: int
-    is_empty_time: bool
+    is_empty_time: bool = False
     source: str
+    is_time_modified: bool = False
     confirmed_at: datetime
 
 

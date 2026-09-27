@@ -21,6 +21,9 @@ BTN_EDIT_USER = "👤 Назначить участника"
 BTN_EXCLUDE = "🗑 Исключить строку"
 BTN_CANCEL = "❌ Отменить импорт"
 BTN_CLOSE = "✖ Закрыть"
+BTN_TO_MONTHS = "← К месяцам"
+MY_VISITS_CHOOSE_MONTH = "📅 <b>Ваши посещения</b>\n\nВыберите месяц:"
+MY_VISITS_NO_VISITS = "У вас пока нет подтверждённых посещений."
 MONTH_NAMES_RU: dict[int, str] = {
     1: "январь",
     2: "февраль",
@@ -315,4 +318,40 @@ def format_import_notification(
         f"\nИсточник: импорт #{import_id}. "
         "Чтобы посмотреть фото журнала, нажмите кнопку ниже. Все посещения: /my_visits"
     )
+    return "\n".join(lines)
+
+
+def format_my_visits_month_report(
+    year: int,
+    month: int,
+    summary: AttendanceUserSummaryDTO,
+    visits: list[AttendanceRecordReadDTO],
+) -> str:
+    """Format personal month report for /my_visits Screen 2."""
+    month_title = MONTH_NAMES_RU_CAPITALIZED.get(month, f"Месяц {month}")
+    rank_display = str(summary.rank) if summary.rank > 0 else "—"
+    total_dur_str = format_duration(summary.total_minutes)
+
+    header_stats = (
+        f"Посещений: {summary.visits_count} · Всего: {total_dur_str} "
+        f"· Место: {rank_display} из {summary.total_participants}\n"
+    )
+    lines = [
+        f"📅 <b>{month_title} {year}</b>",
+        header_stats,
+    ]
+
+    sorted_visits = sorted(visits, key=lambda v: v.date)
+    for v in sorted_visits:
+        d_str = v.date.strftime("%d.%m")
+        time_part = (
+            f"{v.start_time.strftime('%H:%M')}–{v.end_time.strftime('%H:%M')}"
+            if v.start_time and v.end_time
+            else "без фиксации времени"
+        )
+        dur_part = format_duration(v.duration_minutes)
+        source_part = f"импорт #{v.import_id}" if v.import_id else "добавлено вручную"
+        mod_part = " · время изменено администратором" if getattr(v, "is_time_modified", False) else ""
+        lines.append(f"{d_str} — {time_part} ({dur_part}) · {source_part}{mod_part}")
+
     return "\n".join(lines)

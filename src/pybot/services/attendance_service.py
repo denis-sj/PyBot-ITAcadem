@@ -518,6 +518,17 @@ class AttendanceService:
             visits_count=visits,
         )
 
+    async def get_user_visit_months(self, user_id: int) -> list[tuple[int, int]]:
+        """Return distinct (year, month) pairs where user has confirmed visits, newest first.
+
+        Args:
+            user_id: User primary key.
+
+        Returns:
+            list[tuple[int, int]]: Ordered list of (year, month) tuples.
+        """
+        return await self._attendance_repo.find_user_visit_months(self._db, user_id)
+
     async def get_user_monthly_visits(
         self,
         user_id: int,
@@ -545,6 +556,7 @@ class AttendanceService:
         return [
             AttendanceRecordReadDTO(
                 id=r.id,
+                import_id=r.import_id,
                 user_id=r.user_id,
                 user_full_name=self._format_user_full_name(r.user),
                 date=r.date,
@@ -586,6 +598,7 @@ class AttendanceService:
             records = [
                 AttendanceRecordReadDTO(
                     id=r.id,
+                    import_id=r.import_id,
                     user_id=r.user_id,
                     user_full_name=self._format_user_full_name(r.user),
                     date=r.date,

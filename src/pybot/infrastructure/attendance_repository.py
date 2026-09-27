@@ -6,7 +6,7 @@ import datetime as dt
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Integer, cast, extract, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -343,6 +343,7 @@ class AttendanceRepository:
             .options(selectinload(AttendanceRecord.user))
             .where(
                 AttendanceRecord.user_id == user_id,
+                AttendanceRecord.duration_minutes > 0,
                 AttendanceRecord.date >= start_date,
                 AttendanceRecord.date <= end_date,
             )
@@ -350,6 +351,34 @@ class AttendanceRepository:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    async def find_user_visit_months(
+        self,
+        db: AsyncSession,
+        user_id: int,
+    ) -> list[tuple[int, int]]:
+        """Return distinct (year, month) pairs where user has confirmed visits with duration > 0, newest first.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+
+        Returns:
+            list[tuple[int, int]]: List of (year, month) tuples ordered by year desc, month desc.
+        """
+        year_expr = cast(extract("year", AttendanceRecord.date), Integer)
+        month_expr = cast(extract("month", AttendanceRecord.date), Integer)
+        stmt = (
+            select(year_expr, month_expr)
+            .where(
+                AttendanceRecord.user_id == user_id,
+                AttendanceRecord.duration_minutes > 0,
+            )
+            .distinct()
+            .order_by(year_expr.desc(), month_expr.desc())
+        )
+        result = await db.execute(stmt)
+        return [(int(y), int(m)) for y, m in result.all()]
 
     async def get_user_monthly_summary(
         self,

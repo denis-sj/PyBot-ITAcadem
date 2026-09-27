@@ -974,6 +974,17 @@ async def test_get_import_photo_with_access_admin_allowed(
 
 
 @pytest.mark.asyncio
+async def test_get_user_visit_months(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.find_user_visit_months.return_value = [(2026, 9), (2026, 6)]
+    months = await service.get_user_visit_months(user_id=10)
+    assert months == [(2026, 9), (2026, 6)]
+    mock_attendance_repo.find_user_visit_months.assert_awaited_once_with(service._db, 10)
+
+
+@pytest.mark.asyncio
 async def test_get_import_photo_with_access_participant_with_visit(
     service: AttendanceService,
     mock_attendance_repo: AsyncMock,

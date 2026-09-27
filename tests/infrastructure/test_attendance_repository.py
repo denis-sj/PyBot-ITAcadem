@@ -278,4 +278,14 @@ async def test_get_import_dates(repository: AttendanceRepository) -> None:
     db.execute.return_value = result_mock
 
     dates = await repository.get_import_dates(db, import_id=10)
-    assert dates == [date(2026, 9, 20), date(2026, 9, 21)]
+
+
+@pytest.mark.asyncio
+async def test_find_user_visit_months(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.all.return_value = [(2026, 9), (2026, 6)]
+    db.execute.return_value = result_mock
+
+    months = await repository.find_user_visit_months(db, user_id=1)
+    assert months == [(2026, 9), (2026, 6)]

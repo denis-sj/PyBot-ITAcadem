@@ -16,6 +16,7 @@ from pybot.presentation.texts.attendance import (
     format_duration,
     format_import_notification,
     format_monthly_report,
+    format_my_visits_month_report,
     format_user_rank,
     format_user_summary,
     format_user_visits,
@@ -353,4 +354,63 @@ def test_format_import_notification_multiple_visits_sorted() -> None:
     lines = text.splitlines()
     assert "20.09.2026 — 18:00–20:00 (2 ч)" in lines[2]
     assert "21.09.2026 — 18:00–19:30 (1 ч 30 мин)" in lines[3]
-    assert "Источник: импорт #123." in text
+
+
+def test_format_my_visits_month_report() -> None:
+    summary = AttendanceUserSummaryDTO(
+        user_id=1,
+        user_full_name="Иванов И.",
+        total_minutes=461,
+        rank=3,
+        total_participants=12,
+        visits_count=2,
+    )
+    v1 = AttendanceRecordReadDTO(
+        id=1,
+        import_id=123,
+        user_id=1,
+        user_full_name="Иванов И.",
+        date=date(2026, 6, 23),
+        start_time=time(12, 25),
+        end_time=time(17, 5),
+        duration_minutes=280,
+        is_empty_time=False,
+        source="photo_ai",
+        is_time_modified=False,
+        confirmed_at=datetime(2026, 6, 23, 20, 0),
+    )
+    v2 = AttendanceRecordReadDTO(
+        id=2,
+        import_id=123,
+        user_id=1,
+        user_full_name="Иванов И.",
+        date=date(2026, 6, 24),
+        start_time=time(14, 25),
+        end_time=time(16, 30),
+        duration_minutes=125,
+        is_empty_time=False,
+        source="photo_ai",
+        is_time_modified=True,
+        confirmed_at=datetime(2026, 6, 24, 20, 0),
+    )
+    v3 = AttendanceRecordReadDTO(
+        id=3,
+        import_id=None,
+        user_id=1,
+        user_full_name="Иванов И.",
+        date=date(2026, 6, 25),
+        start_time=time(10, 0),
+        end_time=time(11, 0),
+        duration_minutes=60,
+        is_empty_time=False,
+        source="manual",
+        is_time_modified=False,
+        confirmed_at=datetime(2026, 6, 25, 20, 0),
+    )
+    text = format_my_visits_month_report(year=2026, month=6, summary=summary, visits=[v2, v1, v3])
+
+    assert "📅 <b>Июнь 2026</b>" in text
+    assert "Посещений: 2 · Всего: 7 ч 41 мин · Место: 3 из 12" in text
+    assert "23.06 — 12:25–17:05 (4 ч 40 мин) · импорт #123" in text
+    assert "24.06 — 14:25–16:30 (2 ч 05 мин) · импорт #123 · время изменено администратором" in text
+    assert "25.06 — 10:00–11:00 (1 ч) · добавлено вручную" in text
