@@ -7,9 +7,11 @@ from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import Integer, cast, extract, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..core import logger
 from ..db.models import (
     AttendanceChangeHistory,
     AttendanceDate,
@@ -299,19 +301,13 @@ class AttendanceRepository:
         actually_saved_dates: list[tuple[dt.date, list[dict[str, Any]]]] = []
 
         for visit_date, rows in confirmed_dates:
-            valid_rows: list[dict[str, Any]] = []
-            for row in rows:
-                existing_record = await self.find_user_record_on_date(db, row["user_id"], visit_date)
-                if existing_record is not None:
-                    continue
-                valid_rows.append(row)
-
-            if not valid_rows:
+            if not rows:
                 continue
 
             date_stmt = select(AttendanceDate).where(AttendanceDate.date == visit_date)
             date_res = await db.execute(date_stmt)
             attendance_date = date_res.scalar_one_or_none()
+            created_new_date = False
             if attendance_date is None:
                 attendance_date = AttendanceDate(
                     import_id=import_id,
@@ -319,23 +315,40 @@ class AttendanceRepository:
                 )
                 db.add(attendance_date)
                 await db.flush()
+                created_new_date = True
 
-            for row in valid_rows:
-                record = AttendanceRecord(
-                    import_id=import_id,
-                    attendance_date_id=attendance_date.id,
-                    user_id=row["user_id"],
-                    date=visit_date,
-                    start_time=row.get("start_time"),
-                    end_time=row.get("end_time"),
-                    duration_minutes=row.get("duration_minutes", 0),
-                    is_empty_time=row.get("is_empty_time", False),
-                    source=row.get("source", "photo_ai"),
-                )
-                db.add(record)
+            actually_saved_rows: list[dict[str, Any]] = []
+            for row in rows:
+                try:
+                    async with db.begin_nested():
+                        record = AttendanceRecord(
+                            import_id=import_id,
+                            attendance_date_id=attendance_date.id,
+                            user_id=row["user_id"],
+                            date=visit_date,
+                            start_time=row.get("start_time"),
+                            end_time=row.get("end_time"),
+                            duration_minutes=row.get("duration_minutes", 0),
+                            is_empty_time=row.get("is_empty_time", False),
+                            source=row.get("source", "photo_ai"),
+                        )
+                        db.add(record)
+                        await db.flush()
+                        actually_saved_rows.append(row)
+                except IntegrityError:
+                    logger.warning(
+                        "Duplicate record detected on insert | user_id={user_id} date={date}",
+                        user_id=row["user_id"],
+                        date=visit_date,
+                    )
 
-            actually_saved_dates.append((visit_date, valid_rows))
+            if not actually_saved_rows:
+                if created_new_date:
+                    await db.delete(attendance_date)
+                    await db.flush()
+                continue
 
+            actually_saved_dates.append((visit_date, actually_saved_rows))
         await db.flush()
         return actually_saved_dates
 

@@ -1,18 +1,50 @@
 """Unit tests for AttendanceRepository."""
 
+from collections.abc import AsyncGenerator
 from datetime import date, datetime, time
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
+from sqlalchemy import BigInteger, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 
-from pybot.db.models import AttendanceImport, AttendanceImportStatus, AttendanceRecord, User
+from pybot.db.models import (
+    AttendanceDate,
+    AttendanceImport,
+    AttendanceImportStatus,
+    AttendanceRecord,
+    Base,
+    User,
+)
 from pybot.domain.exceptions import AttendanceDraftNotFoundError
 from pybot.infrastructure.attendance_repository import AttendanceRepository
+
+
+@compiles(BigInteger, "sqlite")
+def _compile_bigint_sqlite(_type: Any, _compiler: Any, **_kw: Any) -> str:
+    return "INTEGER"
 
 
 @pytest.fixture
 def repository() -> AttendanceRepository:
     return AttendanceRepository()
+
+
+@pytest_asyncio.fixture
+async def sqlite_session() -> AsyncGenerator[AsyncSession, None]:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with session_maker() as session:
+        yield session
+
+    await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -136,6 +168,11 @@ async def test_is_date_processed(repository: AttendanceRepository) -> None:
 async def test_save_confirmed_import(repository: AttendanceRepository) -> None:
     db = AsyncMock()
     db.add = MagicMock()
+    nested_cm = MagicMock()
+    nested_cm.__aenter__ = AsyncMock()
+    nested_cm.__aexit__ = AsyncMock()
+    db.begin_nested = MagicMock(return_value=nested_cm)
+
     date_result_mock = MagicMock()
     date_result_mock.scalar_one_or_none.return_value = None
     db.execute.return_value = date_result_mock
@@ -165,7 +202,7 @@ async def test_save_confirmed_import(repository: AttendanceRepository) -> None:
 
     # Added AttendanceDate + AttendanceRecord
     assert db.add.call_count == 2
-    assert db.flush.call_count == 2
+    assert db.flush.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -174,9 +211,16 @@ async def test_save_confirmed_import_skips_dates_without_valid_records(
 ) -> None:
     db = AsyncMock()
     db.add = MagicMock()
-    existing_record_mock = MagicMock()
-    existing_record_mock.scalar_one_or_none.return_value = AttendanceRecord(id=99, user_id=100, duration_minutes=60)
-    db.execute.return_value = existing_record_mock
+    db.delete = AsyncMock()
+    nested_cm = MagicMock()
+    nested_cm.__aenter__ = AsyncMock()
+    nested_cm.__aexit__ = AsyncMock(return_value=False)
+    db.begin_nested = MagicMock(return_value=nested_cm)
+
+    date_result_mock = MagicMock()
+    date_result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = date_result_mock
+    db.flush.side_effect = [None, IntegrityError("duplicate", params=None, orig=Exception()), None, None]
 
     confirmed_dates = [
         (
@@ -201,9 +245,140 @@ async def test_save_confirmed_import_skips_dates_without_valid_records(
         confirmed_dates=confirmed_dates,
     )
 
-    # 0 records added, so AttendanceDate is NOT added to db
-    assert db.add.call_count == 0
+    # Newly created AttendanceDate is deleted when all rows fail IntegrityError
+    db.delete.assert_awaited_once()
     assert len(saved) == 0
+
+
+@pytest.mark.asyncio
+async def test_save_confirmed_import_atomic_duplicate_handling_real_db(
+    repository: AttendanceRepository,
+    sqlite_session: AsyncSession,
+) -> None:
+    db = sqlite_session
+
+    # 1. Create draft and users U and V
+    user_u = User(first_name="UserU", telegram_id=1001)
+    user_v = User(first_name="UserV", telegram_id=1002)
+    draft = AttendanceImport(
+        author_tg_id=999,
+        status=AttendanceImportStatus.DRAFT.value,
+        photo_data=b"test_image",
+        photo_mime_type="image/jpeg",
+        photo_file_size=10,
+        photo_checksum="test_sum",
+        raw_ai_json="{}",
+        draft_state_json="{}",
+    )
+    db.add_all([user_u, user_v, draft])
+    await db.flush()
+
+    visit_date = date(2026, 9, 25)
+
+    # 2. Insert AttendanceRecord(user_id=U, date=D) directly into DB
+    initial_date = AttendanceDate(import_id=draft.id, date=visit_date)
+    db.add(initial_date)
+    await db.flush()
+
+    initial_record = AttendanceRecord(
+        import_id=draft.id,
+        attendance_date_id=initial_date.id,
+        user_id=user_u.id,
+        date=visit_date,
+        duration_minutes=60,
+        source="manual_admin",
+    )
+    db.add(initial_record)
+    await db.flush()
+
+    # 3. Call save_confirmed_import with two rows on date D: U (duplicate) and V (new)
+    confirmed_dates = [
+        (
+            visit_date,
+            [
+                {
+                    "user_id": user_u.id,
+                    "start_time": time(18, 0),
+                    "end_time": time(20, 0),
+                    "duration_minutes": 120,
+                    "is_empty_time": False,
+                    "source": "photo_ai",
+                },
+                {
+                    "user_id": user_v.id,
+                    "start_time": time(18, 0),
+                    "end_time": time(20, 0),
+                    "duration_minutes": 120,
+                    "is_empty_time": False,
+                    "source": "photo_ai",
+                },
+            ],
+        )
+    ]
+
+    saved_result = await repository.save_confirmed_import(
+        db=db,
+        import_id=draft.id,
+        confirmed_by_tg_id=999,
+        confirmed_dates=confirmed_dates,
+    )
+
+    # 4. Verify IntegrityError did not leak, U was skipped via savepoint, V was saved
+    assert len(saved_result) == 1
+    result_date, result_rows = saved_result[0]
+    assert result_date == visit_date
+    assert len(result_rows) == 1
+    assert result_rows[0]["user_id"] == user_v.id
+
+    records = (await db.execute(select(AttendanceRecord).where(AttendanceRecord.date == visit_date))).scalars().all()
+    assert len(records) == 2
+    records_by_uid = {r.user_id: r for r in records}
+    assert records_by_uid[user_u.id].duration_minutes == 60
+    assert records_by_uid[user_v.id].duration_minutes == 120
+
+    # 5. Scenario 2: if ALL rows on a date conflict on IntegrityError, AttendanceDate is NOT created
+    conflict_date = date(2026, 9, 26)
+    db.add(
+        AttendanceRecord(
+            import_id=draft.id,
+            attendance_date_id=None,
+            user_id=user_u.id,
+            date=conflict_date,
+            duration_minutes=45,
+            source="manual_admin",
+        )
+    )
+    await db.flush()
+
+    all_conflict_dates = [
+        (
+            conflict_date,
+            [
+                {
+                    "user_id": user_u.id,
+                    "start_time": time(19, 0),
+                    "end_time": time(20, 0),
+                    "duration_minutes": 60,
+                    "is_empty_time": False,
+                    "source": "photo_ai",
+                }
+            ],
+        )
+    ]
+
+    all_conflict_result = await repository.save_confirmed_import(
+        db=db,
+        import_id=draft.id,
+        confirmed_by_tg_id=999,
+        confirmed_dates=all_conflict_dates,
+    )
+
+    assert len(all_conflict_result) == 0
+
+    ad_check = (
+        await db.execute(select(AttendanceDate).where(AttendanceDate.date == conflict_date))
+    ).scalar_one_or_none()
+    assert ad_check is None
 
 
 @pytest.mark.asyncio
