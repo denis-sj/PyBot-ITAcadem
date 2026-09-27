@@ -277,4 +277,41 @@ async def test_send_message_maps_unexpected_error_to_permanent_error(
     with pytest.raises(NotificationPermanentError, match="Unexpected notification delivery failure"):
         await service.send_message(NotifyDTO(recipient_id=RECIPIENT_USER_ID, message="hello"))
 
+
+@pytest.mark.asyncio
+async def test_send_attendance_notification_with_photo_button(
+    fake_bot: BotFixture,
+    settings_obj: AppSettings,
+) -> None:
+    service = TelegramNotificationService(fake_bot.bot, settings_obj)
+    await service.send_attendance_notification(
+        recipient_tg_id=123,
+        text="<b>Уведомление</b>",
+        import_id=42,
+    )
+    fake_bot.send_message.assert_awaited_once()
+    call_kwargs = fake_bot.send_message.call_args[1]
+    assert call_kwargs["chat_id"] == 123
+    assert call_kwargs["text"] == "<b>Уведомление</b>"
+    assert call_kwargs["parse_mode"] == "HTML"
+    reply_markup = call_kwargs["reply_markup"]
+    assert reply_markup is not None
+    assert reply_markup.inline_keyboard[0][0].text == "📷 Фото импорта #42"
+
+
+@pytest.mark.asyncio
+async def test_send_attendance_notification_without_import_id(
+    fake_bot: BotFixture,
+    settings_obj: AppSettings,
+) -> None:
+    service = TelegramNotificationService(fake_bot.bot, settings_obj)
+    await service.send_attendance_notification(
+        recipient_tg_id=123,
+        text="Уведомление",
+        import_id=None,
+    )
+    fake_bot.send_message.assert_awaited_once()
+    call_kwargs = fake_bot.send_message.call_args[1]
+    assert call_kwargs["reply_markup"] is None
+
     fake_bot.send_message.assert_awaited_once()

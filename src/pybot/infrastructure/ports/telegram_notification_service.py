@@ -11,11 +11,13 @@ from aiogram.exceptions import (
     TelegramServerError,
     TelegramUnauthorizedError,
 )
+from aiogram.types import InlineKeyboardMarkup
 
 from ...core import logger
 from ...core.config import AppSettings
 from ...dto import NotifyDTO
 from ...presentation.bot import get_admin_decision_kb
+from ...presentation.bot.handlers.attendance.keyboards import get_attendance_photo_button
 from ...presentation.texts import role_request_admin_notification
 from ...services.ports import NotificationPermanentError, NotificationPort, NotificationTemporaryError
 from ...utils import telegram_user_link
@@ -176,5 +178,66 @@ class TelegramNotificationService(NotificationPort):
                 "Failed to send direct notification | recipient_id={recipient_id} message_preview={message_preview}",
                 recipient_id=recipient_id,
                 message_preview=cleaned_text[:120],
+            )
+            raise NotificationPermanentError(message="Unexpected notification delivery failure") from exc
+
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        """Отправляет участнику уведомление о посещениях с опциональной кнопкой фото импорта."""
+        reply_markup = None
+        if import_id is not None:
+            reply_markup = InlineKeyboardMarkup(inline_keyboard=[[get_attendance_photo_button(import_id)]])
+
+        try:
+            await self.bot.send_message(
+                chat_id=recipient_tg_id,
+                text=text.strip(),
+                reply_markup=reply_markup,
+                parse_mode="HTML",
+            )
+        except TelegramRetryAfter as exc:
+            logger.warning(
+                "Rate limit for attendance notification | recipient_id={recipient_id} retry_after={retry_after}",
+                recipient_id=recipient_tg_id,
+                retry_after=exc.retry_after,
+            )
+            raise NotificationTemporaryError(
+                message=f"Rate limited by Telegram API: retry after {exc.retry_after}s"
+            ) from exc
+        except (TelegramNetworkError, TelegramServerError, RestartingTelegram) as exc:
+            logger.warning(
+                "Temporary failure while sending attendance notification | recipient_id={recipient_id} error={error}",
+                recipient_id=recipient_tg_id,
+                error=str(exc),
+            )
+            raise NotificationTemporaryError(message="Temporary Telegram delivery failure") from exc
+        except (
+            TelegramBadRequest,
+            TelegramForbiddenError,
+            TelegramUnauthorizedError,
+            TelegramNotFound,
+            TelegramEntityTooLarge,
+        ) as exc:
+            logger.warning(
+                "Permanent failure while sending attendance notification | recipient_id={recipient_id} error={error}",
+                recipient_id=recipient_tg_id,
+                error=str(exc),
+            )
+            raise NotificationPermanentError(message="Permanent Telegram delivery failure") from exc
+        except TelegramAPIError as exc:
+            logger.warning(
+                "Telegram API error while sending attendance notification | recipient_id={recipient_id} error={error}",
+                recipient_id=recipient_tg_id,
+                error=str(exc),
+            )
+            raise NotificationPermanentError(message="Telegram API delivery failure") from exc
+        except Exception as exc:
+            logger.exception(
+                "Failed to send attendance notification | recipient_id={recipient_id}",
+                recipient_id=recipient_tg_id,
             )
             raise NotificationPermanentError(message="Unexpected notification delivery failure") from exc

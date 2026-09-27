@@ -60,6 +60,14 @@ class ScriptedNotificationPort(NotificationPort):
     async def send_role_request_to_admin(self, request_id: int, requester_user_id: int, role_name: str) -> None:
         return None
 
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        return None
+
     async def send_message(self, message_data: NotifyDTO) -> None:
         recipient_id = message_data.recipient_id
         self.call_counts[recipient_id] += 1

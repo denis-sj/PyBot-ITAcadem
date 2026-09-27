@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core import logger
 from ..core.config import AppSettings
 from ..db.models import AttendanceImport, AttendanceImportStatus, User
 from ..domain.exceptions import (
@@ -39,8 +40,8 @@ from ..dto import (
     parse_time_range,
 )
 from ..infrastructure import AttendanceRepository, UserRepository
-from ..presentation.texts.attendance import MONTH_NAMES_RU
-from .ports import AttendanceRecognitionPort
+from ..presentation.texts.attendance import MONTH_NAMES_RU, format_import_notification
+from .ports import AttendanceRecognitionPort, NotificationPort
 
 DRAFT_TTL_HOURS: int = 24
 _MIN_CONFIDENCE_THRESHOLD: float = 0.7
@@ -57,6 +58,7 @@ class AttendanceService:
         recognition_port: AttendanceRecognitionPort,
         settings: AppSettings,
         ranking_calculator: AttendanceRankingCalculator | None = None,
+        notification_service: NotificationPort | None = None,
     ) -> None:
         self._db = db
         self._attendance_repo = attendance_repo
@@ -64,6 +66,7 @@ class AttendanceService:
         self._recognition_port = recognition_port
         self._settings = settings
         self._ranking_calculator = ranking_calculator or AttendanceRankingCalculator()
+        self._notification_service = notification_service
 
     # ============ PUBLIC API (NEWSPAPER RULE: HIGH-LEVEL INTENT) ============
 
@@ -418,6 +421,10 @@ class AttendanceService:
         )
 
         await self._db.commit()
+
+        if self._notification_service is not None:
+            await self._send_import_notifications(draft_id, confirmed_dates)
+
         return added_dates_count, added_records_count, skipped_dates_count
 
     async def cleanup_stale_drafts(self) -> int:
@@ -654,6 +661,45 @@ class AttendanceService:
                 details={"import_id": import_id},
             )
         return photo_info
+
+    async def _send_import_notifications(
+        self,
+        import_id: int,
+        confirmed_dates: list[tuple[date, list[dict[str, Any]]]],
+    ) -> None:
+        """Send private attendance notifications to participants with saved visits."""
+        if not self._notification_service:
+            return
+
+        user_visits_map: dict[int, list[tuple[date, time, time, int]]] = {}
+        for visit_date, rows in confirmed_dates:
+            for row in rows:
+                uid = row["user_id"]
+                start_t = row.get("start_time")
+                end_t = row.get("end_time")
+                dur = row.get("duration_minutes", 0)
+                if start_t and end_t and dur > 0:
+                    user_visits_map.setdefault(uid, []).append((visit_date, start_t, end_t, dur))
+
+        for uid, visits in user_visits_map.items():
+            try:
+                user = await self._user_repo.find_user_by_id(self._db, uid)
+                if not user or not user.telegram_id:
+                    continue
+
+                text = format_import_notification(import_id=import_id, user_visits=visits)
+                await self._notification_service.send_attendance_notification(
+                    recipient_tg_id=user.telegram_id,
+                    text=text,
+                    import_id=import_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver attendance notification | user_id={user_id} import_id={import_id} error={error}",
+                    user_id=uid,
+                    import_id=import_id,
+                    error=str(exc),
+                )
 
     # ============ PRIVATE HELPERS (LOWER-LEVEL DETAILS) ============
 

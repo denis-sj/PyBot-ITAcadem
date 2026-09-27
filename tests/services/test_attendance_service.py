@@ -32,7 +32,7 @@ from pybot.dto import (
 from pybot.infrastructure import AttendanceRepository, UserRepository
 from pybot.infrastructure.adapters import PolzaVisionAdapter
 from pybot.services.attendance_service import AttendanceService
-from pybot.services.ports import AttendanceRecognitionPort
+from pybot.services.ports import AttendanceRecognitionPort, NotificationPort
 
 
 @pytest.fixture
@@ -63,11 +63,17 @@ def mock_recognition_port() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_notification_service() -> AsyncMock:
+    return AsyncMock(spec=NotificationPort)
+
+
+@pytest.fixture
 def service(
     mock_db: AsyncMock,
     mock_attendance_repo: AsyncMock,
     mock_user_repo: AsyncMock,
     mock_recognition_port: AsyncMock,
+    mock_notification_service: AsyncMock,
     settings_obj: AppSettings,
 ) -> AttendanceService:
     settings_obj.attendance_timezone = "Asia/Yekaterinburg"
@@ -77,6 +83,7 @@ def service(
         user_repo=mock_user_repo,
         recognition_port=mock_recognition_port,
         settings=settings_obj,
+        notification_service=mock_notification_service,
     )
 
 
@@ -573,6 +580,8 @@ async def test_confirm_draft_happy_path(
     service: AttendanceService,
     mock_db: AsyncMock,
     mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_notification_service: AsyncMock,
 ) -> None:
     draft = AttendanceDraftDTO(
         draft_id=20,
@@ -646,6 +655,7 @@ async def test_confirm_draft_happy_path(
     )
     mock_attendance_repo.get_draft_by_id.return_value = mock_import
     mock_attendance_repo.is_date_processed.return_value = False
+    mock_user_repo.find_user_by_id.return_value = User(id=1, telegram_id=999888, first_name="Иван")
 
     added_dates, added_records, skipped = await service.confirm_draft(draft_id=20, admin_tg_id=999)
 
@@ -665,6 +675,71 @@ async def test_confirm_draft_happy_path(
     assert rows[0]["duration_minutes"] == 120
 
     mock_db.commit.assert_awaited_once()
+
+    # Verify notification was sent to user 1
+    mock_notification_service.send_attendance_notification.assert_awaited_once()
+    notify_kwargs = mock_notification_service.send_attendance_notification.call_args[1]
+    assert notify_kwargs["recipient_tg_id"] == 999888
+    assert notify_kwargs["import_id"] == 20
+    assert "25.09.2026 — 18:00–20:00 (2 ч)" in notify_kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_draft_notification_failure_does_not_abort_confirm(
+    service: AttendanceService,
+    mock_db: AsyncMock,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_notification_service: AsyncMock,
+) -> None:
+    draft = AttendanceDraftDTO(
+        draft_id=21,
+        author_tg_id=100,
+        created_at=datetime(2026, 9, 25, 12, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=100,
+        photo_checksum="sha",
+        status=AttendanceImportStatus.DRAFT.value,
+        dates=[
+            AttendanceDraftDateBlockDTO(
+                date=date(2026, 9, 25),
+                is_ignored=False,
+                items=[
+                    AttendanceDraftItemDTO(
+                        item_id="1",
+                        date=date(2026, 9, 25),
+                        raw_name="Иванов И.",
+                        matched_user_id=1,
+                        matched_user_name="Иванов",
+                        start_time=time(18, 0),
+                        end_time=time(20, 0),
+                        duration_minutes=120,
+                        is_empty_time=False,
+                        confidence=0.9,
+                        status="recognized",
+                    ),
+                ],
+            ),
+        ],
+    )
+    mock_import = AttendanceImport(
+        id=21,
+        status=AttendanceImportStatus.DRAFT.value,
+        draft_state_json=draft.model_dump_json(),
+    )
+    mock_attendance_repo.get_draft_by_id.return_value = mock_import
+    mock_attendance_repo.is_date_processed.return_value = False
+    mock_user_repo.find_user_by_id.return_value = User(id=1, telegram_id=999888, first_name="Иван")
+    mock_notification_service.send_attendance_notification.side_effect = RuntimeError("Telegram network error")
+
+    # Confirm should succeed without raising
+    added_dates, added_records, skipped = await service.confirm_draft(draft_id=21, admin_tg_id=999)
+
+    assert added_dates == 1
+    assert added_records == 1
+    mock_attendance_repo.save_confirmed_import.assert_awaited_once()
+    mock_db.commit.assert_awaited_once()
+    mock_notification_service.send_attendance_notification.assert_awaited_once()
 
 
 @pytest.mark.asyncio

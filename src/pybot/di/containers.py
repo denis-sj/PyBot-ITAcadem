@@ -238,6 +238,7 @@ class ServiceProvider(Provider):
         recognition_port: AttendanceRecognitionPort,
         settings: AppSettings,
         ranking_calculator: AttendanceRankingCalculator,
+        notification_service: NotificationPort,
     ) -> AttendanceService:
         return AttendanceService(
             db=db,
@@ -246,6 +247,7 @@ class ServiceProvider(Provider):
             recognition_port=recognition_port,
             settings=settings,
             ranking_calculator=ranking_calculator,
+            notification_service=notification_service,
         )
 
 

@@ -14,6 +14,7 @@ from pybot.dto import (
 from pybot.presentation.texts.attendance import (
     format_draft_preview,
     format_duration,
+    format_import_notification,
     format_monthly_report,
     format_user_rank,
     format_user_summary,
@@ -331,3 +332,25 @@ def test_format_monthly_report_short_and_detailed() -> None:
     detailed_text = format_monthly_report(report, detailed=True)
     assert "Детализация" in detailed_text
     assert "15.09" in detailed_text
+
+
+def test_format_import_notification_single_visit() -> None:
+    visits = [(date(2026, 9, 20), time(18, 0), time(20, 0), 120)]
+    text = format_import_notification(import_id=123, user_visits=visits)
+    assert "✅ <b>Добавлено посещение:</b>" in text
+    assert "20.09.2026 — 18:00–20:00 (2 ч)" in text
+    assert "Источник: импорт #123." in text
+    assert "/my_visits" in text
+
+
+def test_format_import_notification_multiple_visits_sorted() -> None:
+    visits = [
+        (date(2026, 9, 21), time(18, 0), time(19, 30), 90),
+        (date(2026, 9, 20), time(18, 0), time(20, 0), 120),
+    ]
+    text = format_import_notification(import_id=123, user_visits=visits)
+    assert "✅ <b>Добавлены посещения:</b>" in text
+    lines = text.splitlines()
+    assert "20.09.2026 — 18:00–20:00 (2 ч)" in lines[2]
+    assert "21.09.2026 — 18:00–19:30 (1 ч 30 мин)" in lines[3]
+    assert "Источник: импорт #123." in text

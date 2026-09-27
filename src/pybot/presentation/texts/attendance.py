@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import html
+from collections.abc import Sequence
+from datetime import date, time
 
 from ...dto import (
     AttendanceDraftDateBlockDTO,
@@ -288,4 +290,29 @@ def format_monthly_report(report: AttendanceMonthlyReportDTO, detailed: bool = F
             rec_name = html.escape(rec.user_full_name)
             rec_dur = format_duration(rec.duration_minutes)
             lines.append(f"{idx}. {d_str} {rec_name} ({time_part}) — {rec_dur}")
+    return "\n".join(lines)
+
+
+def format_import_notification(
+    import_id: int,
+    user_visits: Sequence[tuple[date, time, time, int]],
+) -> str:
+    """Format personal notification message for a participant after attendance import confirmation."""
+    sorted_visits = sorted(user_visits, key=lambda v: v[0])
+    lines: list[str] = []
+    if len(sorted_visits) == 1:
+        lines.append("✅ <b>Добавлено посещение:</b>\n")
+    else:
+        lines.append("✅ <b>Добавлены посещения:</b>\n")
+
+    for v_date, start_t, end_t, dur in sorted_visits:
+        d_str = v_date.strftime("%d.%m.%Y")
+        t_str = f"{start_t.strftime('%H:%M')}–{end_t.strftime('%H:%M')}"
+        dur_str = format_duration(dur)
+        lines.append(f"{d_str} — {t_str} ({dur_str})")
+
+    lines.append(
+        f"\nИсточник: импорт #{import_id}. "
+        "Чтобы посмотреть фото журнала, нажмите кнопку ниже. Все посещения: /my_visits"
+    )
     return "\n".join(lines)
