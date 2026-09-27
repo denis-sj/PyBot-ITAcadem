@@ -134,6 +134,8 @@ class AttendanceDraftDateBlockDTO(BaseDTO):
     date: date
     is_ignored: bool = False
     ignore_reason: str | None = None
+    processed_import_id: int | None = None
+    period_warning: str | None = None
     items: list[AttendanceDraftItemDTO]
 
 

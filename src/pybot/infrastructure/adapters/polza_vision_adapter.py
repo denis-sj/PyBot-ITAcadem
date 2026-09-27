@@ -52,7 +52,6 @@ _SYSTEM_PROMPT = """\
           "startTime": "18:00",
           "endTime": "20:00",
           "durationMinutes": 120,
-          "isEmptyTime": false,
           "confidence": 0.95,
           "status": "recognized"
         }
@@ -64,16 +63,20 @@ _SYSTEM_PROMPT = """\
 Правила:
 1. Оцени качество изображения: isGood=false если изображение смазано, нерезко, обрезано или нечитаемо.
 2. Извлеки все даты посещений в формате YYYY-MM-DD.
-3. Для каждого участника найди строку времени.
-4. Если время отсутствует или пусто, установи isEmptyTime=true, durationMinutes=0,
-   startTime=null, endTime=null.
-5. Если передан список участников клуба, сопоставь распознанные имена с ним.
+3. Извлекай только строки присутствовавших участников с заполненным интервалом времени.
+4. Пустая ячейка времени, прочерк, буквы «Н», «н», «N», «n» или надпись «нет» означают отсутствие
+   участника. Такие строки НЕ включай в ответ.
+5. Колонка «Подпись преподавателя» полностью игнорируется: если подпись есть, но время отсутствует —
+   участник отсутствовал (не включать). Если время указано, но подписи нет — участник присутствовал (включать).
+6. Если передан список участников клуба, сопоставь распознанные имена с ним.
    Если имя однозначно совпадает с кандидатом, используй точное имя кандидата.
-6. Если имя распознано неуверенно, отсутствует в списке или время неразборчиво —
+7. Если время указано не полностью, неразборчиво или имя распознано неуверенно —
    установи status="needs_manual_review".
-7. Если запись распознана четко и уверенно — установи status="recognized".
-8. Поле confidence должно быть от 0.0 до 1.0.
+8. Если запись распознана четко и уверенно — установи status="recognized".
+9. Поле confidence должно быть от 0.0 до 1.0.
 """
+
+_EMPTY_TIME_INDICATORS: frozenset[str] = frozenset({"", "-", "—", "–", "нет", "прочерк", "н", "н.", "n", "n.", "0"})
 
 _TIME_PARSE_PATTERN = re.compile(r"^(\d{1,2})[:.](\d{2})$")
 
@@ -274,8 +277,9 @@ class PolzaVisionAdapter(AttendanceRecognitionPort):
             for raw_row in raw_rows:
                 if not isinstance(raw_row, dict):
                     continue
-                rows.append(self._process_recognized_row(raw_row))
-
+                processed_row = self._process_recognized_row(raw_row)
+                if processed_row is not None:
+                    rows.append(processed_row)
             date_blocks.append(
                 AttendanceRecognizedDateBlockDTO(
                     date=block_date,
@@ -318,13 +322,10 @@ class PolzaVisionAdapter(AttendanceRecognitionPort):
     def _resolve_row_times(
         raw_row: dict[str, Any],
         time_raw: str | None,
-        is_empty_time: bool,
+        is_empty_time: bool = False,
     ) -> tuple[time | None, time | None, int, bool]:
         """Resolve start_time, end_time, duration_minutes, and whether time requires review."""
-        if is_empty_time:
-            return None, None, 0, False
-
-        if not time_raw:
+        if is_empty_time or not time_raw:
             return None, None, 0, True
 
         parsed_range = parse_time_range(time_raw)
@@ -341,23 +342,26 @@ class PolzaVisionAdapter(AttendanceRecognitionPort):
 
         return None, None, 0, True
 
-    def _process_recognized_row(self, raw_row: dict[str, Any]) -> AttendanceRecognizedRowDTO:
-        """Process and validate a single recognized row, recalculating duration in Python."""
-        raw_name = raw_row.get("participantFullName") or raw_row.get("participant_full_name") or raw_row.get("raw_name")
-        if raw_name is not None:
-            raw_name = str(raw_name).strip() or None
+    def _process_recognized_row(self, raw_row: dict[str, Any]) -> AttendanceRecognizedRowDTO | None:
+        """Process and validate a single recognized row, recalculating duration in Python.
 
+        Returns None if row has empty or absent time (e.g. absent participant).
+        """
         time_raw = raw_row.get("timeRaw") or raw_row.get("time_raw")
         if time_raw is not None:
             time_raw = str(time_raw).strip() or None
 
         is_empty_time = bool(raw_row.get("isEmptyTime", raw_row.get("is_empty_time", False)))
-        if not time_raw or time_raw in ("-", "—", "–", "нет", "прочерк"):
-            is_empty_time = True
+        if is_empty_time or not time_raw or time_raw.lower() in _EMPTY_TIME_INDICATORS:
+            return None
+
+        raw_name = raw_row.get("participantFullName") or raw_row.get("participant_full_name") or raw_row.get("raw_name")
+        if raw_name is not None:
+            raw_name = str(raw_name).strip() or None
 
         confidence, status = self._parse_confidence_and_status(raw_row)
         start_time, end_time, duration_minutes, time_requires_review = self._resolve_row_times(
-            raw_row, time_raw, is_empty_time
+            raw_row, time_raw, is_empty_time=False
         )
         if time_requires_review:
             status = "needs_manual_review"
@@ -368,7 +372,7 @@ class PolzaVisionAdapter(AttendanceRecognitionPort):
             start_time=start_time,
             end_time=end_time,
             duration_minutes=duration_minutes,
-            is_empty_time=is_empty_time,
+            is_empty_time=False,
             confidence=confidence,
             status=status,
         )

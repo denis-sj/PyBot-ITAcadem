@@ -37,6 +37,7 @@ from ..dto import (
     parse_time_range,
 )
 from ..infrastructure import AttendanceRepository, UserRepository
+from ..presentation.texts.attendance import MONTH_NAMES_RU
 from .ports import AttendanceRecognitionPort
 
 DRAFT_TTL_HOURS: int = 24
@@ -113,11 +114,13 @@ class AttendanceService:
         now_tz = datetime.now(tz)
         current_year, current_month = now_tz.year, now_tz.month
 
+        today = now_tz.date()
         date_blocks = await self._build_draft_date_blocks(
             dates=result.dates,
             users=users,
             current_year=current_year,
             current_month=current_month,
+            today=today,
         )
         initial_draft = AttendanceDraftDTO(
             draft_id=0,
@@ -176,7 +179,7 @@ class AttendanceService:
         item_id: str,
         start_time: time | None,
         end_time: time | None,
-        is_empty_time: bool,
+        is_empty_time: bool = False,
     ) -> AttendanceDraftDTO:
         """Update time range for an item in the draft, recalculating duration.
 
@@ -197,13 +200,8 @@ class AttendanceService:
         draft = AttendanceDraftDTO.model_validate_json(draft_record.draft_state_json)
 
         duration_minutes = 0
-        if is_empty_time:
-            start_time = None
-            end_time = None
-            duration_minutes = 0
-        elif start_time and end_time:
+        if start_time and end_time:
             duration_minutes = calculate_duration_minutes(start_time, end_time)
-
         found = False
         new_blocks: list[AttendanceDraftDateBlockDTO] = []
         for block in draft.dates:
@@ -213,7 +211,7 @@ class AttendanceService:
                     found = True
                     new_status: Literal["recognized", "needs_manual_review"] = (
                         "recognized"
-                        if (item.matched_user_id is not None and (is_empty_time or duration_minutes > 0))
+                        if (item.matched_user_id is not None and duration_minutes > 0)
                         else "needs_manual_review"
                     )
                     updated_item = item.model_copy(
@@ -221,7 +219,7 @@ class AttendanceService:
                             "start_time": start_time,
                             "end_time": end_time,
                             "duration_minutes": duration_minutes,
-                            "is_empty_time": is_empty_time,
+                            "is_empty_time": False,
                             "status": new_status,
                         }
                     )
@@ -277,7 +275,7 @@ class AttendanceService:
                 if item.item_id == item_id:
                     found = True
                     new_status: Literal["recognized", "needs_manual_review"] = (
-                        "recognized" if (item.is_empty_time or item.duration_minutes > 0) else "needs_manual_review"
+                        "recognized" if (item.duration_minutes > 0) else "needs_manual_review"
                     )
                     updated_item = item.model_copy(
                         update={
@@ -712,48 +710,95 @@ class AttendanceService:
         end_date = date(year, month, days_in_month)
         return year, month, start_date, end_date
 
+    @staticmethod
+    def _format_period_warning(past_dates: list[date], current_year: int, current_month: int) -> str | None:
+        """Format warning message for attendance dates in past calendar months."""
+        if not past_dates:
+            return None
+
+        cur_month_name = MONTH_NAMES_RU.get(current_month, "")
+        d1 = past_dates[0]
+        m_name = MONTH_NAMES_RU.get(d1.month, "")
+        d1_fmt = d1.strftime("%d.%m.%Y")
+
+        if len(past_dates) == 1:
+            return (
+                f"Дата на фото: {d1_fmt} — это {m_name} {d1.year}, не текущий месяц. "
+                f"Посещения попадут в отчёт за {m_name} {d1.year} "
+                f"и не изменят отчёт за {cur_month_name} {current_year}."
+            )
+
+        d2 = past_dates[1]
+        d2_fmt = d2.strftime("%d.%m.%Y")
+        return (
+            f"Даты на фото: {d1_fmt} и {d2_fmt} — это {m_name} {d1.year}, не текущий месяц. "
+            f"Посещения попадут в отчёт за {m_name} {d1.year} "
+            f"и не изменят отчёт за {cur_month_name} {current_year}."
+        )
+
     async def _build_draft_date_blocks(
         self,
         dates: list[AttendanceRecognizedDateBlockDTO],
         users: Sequence[User],
         current_year: int,
         current_month: int,
+        today: date,
     ) -> list[AttendanceDraftDateBlockDTO]:
-        """Convert recognized date blocks into draft date blocks with month & processed checks."""
+        """Convert recognized date blocks into draft date blocks with date validation and warnings."""
+        past_dates_to_warn: list[date] = []
+        for date_block in dates:
+            if date_block.date <= today:
+                processed = await self._attendance_repo.find_processed_date(self._db, date_block.date)
+                if processed is None and (date_block.date.year, date_block.date.month) != (current_year, current_month):
+                    past_dates_to_warn.append(date_block.date)
+
+        period_warning = self._format_period_warning(past_dates_to_warn, current_year, current_month)
+
         date_blocks: list[AttendanceDraftDateBlockDTO] = []
         for date_block in dates:
-            is_out_of_month = (date_block.date.year != current_year) or (date_block.date.month != current_month)
-            is_already_processed = await self._attendance_repo.is_date_processed(self._db, date_block.date)
+            is_future = date_block.date > today
+            is_past_month = (date_block.date.year, date_block.date.month) != (current_year, current_month)
+
+            processed_record = await self._attendance_repo.find_processed_date(self._db, date_block.date)
+            is_already_processed = processed_record is not None
+            processed_import_id = processed_record.import_id if processed_record else None
 
             is_ignored = False
             ignore_reason: str | None = None
-            if is_out_of_month:
+
+            if is_future:
                 is_ignored = True
-                ignore_reason = "прошлый месяц"
+                ignore_reason = "будущая дата"
+                items: list[AttendanceDraftItemDTO] = []
             elif is_already_processed:
                 is_ignored = True
                 ignore_reason = "дата уже обработана"
-
-            items = [
-                self._build_draft_item(
-                    row=row,
-                    date_val=date_block.date,
-                    row_idx=idx,
-                    is_already_processed=is_already_processed,
-                    is_out_of_month=is_out_of_month,
-                    users=users,
-                )
-                for idx, row in enumerate(date_block.rows)
-            ]
+                items = []
+            else:
+                items = []
+                for idx, row in enumerate(date_block.rows):
+                    draft_item = self._build_draft_item(
+                        row=row,
+                        date_val=date_block.date,
+                        row_idx=idx,
+                        is_already_processed=False,
+                        is_out_of_month=is_past_month,
+                        users=users,
+                    )
+                    if draft_item is not None:
+                        items.append(draft_item)
 
             date_blocks.append(
                 AttendanceDraftDateBlockDTO(
                     date=date_block.date,
                     is_ignored=is_ignored,
                     ignore_reason=ignore_reason,
+                    processed_import_id=processed_import_id,
+                    period_warning=period_warning if is_past_month and not is_ignored else None,
                     items=items,
                 )
             )
+
         return date_blocks
 
     def _build_draft_item(  # noqa: PLR0913
@@ -764,17 +809,21 @@ class AttendanceService:
         is_already_processed: bool,
         is_out_of_month: bool,
         users: Sequence[User],
-    ) -> AttendanceDraftItemDTO:
-        """Process one recognized row and build a draft item DTO."""
-        is_empty_time = row.is_empty_time
-        if not row.time_raw or row.time_raw.strip() in ("-", "—", "–", "нет", "прочерк"):
-            is_empty_time = True
+    ) -> AttendanceDraftItemDTO | None:
+        """Process one recognized row and build a draft item DTO.
+
+        Returns None if row represents an absent participant (empty time).
+        """
+        if row.is_empty_time:
+            return None
+        if not row.time_raw or row.time_raw.strip() in ("", "-", "—", "–", "нет", "прочерк", "н", "n", "0"):
+            return None
 
         start_time, end_time, duration_minutes = self._resolve_row_time(
             time_raw=row.time_raw,
             start_time=row.start_time,
             end_time=row.end_time,
-            is_empty_time=is_empty_time,
+            is_empty_time=False,
         )
 
         matched_user_id, matched_user_name, match_status = self._match_participant(row.raw_name, users)
@@ -782,7 +831,7 @@ class AttendanceService:
             row.status == "needs_manual_review"
             or row.confidence < _MIN_CONFIDENCE_THRESHOLD
             or match_status != "recognized"
-            or (not is_empty_time and duration_minutes <= 0)
+            or duration_minutes <= 0
         ):
             status: Literal["recognized", "needs_manual_review"] = "needs_manual_review"
         else:
@@ -798,7 +847,7 @@ class AttendanceService:
             start_time=start_time,
             end_time=end_time,
             duration_minutes=duration_minutes,
-            is_empty_time=is_empty_time,
+            is_empty_time=False,
             confidence=row.confidence,
             status=status,
             is_duplicate_date=is_already_processed,
@@ -833,7 +882,7 @@ class AttendanceService:
         """Collect deduplicated confirmed rows for a single date block, retaining max duration."""
         user_records: dict[int, dict[str, Any]] = {}
         for item in items:
-            if item.is_excluded or item.matched_user_id is None:
+            if item.is_excluded or item.matched_user_id is None or item.duration_minutes <= 0:
                 continue
             uid = item.matched_user_id
             if uid not in user_records:
@@ -842,14 +891,14 @@ class AttendanceService:
                     "start_time": item.start_time,
                     "end_time": item.end_time,
                     "duration_minutes": item.duration_minutes,
-                    "is_empty_time": item.is_empty_time,
+                    "is_empty_time": False,
                     "source": "photo_ai",
                 }
             elif item.duration_minutes > user_records[uid]["duration_minutes"]:
                 user_records[uid]["duration_minutes"] = item.duration_minutes
                 user_records[uid]["start_time"] = item.start_time
                 user_records[uid]["end_time"] = item.end_time
-                user_records[uid]["is_empty_time"] = item.is_empty_time
+                user_records[uid]["is_empty_time"] = False
         return list(user_records.values())
 
     @staticmethod

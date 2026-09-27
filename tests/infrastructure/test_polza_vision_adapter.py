@@ -95,7 +95,7 @@ async def test_recognize_happy_path_recalculates_duration_and_strips_markdown(
         assert len(result.dates) == 1
         block = result.dates[0]
         assert str(block.date) == "2026-09-25"
-        assert len(block.rows) == 2
+        assert len(block.rows) == 1
 
         # Check recalculated duration
         row1 = block.rows[0]
@@ -104,11 +104,37 @@ async def test_recognize_happy_path_recalculates_duration_and_strips_markdown(
         assert row1.is_empty_time is False
         assert row1.status == "recognized"
 
-        # Check empty time row
-        row2 = block.rows[1]
-        assert row2.raw_name == "Петров Петр"
-        assert row2.is_empty_time is True
-        assert row2.duration_minutes == 0
+
+@pytest.mark.asyncio
+async def test_empty_time_and_dash_rows_are_discarded(adapter: PolzaVisionAdapter) -> None:
+    ai_response_payload = {
+        "quality": {"isGood": True, "comment": "OK", "problems": []},
+        "dates": [
+            {
+                "date": "2026-09-25",
+                "rows": [
+                    {"participantFullName": "Присутствовал А.", "timeRaw": "18:00-19:30"},
+                    {"participantFullName": "Отсутствовал Б.", "timeRaw": "-", "isEmptyTime": True},
+                    {"participantFullName": "Отсутствовал В.", "timeRaw": "нет"},
+                    {"participantFullName": "Отсутствовал Г.", "timeRaw": "прочерк"},
+                    {"participantFullName": "Отсутствовал Д.", "timeRaw": "н"},
+                    {"participantFullName": "Отсутствовал Е.", "timeRaw": ""},
+                ],
+            }
+        ],
+    }
+    mock_response = httpx.Response(
+        status_code=200,
+        json={"choices": [{"message": {"content": json.dumps(ai_response_payload)}}]},
+        request=httpx.Request("POST", "https://polza.ai/api/v1/chat/completions"),
+    )
+    with patch.object(httpx.AsyncClient, "post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_response
+        result = await adapter.recognize_attendance_sheet(b"bytes", "image/jpeg", ["Присутствовал А."])
+
+        assert len(result.dates[0].rows) == 1
+        assert result.dates[0].rows[0].raw_name == "Присутствовал А."
+        assert result.dates[0].rows[0].duration_minutes == 90
 
 
 @pytest.mark.asyncio

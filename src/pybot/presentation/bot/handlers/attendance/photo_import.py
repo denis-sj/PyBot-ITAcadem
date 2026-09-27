@@ -23,6 +23,7 @@ from .....dto import AttendanceDraftDTO, AttendanceDraftItemDTO, parse_time_rang
 from .....services import UserService
 from .....services.attendance_service import AttendanceService
 from ....texts.attendance import format_draft_preview
+from ...keyboards.navigation import get_close_keyboard
 from .keyboards import (
     AttendanceDraftCB,
     get_cancel_edit_keyboard,
@@ -81,8 +82,10 @@ async def handle_attendance_photo(
         )
 
         preview_text = format_draft_preview(draft)
-        keyboard = get_draft_actions_keyboard(draft.draft_id)
-
+        all_processed = bool(draft.dates) and all(
+            b.is_ignored and b.ignore_reason == "дата уже обработана" for b in draft.dates
+        )
+        keyboard = get_close_keyboard() if all_processed else get_draft_actions_keyboard(draft.draft_id)
         await status_msg.delete()
         await message.answer(preview_text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
@@ -233,8 +236,7 @@ async def msg_select_row_for_time(
     await message.answer(
         f"Выбрана строка {row_index} ({item_name}).\n"
         f"Текущее время: <b>{cur_time}</b>\n\n"
-        "Введите новое время в формате <code>18:00-20:00</code>\n"
-        "(или <code>-</code> / <code>нет</code>, если время не фиксируется):",
+        "Введите новое время в формате <code>18:00-20:00</code>:",
         reply_markup=get_cancel_edit_keyboard(),
         parse_mode=ParseMode.HTML,
     )
@@ -251,24 +253,15 @@ async def msg_input_new_time(
 ) -> None:
     """Parse and apply new time to the selected row."""
     raw_time = (message.text or "").strip()
-    is_empty_time = False
-    start_time = None
-    end_time = None
-
-    if raw_time in ("-", "—", "–", "нет", "прочерк", "0"):
-        is_empty_time = True
-    else:
-        parsed = parse_time_range(raw_time)
-        if parsed is None:
-            await message.answer(
-                "⚠️ Некорректный формат времени. Введите время в формате <code>18:00-20:00</code> "
-                "или <code>-</code> (для снятия фиксации времени):",
-                reply_markup=get_cancel_edit_keyboard(),
-                parse_mode=ParseMode.HTML,
-            )
-            return
-        start_time, end_time, _ = parsed
-
+    parsed = parse_time_range(raw_time)
+    if parsed is None:
+        await message.answer(
+            "⚠️ Некорректный формат времени. Введите время в формате <code>18:00-20:00</code>:",
+            reply_markup=get_cancel_edit_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    start_time, end_time, _ = parsed
     data = await state.get_data()
     draft_id = data["draft_id"]
     item_id = data["item_id"]
@@ -279,7 +272,7 @@ async def msg_input_new_time(
             item_id=item_id,
             start_time=start_time,
             end_time=end_time,
-            is_empty_time=is_empty_time,
+            is_empty_time=False,
         )
         await state.clear()
         preview = format_draft_preview(updated_draft)

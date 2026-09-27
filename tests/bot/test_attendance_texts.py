@@ -92,6 +92,109 @@ def test_format_draft_preview() -> None:
     assert "Требует внимания: <b>1</b> ⚠️" in rendered
 
 
+def test_format_draft_preview_all_dates_processed() -> None:
+    block1 = AttendanceDraftDateBlockDTO(
+        date=date(2026, 9, 20),
+        is_ignored=True,
+        ignore_reason="дата уже обработана",
+        processed_import_id=42,
+        items=[],
+    )
+    draft = AttendanceDraftDTO(
+        draft_id=99,
+        author_tg_id=1,
+        created_at=datetime(2026, 9, 25, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[block1],
+        status="DRAFT",
+    )
+    rendered = format_draft_preview(draft)
+    assert "Все даты на фото уже учтены (импорт #42). Сохранять нечего." in rendered
+
+
+def test_format_draft_preview_one_date_processed_one_active() -> None:
+    block1 = AttendanceDraftDateBlockDTO(
+        date=date(2026, 9, 20),
+        is_ignored=True,
+        ignore_reason="дата уже обработана",
+        processed_import_id=15,
+        items=[],
+    )
+    item = AttendanceDraftItemDTO(
+        item_id="i1",
+        date=date(2026, 9, 21),
+        raw_name="Иванов И.",
+        matched_user_id=1,
+        matched_user_name="Иванов Иван",
+        start_time=time(18, 0),
+        end_time=time(20, 0),
+        duration_minutes=120,
+        is_empty_time=False,
+        confidence=0.95,
+        status="recognized",
+    )
+    block2 = AttendanceDraftDateBlockDTO(
+        date=date(2026, 9, 21),
+        is_ignored=False,
+        items=[item],
+    )
+    draft = AttendanceDraftDTO(
+        draft_id=100,
+        author_tg_id=1,
+        created_at=datetime(2026, 9, 25, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[block1, block2],
+        status="DRAFT",
+    )
+    rendered = format_draft_preview(draft)
+    assert "20.09.2026 уже учтена (импорт #15). Строки за эту дату не будут сохранены." in rendered
+    assert "21.09.2026" in rendered
+    assert "Иванов Иван" in rendered
+
+
+def test_format_draft_preview_past_month_warning() -> None:
+    item = AttendanceDraftItemDTO(
+        item_id="i1",
+        date=date(2026, 8, 15),
+        raw_name="Сидоров С.",
+        matched_user_id=1,
+        matched_user_name="Сидоров Сидор",
+        start_time=time(18, 0),
+        end_time=time(19, 0),
+        duration_minutes=60,
+        is_empty_time=False,
+        confidence=0.95,
+        status="recognized",
+    )
+    warning = (
+        "Дата на фото: 15.08.2026 — это август 2026, не текущий месяц. "
+        "Посещения попадут в отчёт за август 2026 и не изменят отчёт за сентябрь 2026."
+    )
+    block = AttendanceDraftDateBlockDTO(
+        date=date(2026, 8, 15),
+        is_ignored=False,
+        period_warning=warning,
+        items=[item],
+    )
+    draft = AttendanceDraftDTO(
+        draft_id=101,
+        author_tg_id=1,
+        created_at=datetime(2026, 9, 25, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[block],
+        status="DRAFT",
+    )
+    rendered = format_draft_preview(draft)
+    assert warning in rendered
+    assert "15.08.2026" in rendered
+
+
 def test_format_user_summary() -> None:
     summary = AttendanceUserSummaryDTO(
         user_id=10,

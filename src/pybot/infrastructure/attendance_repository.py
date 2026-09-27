@@ -178,6 +178,24 @@ class AttendanceRepository:
         rowcount = getattr(result, "rowcount", 0)
         return int(rowcount) if rowcount is not None else 0
 
+    async def find_processed_date(
+        self,
+        db: AsyncSession,
+        visit_date: dt.date,
+    ) -> AttendanceDate | None:
+        """Find persisted AttendanceDate record for the given calendar date if already processed.
+
+        Args:
+            db: Database session.
+            visit_date: Calendar date to lookup.
+
+        Returns:
+            AttendanceDate | None: Persisted AttendanceDate model if found, None otherwise.
+        """
+        stmt = select(AttendanceDate).where(AttendanceDate.date == visit_date)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def is_date_processed(
         self,
         db: AsyncSession,

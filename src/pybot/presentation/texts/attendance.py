@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 
 from ...dto import (
+    AttendanceDraftDateBlockDTO,
     AttendanceDraftDTO,
     AttendanceDraftItemDTO,
     AttendanceMonthlyReportDTO,
@@ -68,9 +69,67 @@ def format_duration(minutes: int) -> str:
     return f"{rem_minutes} мин"
 
 
+def _format_ignored_date_block(block: AttendanceDraftDateBlockDTO) -> str:
+    """Format ignored date block reason."""
+    date_str = block.date.strftime("%d.%m.%Y")
+    if block.ignore_reason == "дата уже обработана":
+        import_part = f" (импорт #{block.processed_import_id})" if block.processed_import_id else ""
+        return f"  ⚠️ {date_str} уже учтена{import_part}. Строки за эту дату не будут сохранены.\n"
+    if block.ignore_reason == "будущая дата":
+        return "  ⚠️ <i>Дата пропущена (будущая дата)</i>\n"
+    reason = block.ignore_reason or "не учитывается"
+    return f"  ⚠️ <i>Дата пропущена ({html.escape(reason)})</i>\n"
+
+
+def _format_active_date_block(
+    block: AttendanceDraftDateBlockDTO,
+    start_counter: int,
+) -> tuple[list[str], int, int, int, int]:
+    """Format active date block rows and return counts (total, recognized, needs_review, minutes)."""
+    if not block.items:
+        return ["  <i>Нет распознанных строк</i>\n"], 0, 0, 0, 0
+
+    lines: list[str] = []
+    total = 0
+    recognized = 0
+    needs_review = 0
+    minutes = 0
+
+    for idx, item in enumerate(block.items, start=start_counter):
+        total += 1
+        if item.status == "recognized":
+            recognized += 1
+        else:
+            needs_review += 1
+
+        if not item.is_excluded:
+            minutes += item.duration_minutes
+
+        lines.append(_format_draft_item(item, idx))
+
+    lines.append("")
+    return lines, total, recognized, needs_review, minutes
+
+
 def format_draft_preview(draft: AttendanceDraftDTO) -> str:
     """Render structured preview of recognized attendance sheet draft."""
+    all_processed = bool(draft.dates) and all(
+        b.is_ignored and b.ignore_reason == "дата уже обработана" for b in draft.dates
+    )
+    if all_processed:
+        imports = [f"#{b.processed_import_id}" for b in draft.dates if b.processed_import_id]
+        import_part = f" (импорт {', '.join(dict.fromkeys(imports))})" if imports else ""
+        return (
+            f"📸 <b>Предпросмотр листа посещаемости</b> (черновик #{draft.draft_id})\n\n"
+            f"Все даты на фото уже учтены{import_part}. Сохранять нечего."
+        )
+
     lines: list[str] = [f"📸 <b>Предпросмотр листа посещаемости</b> (черновик #{draft.draft_id})\n"]
+
+    # Period warning if present
+    period_warnings = [b.period_warning for b in draft.dates if not b.is_ignored and b.period_warning]
+    for w in dict.fromkeys(period_warnings):
+        lines.append(f"⚠️ <i>{html.escape(w)}</i>\n")
 
     total_items = 0
     recognized_items = 0
@@ -83,28 +142,16 @@ def format_draft_preview(draft: AttendanceDraftDTO) -> str:
         lines.append(f"📅 <b>Дата: {date_str}</b>")
 
         if block.is_ignored:
-            reason = block.ignore_reason or "не учитывается"
-            lines.append(f"  ⚠️ <i>Дата пропущена ({html.escape(reason)})</i>\n")
+            lines.append(_format_ignored_date_block(block))
             continue
 
-        if not block.items:
-            lines.append("  <i>Нет распознанных строк</i>\n")
-            continue
-
-        for item in block.items:
-            total_items += 1
-            if item.status == "recognized":
-                recognized_items += 1
-            else:
-                needs_review_items += 1
-
-            if not item.is_excluded:
-                total_minutes += item.duration_minutes
-
-            lines.append(_format_draft_item(item, item_counter))
-            item_counter += 1
-
-        lines.append("")
+        block_lines, b_total, b_rec, b_review, b_min = _format_active_date_block(block, item_counter)
+        lines.extend(block_lines)
+        total_items += b_total
+        recognized_items += b_rec
+        needs_review_items += b_review
+        total_minutes += b_min
+        item_counter += len(block.items)
 
     lines.extend(_format_draft_summary(total_items, recognized_items, needs_review_items, total_minutes))
     return "\n".join(lines)
@@ -126,14 +173,11 @@ def _format_draft_item(item: AttendanceDraftItemDTO, counter: int) -> str:
     else:
         name_display = "❓ <i>[Имя не распознано]</i>"
 
-    if item.is_empty_time:
-        time_display = "время не указано"
-    elif item.start_time and item.end_time:
+    if item.start_time and item.end_time:
         time_display = f"{item.start_time.strftime('%H:%M')}–{item.end_time.strftime('%H:%M')}"
     else:
         time_display = "время не указано"
-
-    dur_str = format_duration(item.duration_minutes)
+    dur_str = format_duration(item.duration_minutes) if item.duration_minutes > 0 else "требует ввода времени"
     excluded_suffix = " <i>[исключено]</i>" if item.is_excluded else ""
     return f"  {counter}. {status_icon} {name_display}: {time_display} ({dur_str}){excluded_suffix}"
 

@@ -9,7 +9,7 @@ from dishka import make_async_container
 from pydantic import SecretStr
 
 from pybot.core.config import AppSettings
-from pybot.db.models import AttendanceImport, AttendanceImportStatus, AttendanceRecord, User
+from pybot.db.models import AttendanceDate, AttendanceImport, AttendanceImportStatus, AttendanceRecord, User
 from pybot.di import containers as di_containers
 from pybot.domain.exceptions import (
     AttendanceDomainError,
@@ -44,6 +44,7 @@ def mock_db() -> AsyncMock:
 def mock_attendance_repo() -> AsyncMock:
     repo = AsyncMock(spec=AttendanceRepository)
     repo.is_date_processed.return_value = False
+    repo.find_processed_date.return_value = None
     return repo
 
 
@@ -172,21 +173,14 @@ async def test_ingest_attendance_photo_happy_path(
     date_block = draft.dates[0]
     assert date_block.date == today
     assert date_block.is_ignored is False
-    assert len(date_block.items) == 2
+    assert len(date_block.items) == 1
 
     # Check item 1: Иванов Иван, 120 min duration, recognized
     item1 = date_block.items[0]
     assert item1.matched_user_id == 1
     assert item1.duration_minutes == 120
     assert item1.status == "recognized"
-
-    # Check item 2: Петров Петр, empty time, recognized
-    item2 = date_block.items[1]
-    assert item2.matched_user_id == 2
-    assert item2.is_empty_time is True
-    assert item2.duration_minutes == 0
-    assert item2.status == "recognized"
-
+    assert item1.is_empty_time is False
     # Verify stale drafts expired before draft creation
     mock_attendance_repo.expire_stale_drafts.assert_awaited_once()
     # Transactions committed (stale drafts expired + draft created)
@@ -547,7 +541,9 @@ async def test_ingest_photo_marks_out_of_month_and_already_processed(
             ),
         ],
     )
-    mock_attendance_repo.is_date_processed.side_effect = lambda _db, d: d == date(2026, 9, 15)
+    mock_attendance_repo.find_processed_date.side_effect = lambda _db, d: (
+        AttendanceDate(id=1, import_id=55, date=d) if d == date(2026, 9, 15) else None
+    )
     mock_attendance_repo.create_draft.return_value = AttendanceImport(id=99)
 
     draft = await service.ingest_attendance_photo(
@@ -558,11 +554,13 @@ async def test_ingest_photo_marks_out_of_month_and_already_processed(
 
     assert len(draft.dates) == 2
     b1, b2 = draft.dates
-    assert b1.is_ignored is True
-    assert b1.ignore_reason == "прошлый месяц"
+    assert b1.is_ignored is False
+    assert b1.period_warning is not None
+    assert "не текущий месяц" in b1.period_warning
 
     assert b2.is_ignored is True
     assert b2.ignore_reason == "дата уже обработана"
+    assert b2.processed_import_id == 55
 
 
 # ============ CONFIRM DRAFT TESTS ============

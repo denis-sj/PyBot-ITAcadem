@@ -425,6 +425,53 @@ async def test_handle_attendance_photo_success(
 
 
 @pytest.mark.asyncio
+async def test_handle_attendance_photo_all_dates_processed_shows_close_keyboard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    photo = [PhotoSize(file_id="f1", file_unique_id="u1", width=100, height=100)]
+    msg = _build_message(photo=photo)
+
+    status_msg = AsyncMock(spec=Message)
+    status_msg.delete = AsyncMock()
+    answer_mock = AsyncMock(return_value=status_msg)
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    bot = AsyncMock()
+    attendance_service = AsyncMock(spec=AttendanceService)
+    processed_draft = AttendanceDraftDTO(
+        draft_id=77,
+        author_tg_id=100,
+        created_at=datetime(2026, 9, 25, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[
+            AttendanceDraftDateBlockDTO(
+                date=date(2026, 9, 20),
+                is_ignored=True,
+                ignore_reason="дата уже обработана",
+                processed_import_id=12,
+                items=[],
+            )
+        ],
+        status="DRAFT",
+    )
+    attendance_service.ingest_attendance_photo.return_value = processed_draft
+
+    await handle_attendance_photo(msg, bot, attendance_service)
+
+    assert answer_mock.await_count == 2
+    final_call_args = answer_mock.call_args_list[1]
+    final_text = final_call_args[0][0]
+    assert "Все даты на фото уже учтены (импорт #12). Сохранять нечего." in final_text
+    keyboard = final_call_args[1].get("reply_markup") or final_call_args.kwargs.get("reply_markup")
+    assert keyboard is not None
+    buttons = [b for row in keyboard.inline_keyboard for b in row]
+    assert len(buttons) == 1
+    assert buttons[0].text == "✖ Закрыть"
+
+
+@pytest.mark.asyncio
 async def test_cb_confirm_draft() -> None:
     callback = _build_callback_mock()
     callback.from_user.id = 999
