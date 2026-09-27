@@ -10,6 +10,7 @@ from ....texts.attendance import (
     BTN_EDIT_USER,
     BTN_EXCLUDE,
 )
+from ...keyboards.navigation import get_close_button
 
 
 class AttendanceDraftCB(CallbackData, prefix="att_draft"):
@@ -70,7 +71,10 @@ def get_report_keyboard() -> InlineKeyboardMarkup:
                 text="📋 Подробный отчёт",
                 callback_data=AttendanceReportCB(mode="detailed").pack(),
             ),
-        ]
+        ],
+        [
+            get_close_button(),
+        ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

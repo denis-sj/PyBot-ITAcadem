@@ -17,7 +17,7 @@ BTN_EDIT_TIME = "✏️ Изменить время"
 BTN_EDIT_USER = "👤 Назначить участника"
 BTN_EXCLUDE = "🗑 Исключить строку"
 BTN_CANCEL = "❌ Отменить импорт"
-
+BTN_CLOSE = "✖ Закрыть"
 MONTH_NAMES_RU: dict[int, str] = {
     1: "январь",
     2: "февраль",

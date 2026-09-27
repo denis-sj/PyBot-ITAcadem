@@ -27,7 +27,11 @@ from pybot.presentation.bot.handlers.attendance.admin_commands import (
     cmd_current_month,
     cmd_report_menu,
 )
-from pybot.presentation.bot.handlers.attendance.keyboards import AttendanceDraftCB, AttendanceReportCB
+from pybot.presentation.bot.handlers.attendance.keyboards import (
+    AttendanceDraftCB,
+    AttendanceReportCB,
+    get_report_keyboard,
+)
 from pybot.presentation.bot.handlers.attendance.photo_import import (
     cb_cancel_draft,
     cb_cancel_fsm,
@@ -294,6 +298,10 @@ async def test_cmd_report_menu(monkeypatch: pytest.MonkeyPatch) -> None:
 
     answer_mock.assert_awaited_once()
     assert "Отчёты по посещаемости" in answer_mock.call_args[0][0]
+    reply_markup = answer_mock.call_args.kwargs.get("reply_markup")
+    assert reply_markup is not None
+    all_buttons = [b for row in reply_markup.inline_keyboard for b in row]
+    assert any(b.text == "✖ Закрыть" for b in all_buttons)
 
 
 @pytest.mark.asyncio
@@ -323,6 +331,12 @@ async def test_cb_generate_report_sends_html(monkeypatch: pytest.MonkeyPatch) ->
     call = edit_text_mock.await_args
     assert call is not None
     assert call.kwargs["parse_mode"] == ParseMode.HTML
+
+
+def test_get_report_keyboard_contains_close_button() -> None:
+    kb = get_report_keyboard()
+    all_buttons = [b for row in kb.inline_keyboard for b in row]
+    assert any(b.text == "✖ Закрыть" for b in all_buttons)
 
 
 @pytest.mark.asyncio

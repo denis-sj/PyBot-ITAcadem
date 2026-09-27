@@ -37,7 +37,7 @@ BUTTON_FINISH_REGISTRATION = "Завершить регистрацию"
 BUTTON_SEND_CONTACT = "Поделиться номером"
 BUTTON_APPROVE = "Одобрить"
 BUTTON_REJECT = "Отклонить"
-
+BUTTON_CLOSE = "✖ Закрыть"
 HELP_PRIVATE = textwrap.dedent(
     f"""
     Доступные команды в личном чате:
@@ -373,6 +373,11 @@ def button_back() -> str:
 def button_skip() -> str:
     """Возвращает текст кнопки."""
     return BUTTON_SKIP
+
+
+def button_close() -> str:
+    """Возвращает текст кнопки закрытия."""
+    return BUTTON_CLOSE
 
 
 def registration_existing_profile(_user_id: int) -> str:
