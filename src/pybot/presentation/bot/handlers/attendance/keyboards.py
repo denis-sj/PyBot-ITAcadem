@@ -274,7 +274,7 @@ def get_edit_visits_user_keyboard(
         [
             InlineKeyboardButton(
                 text=BTN_ADD_VISIT,
-                callback_data=EditVisitsCB(action="action", user_id=user_id, target="add_visit").pack(),
+                callback_data=EditVisitsCB(action="start_manual", user_id=user_id).pack(),
             )
         ]
     )
@@ -352,23 +352,21 @@ def get_edit_visits_record_keyboard(
             InlineKeyboardButton(
                 text=BTN_EDIT_VISIT_TIME,
                 callback_data=EditVisitsCB(
-                    action="action",
+                    action="start_edit_time",
                     user_id=user_id,
                     year=year,
                     month=month,
                     record_id=record.id,
-                    target="edit_time",
                 ).pack(),
             ),
             InlineKeyboardButton(
                 text=BTN_DELETE_VISIT,
                 callback_data=EditVisitsCB(
-                    action="action",
+                    action="prompt_delete",
                     user_id=user_id,
                     year=year,
                     month=month,
                     record_id=record.id,
-                    target="delete",
                 ).pack(),
             ),
         ]
@@ -383,3 +381,125 @@ def get_edit_visits_record_keyboard(
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+
+def get_edit_visits_cancel_keyboard(
+    action: str,
+    user_id: int,
+    year: int = 0,
+    month: int = 0,
+    record_id: int = 0,
+) -> InlineKeyboardMarkup:
+    """Generate a single cancel button returning to the previous screen."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="← Отмена",
+                    callback_data=EditVisitsCB(
+                        action=action,
+                        user_id=user_id,
+                        year=year,
+                        month=month,
+                        record_id=record_id,
+                    ).pack(),
+                )
+            ]
+        ]
+    )
+
+
+def get_edit_visits_confirm_time_keyboard(
+    user_id: int,
+    year: int,
+    month: int,
+    record_id: int,
+) -> InlineKeyboardMarkup:
+    """Generate keyboard with Save and Cancel buttons for time modification."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Сохранить",
+                    callback_data=EditVisitsCB(
+                        action="save_time",
+                        user_id=user_id,
+                        year=year,
+                        month=month,
+                        record_id=record_id,
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="← Отмена",
+                    callback_data=EditVisitsCB(
+                        action="record",
+                        user_id=user_id,
+                        year=year,
+                        month=month,
+                        record_id=record_id,
+                    ).pack(),
+                ),
+            ]
+        ]
+    )
+
+
+def get_edit_visits_confirm_delete_keyboard(
+    user_id: int,
+    year: int,
+    month: int,
+    record_id: int,
+) -> InlineKeyboardMarkup:
+    """Generate keyboard with Delete and Cancel buttons for visit deletion."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🗑 Удалить",
+                    callback_data=EditVisitsCB(
+                        action="confirm_delete",
+                        user_id=user_id,
+                        year=year,
+                        month=month,
+                        record_id=record_id,
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="← Отмена",
+                    callback_data=EditVisitsCB(
+                        action="record",
+                        user_id=user_id,
+                        year=year,
+                        month=month,
+                        record_id=record_id,
+                    ).pack(),
+                ),
+            ]
+        ]
+    )
+
+
+def get_edit_visits_confirm_manual_keyboard(
+    user_id: int,
+) -> InlineKeyboardMarkup:
+    """Generate keyboard with Add and Cancel buttons for manual visit addition."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Добавить",
+                    callback_data=EditVisitsCB(
+                        action="save_manual",
+                        user_id=user_id,
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text="← Отмена",
+                    callback_data=EditVisitsCB(
+                        action="user",
+                        user_id=user_id,
+                    ).pack(),
+                ),
+            ]
+        ]
+    )

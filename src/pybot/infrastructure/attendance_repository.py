@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..db.models import (
+    AttendanceChangeHistory,
     AttendanceDate,
     AttendanceImport,
     AttendanceImportStatus,
@@ -543,3 +544,135 @@ class AttendanceRepository:
         return (row[0], row[1])
 
     get_import_photo = find_import_photo
+
+    async def has_user_visit_on_date(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+    ) -> bool:
+        """Check if user already has a visit recorded on the given date.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+            visit_date: Calendar date to check.
+
+        Returns:
+            bool: True if user has visit on date with duration > 0.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(AttendanceRecord)
+            .where(
+                AttendanceRecord.user_id == user_id,
+                AttendanceRecord.date == visit_date,
+                AttendanceRecord.duration_minutes > 0,
+            )
+        )
+        count = await db.scalar(stmt)
+        return bool(count and count > 0)
+
+    async def create_manual_record(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+        start_time: dt.time,
+        end_time: dt.time,
+        duration_minutes: int,
+    ) -> AttendanceRecord:
+        """Create and persist a manual attendance record."""
+        record = AttendanceRecord(
+            import_id=None,
+            attendance_date_id=None,
+            user_id=user_id,
+            date=visit_date,
+            start_time=start_time,
+            end_time=end_time,
+            duration_minutes=duration_minutes,
+            is_empty_time=False,
+            source="manual",
+        )
+        db.add(record)
+        await db.flush()
+        return record
+
+    async def update_record_time(
+        self,
+        db: AsyncSession,
+        record_id: int,
+        start_time: dt.time,
+        end_time: dt.time,
+        duration_minutes: int,
+    ) -> AttendanceRecord | None:
+        """Update start_time, end_time, duration of an AttendanceRecord."""
+        record = await self.find_record_by_id(db, record_id)
+        if record is None:
+            return None
+        record.start_time = start_time
+        record.end_time = end_time
+        record.duration_minutes = duration_minutes
+        record.is_empty_time = False
+        await db.flush()
+        return record
+
+    async def delete_record(
+        self,
+        db: AsyncSession,
+        record_id: int,
+    ) -> AttendanceRecord | None:
+        """Delete an AttendanceRecord by primary key."""
+        record = await self.find_record_by_id(db, record_id)
+        if record is None:
+            return None
+        await db.delete(record)
+        await db.flush()
+        return record
+
+    async def add_change_history(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        user_id: int,
+        record_id: int | None,
+        visit_date: dt.date,
+        action: str,
+        old_value: str | None,
+        new_value: str | None,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> AttendanceChangeHistory:
+        """Record an entry in the attendance change history audit log."""
+        history = AttendanceChangeHistory(
+            user_id=user_id,
+            record_id=record_id,
+            visit_date=visit_date,
+            action=action,
+            old_value=old_value,
+            new_value=new_value,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+        db.add(history)
+        await db.flush()
+        return history
+
+    async def get_recent_change_history(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+        limit: int = 3,
+    ) -> list[AttendanceChangeHistory]:
+        """Get most recent change history records for a user on a given date."""
+        stmt = (
+            select(AttendanceChangeHistory)
+            .where(
+                AttendanceChangeHistory.user_id == user_id,
+                AttendanceChangeHistory.visit_date == visit_date,
+            )
+            .order_by(AttendanceChangeHistory.created_at.desc(), AttendanceChangeHistory.id.desc())
+            .limit(limit)
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())

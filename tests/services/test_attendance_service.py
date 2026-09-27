@@ -9,7 +9,14 @@ from dishka import make_async_container
 from pydantic import SecretStr
 
 from pybot.core.config import AppSettings
-from pybot.db.models import AttendanceDate, AttendanceImport, AttendanceImportStatus, AttendanceRecord, User
+from pybot.db.models import (
+    AttendanceChangeHistory,
+    AttendanceDate,
+    AttendanceImport,
+    AttendanceImportStatus,
+    AttendanceRecord,
+    User,
+)
 from pybot.di import containers as di_containers
 from pybot.domain.exceptions import (
     AttendanceDomainError,
@@ -1042,6 +1049,227 @@ async def test_get_import_photo_with_access_photo_not_found(
             requester_tg_id=456,
             is_admin=False,
         )
+
+
+@pytest.mark.asyncio
+async def test_edit_visit_time_success(
+    service: AttendanceService,
+    mock_db: AsyncMock,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_notification_service: AsyncMock,
+) -> None:
+    user = User(id=1, telegram_id=111, first_name="Иван")
+    rec = AttendanceRecord(
+        id=10,
+        import_id=5,
+        user_id=1,
+        date=date(2026, 9, 20),
+        start_time=time(12, 0),
+        end_time=time(14, 0),
+        duration_minutes=120,
+        user=user,
+    )
+    mock_attendance_repo.find_record_by_id.return_value = rec
+    updated_rec = AttendanceRecord(
+        id=10,
+        import_id=5,
+        user_id=1,
+        date=date(2026, 9, 20),
+        start_time=time(12, 30),
+        end_time=time(15, 0),
+        duration_minutes=150,
+        user=user,
+    )
+    mock_attendance_repo.update_record_time.return_value = updated_rec
+    mock_user_repo.find_user_by_id.return_value = user
+
+    result = await service.edit_visit_time(
+        record_id=10,
+        new_start_time=time(12, 30),
+        new_end_time=time(15, 0),
+        admin_tg_id=999,
+        admin_name="Админ",
+    )
+
+    assert result.duration_minutes == 150
+    mock_attendance_repo.update_record_time.assert_awaited_once_with(
+        db=mock_db,
+        record_id=10,
+        start_time=time(12, 30),
+        end_time=time(15, 0),
+        duration_minutes=150,
+    )
+    mock_attendance_repo.add_change_history.assert_awaited_once()
+    history_kwargs = mock_attendance_repo.add_change_history.call_args[1]
+    assert history_kwargs["action"] == "edit_time"
+    assert history_kwargs["old_value"] == "12:00–14:00"
+    assert history_kwargs["new_value"] == "12:30–15:00"
+    mock_db.commit.assert_awaited_once()
+
+    # Notification sent
+    mock_notification_service.send_attendance_notification.assert_awaited_once()
+    notify_kwargs = mock_notification_service.send_attendance_notification.call_args[1]
+    assert notify_kwargs["recipient_tg_id"] == 111
+    assert notify_kwargs["import_id"] == 5
+    assert "12:00–14:00 → 12:30–15:00" in notify_kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_edit_visit_time_same_time_raises(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    rec = AttendanceRecord(
+        id=10,
+        import_id=5,
+        user_id=1,
+        date=date(2026, 9, 20),
+        start_time=time(12, 0),
+        end_time=time(14, 0),
+        duration_minutes=120,
+    )
+    mock_attendance_repo.find_record_by_id.return_value = rec
+
+    with pytest.raises(AttendanceDomainError, match="Новое время совпадает с текущим"):
+        await service.edit_visit_time(
+            record_id=10,
+            new_start_time=time(12, 0),
+            new_end_time=time(14, 0),
+            admin_tg_id=999,
+            admin_name="Админ",
+        )
+
+
+@pytest.mark.asyncio
+async def test_delete_visit_success(
+    service: AttendanceService,
+    mock_db: AsyncMock,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_notification_service: AsyncMock,
+) -> None:
+    user = User(id=1, telegram_id=222, first_name="Иван")
+    rec = AttendanceRecord(
+        id=10,
+        import_id=5,
+        user_id=1,
+        date=date(2026, 9, 20),
+        start_time=time(12, 0),
+        end_time=time(14, 0),
+        duration_minutes=120,
+    )
+    mock_attendance_repo.find_record_by_id.return_value = rec
+    mock_user_repo.find_user_by_id.return_value = user
+
+    uid, v_date, old_str = await service.delete_visit(
+        record_id=10,
+        admin_tg_id=999,
+        admin_name="Админ",
+    )
+
+    assert uid == 1
+    assert v_date == date(2026, 9, 20)
+    assert old_str == "12:00–14:00"
+    mock_attendance_repo.delete_record.assert_awaited_once_with(mock_db, 10)
+    mock_attendance_repo.add_change_history.assert_awaited_once()
+    assert mock_attendance_repo.add_change_history.call_args[1]["action"] == "delete"
+    mock_db.commit.assert_awaited_once()
+
+    # Notification sent (without import button)
+    mock_notification_service.send_attendance_notification.assert_awaited_once()
+    notify_kwargs = mock_notification_service.send_attendance_notification.call_args[1]
+    assert notify_kwargs["recipient_tg_id"] == 222
+    assert notify_kwargs["import_id"] is None
+    assert "удалено" in notify_kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_create_manual_visit_success(
+    service: AttendanceService,
+    mock_db: AsyncMock,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_notification_service: AsyncMock,
+) -> None:
+    user = User(id=1, telegram_id=333, first_name="Иван")
+    mock_user_repo.find_user_by_id.return_value = user
+    mock_attendance_repo.has_user_visit_on_date.return_value = False
+    created_rec = AttendanceRecord(
+        id=50,
+        user_id=1,
+        date=date(2026, 9, 10),
+        start_time=time(18, 0),
+        end_time=time(20, 0),
+        duration_minutes=120,
+        source="manual",
+    )
+    mock_attendance_repo.create_manual_record.return_value = created_rec
+
+    result = await service.create_manual_visit(
+        user_id=1,
+        visit_date=date(2026, 9, 10),
+        start_time=time(18, 0),
+        end_time=time(20, 0),
+        admin_tg_id=999,
+        admin_name="Админ",
+    )
+
+    assert result.source == "manual"
+    mock_attendance_repo.create_manual_record.assert_awaited_once()
+    mock_attendance_repo.add_change_history.assert_awaited_once()
+    assert mock_attendance_repo.add_change_history.call_args[1]["action"] == "manual_add"
+    mock_db.commit.assert_awaited_once()
+
+    # Notification sent
+    mock_notification_service.send_attendance_notification.assert_awaited_once()
+    notify_kwargs = mock_notification_service.send_attendance_notification.call_args[1]
+    assert notify_kwargs["recipient_tg_id"] == 333
+    assert "Добавлено посещение" in notify_kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_create_manual_visit_duplicate_date_raises(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    user = User(id=1, telegram_id=333, first_name="Иван")
+    mock_user_repo.find_user_by_id.return_value = user
+    mock_attendance_repo.has_user_visit_on_date.return_value = True
+
+    with pytest.raises(AttendanceDomainError, match="уже есть посещение"):
+        await service.create_manual_visit(
+            user_id=1,
+            visit_date=date(2026, 9, 10),
+            start_time=time(18, 0),
+            end_time=time(20, 0),
+            admin_tg_id=999,
+            admin_name="Админ",
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_record_change_history(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.get_recent_change_history.return_value = [
+        AttendanceChangeHistory(
+            id=1,
+            user_id=1,
+            record_id=10,
+            visit_date=date(2026, 9, 20),
+            action="edit_time",
+            old_value="12:00-14:00",
+            new_value="12:30-15:00",
+            admin_tg_id=999,
+            admin_name="Админ",
+        )
+    ]
+    history = await service.get_record_change_history(user_id=1, visit_date=date(2026, 9, 20))
+    assert len(history) == 1
+    assert history[0].action == "edit_time"
 
 
 # ============ MONTHLY REPORTS & STATS TESTS ============

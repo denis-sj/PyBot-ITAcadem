@@ -409,7 +409,7 @@ def format_edit_visits_dates_screen(user: Any, year: int, month: int) -> str:
     return f"👤 <b>{short_name} · {month_name} {year}</b>\n\nВыберите дату посещения:"
 
 
-def format_edit_visits_record_card(user: Any, record: Any) -> str:
+def format_edit_visits_record_card(user: Any, record: Any, history: Sequence[Any] = ()) -> str:
     """Format Screen 4: single visit details card."""
     short_name = html.escape(format_user_short_name(user))
     date_str = record.date.strftime("%d.%m.%Y")
@@ -426,4 +426,18 @@ def format_edit_visits_record_card(user: Any, record: Any) -> str:
         f"Время: <b>{time_part}</b> ({dur_str})",
         f"Источник: {source_part}",
     ]
+
+    if history:
+        lines.append("\n<b>История изменений:</b>")
+        for h in history:
+            created_str = h.created_at.strftime("%d.%m.%Y %H:%M")
+            admin_name = html.escape(h.admin_name)
+            if h.action == "edit_time":
+                old_val = f" (было {html.escape(h.old_value)})" if h.old_value else ""
+                lines.append(f"• Изменено {created_str}, админ {admin_name}{old_val}")
+            elif h.action == "manual_add":
+                lines.append(f"• Добавлено вручную {created_str}, админ {admin_name}")
+            elif h.action == "delete":
+                lines.append(f"• Удалено {created_str}, админ {admin_name}")
+
     return "\n".join(lines)

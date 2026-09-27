@@ -17,3 +17,6 @@ class EditVisitsSG(StatesGroup):
     """FSM states for /edit_visits administrator scenario."""
 
     waiting_for_user_number = State()
+    waiting_for_edit_time = State()
+    waiting_for_manual_date = State()
+    waiting_for_manual_time = State()

@@ -15,7 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import logger
 from ..core.config import AppSettings
-from ..db.models import AttendanceImport, AttendanceImportStatus, AttendanceRecord, User
+from ..db.models import (
+    AttendanceChangeHistory,
+    AttendanceImport,
+    AttendanceImportStatus,
+    AttendanceRecord,
+    User,
+)
 from ..domain.exceptions import (
     AttendanceDomainError,
     AttendanceDraftExpiredError,
@@ -549,6 +555,225 @@ class AttendanceService:
     async def get_attendance_record(self, record_id: int) -> AttendanceRecord | None:
         """Find single attendance record by primary key."""
         return await self._attendance_repo.find_record_by_id(self._db, record_id)
+
+    async def get_record_change_history(
+        self,
+        user_id: int,
+        visit_date: date,
+        limit: int = 3,
+    ) -> list[AttendanceChangeHistory]:
+        """Get recent change history for a user visit date."""
+        return await self._attendance_repo.get_recent_change_history(
+            self._db,
+            user_id=user_id,
+            visit_date=visit_date,
+            limit=limit,
+        )
+
+    async def edit_visit_time(
+        self,
+        record_id: int,
+        new_start_time: time,
+        new_end_time: time,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> AttendanceRecord:
+        """Edit time range of an existing attendance record, recording audit history and notifying user."""
+        record = await self.get_attendance_record(record_id)
+        if record is None:
+            raise AttendanceDomainError("Запись посещения не найдена")
+
+        duration_minutes = calculate_duration_minutes(new_start_time, new_end_time)
+        if duration_minutes <= 0 or new_end_time <= new_start_time:
+            raise AttendanceDomainError("Время окончания должно быть позже начала.")
+
+        if record.start_time == new_start_time and record.end_time == new_end_time:
+            raise AttendanceDomainError("Новое время совпадает с текущим")
+
+        old_str = (
+            f"{record.start_time.strftime('%H:%M')}–{record.end_time.strftime('%H:%M')}"
+            if record.start_time and record.end_time
+            else "без времени"
+        )
+        new_str = f"{new_start_time.strftime('%H:%M')}–{new_end_time.strftime('%H:%M')}"
+
+        updated_record = await self._attendance_repo.update_record_time(
+            db=self._db,
+            record_id=record_id,
+            start_time=new_start_time,
+            end_time=new_end_time,
+            duration_minutes=duration_minutes,
+        )
+        if updated_record is None:
+            raise AttendanceDomainError("Не удалось обновить время посещения")
+
+        await self._attendance_repo.add_change_history(
+            db=self._db,
+            user_id=record.user_id,
+            record_id=record.id,
+            visit_date=record.date,
+            action="edit_time",
+            old_value=old_str,
+            new_value=new_str,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+
+        await self._db.commit()
+
+        # Notification (Section 3.2)
+        if self._notification_service:
+            try:
+                user = await self._user_repo.find_user_by_id(self._db, record.user_id)
+                if user and user.telegram_id:
+                    d_str = record.date.strftime("%d.%m.%Y")
+                    notify_text = f"✏️ Посещение {d_str} изменено: {old_str} → {new_str}"
+                    await self._notification_service.send_attendance_notification(
+                        recipient_tg_id=user.telegram_id,
+                        text=notify_text,
+                        import_id=record.import_id,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver edit_time notification | record_id={record_id} error={error}",
+                    record_id=record_id,
+                    error=str(exc),
+                )
+
+        return updated_record
+
+    async def delete_visit(
+        self,
+        record_id: int,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> tuple[int, date, str]:
+        """Delete an existing attendance record, recording audit history and notifying user.
+
+        Returns:
+            tuple[int, date, str]: (user_id, visit_date, old_time_str).
+        """
+        record = await self.get_attendance_record(record_id)
+        if record is None:
+            raise AttendanceDomainError("Запись посещения не найдена")
+
+        old_str = (
+            f"{record.start_time.strftime('%H:%M')}–{record.end_time.strftime('%H:%M')}"
+            if record.start_time and record.end_time
+            else "без времени"
+        )
+        user_id = record.user_id
+        visit_date = record.date
+
+        await self._attendance_repo.add_change_history(
+            db=self._db,
+            user_id=user_id,
+            record_id=record_id,
+            visit_date=visit_date,
+            action="delete",
+            old_value=old_str,
+            new_value=None,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+
+        await self._attendance_repo.delete_record(self._db, record_id)
+        await self._db.commit()
+
+        # Notification (Section 3.2)
+        if self._notification_service:
+            try:
+                user = await self._user_repo.find_user_by_id(self._db, user_id)
+                if user and user.telegram_id:
+                    d_str = visit_date.strftime("%d.%m.%Y")
+                    notify_text = f"🗑 Посещение {d_str} ({old_str}) удалено"
+                    await self._notification_service.send_attendance_notification(
+                        recipient_tg_id=user.telegram_id,
+                        text=notify_text,
+                        import_id=None,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver delete notification | record_id={record_id} error={error}",
+                    record_id=record_id,
+                    error=str(exc),
+                )
+
+        return user_id, visit_date, old_str
+
+    async def create_manual_visit(  # noqa: PLR0913
+        self,
+        user_id: int,
+        visit_date: date,
+        start_time: time,
+        end_time: time,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> AttendanceRecord:
+        """Create a manual attendance record with date/time validation, history logging, and user notification."""
+        user = await self._user_repo.find_user_by_id(self._db, user_id)
+        if user is None:
+            raise AttendanceDomainError("Участник не найден")
+
+        # Date validation: cannot be in the future
+        tz = ZoneInfo(str(self._settings.attendance_timezone))
+        today = datetime.now(tz).date()
+        if visit_date > today:
+            raise AttendanceDomainError("Нельзя добавить посещение в будущую дату.")
+
+        # Check user doesn't already have visit on that date
+        has_visit = await self._attendance_repo.has_user_visit_on_date(self._db, user_id, visit_date)
+        if has_visit:
+            raise AttendanceDomainError(f"У участника уже есть посещение на дату {visit_date.strftime('%d.%m.%Y')}.")
+
+        duration_minutes = calculate_duration_minutes(start_time, end_time)
+        if duration_minutes <= 0 or end_time <= start_time:
+            raise AttendanceDomainError("Время окончания должно быть позже начала.")
+
+        time_str = f"{start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')}"
+
+        record = await self._attendance_repo.create_manual_record(
+            db=self._db,
+            user_id=user_id,
+            visit_date=visit_date,
+            start_time=start_time,
+            end_time=end_time,
+            duration_minutes=duration_minutes,
+        )
+
+        await self._attendance_repo.add_change_history(
+            db=self._db,
+            user_id=user_id,
+            record_id=record.id,
+            visit_date=visit_date,
+            action="manual_add",
+            old_value=None,
+            new_value=time_str,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+
+        await self._db.commit()
+
+        # Notification (Section 3.2)
+        if self._notification_service:
+            try:
+                if user.telegram_id:
+                    d_str = visit_date.strftime("%d.%m.%Y")
+                    notify_text = f"✅ Добавлено посещение {d_str}: {time_str}"
+                    await self._notification_service.send_attendance_notification(
+                        recipient_tg_id=user.telegram_id,
+                        text=notify_text,
+                        import_id=None,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver manual_add notification | user_id={user_id} error={error}",
+                    user_id=user_id,
+                    error=str(exc),
+                )
+
+        return record
 
     async def get_user_monthly_visits(
         self,
