@@ -11,3 +11,9 @@ class AttendanceEditSG(StatesGroup):
     waiting_for_row_selection_user = State()
     waiting_for_user_selection = State()
     waiting_for_row_selection_exclude = State()
+
+
+class EditVisitsSG(StatesGroup):
+    """FSM states for /edit_visits administrator scenario."""
+
+    waiting_for_user_number = State()

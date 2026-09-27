@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import logger
 from ..core.config import AppSettings
-from ..db.models import AttendanceImport, AttendanceImportStatus, User
+from ..db.models import AttendanceImport, AttendanceImportStatus, AttendanceRecord, User
 from ..domain.exceptions import (
     AttendanceDomainError,
     AttendanceDraftExpiredError,
@@ -528,6 +528,27 @@ class AttendanceService:
             list[tuple[int, int]]: Ordered list of (year, month) tuples.
         """
         return await self._attendance_repo.find_user_visit_months(self._db, user_id)
+
+    async def get_sorted_participants(self) -> list[User]:
+        """Return all registered participants sorted alphabetically by last name, first name, patronymic."""
+        users = await self._user_repo.find_all_users(self._db)
+        return sorted(
+            users,
+            key=lambda u: (
+                (u.last_name or "").lower(),
+                (u.first_name or "").lower(),
+                (u.patronymic or "").lower(),
+                u.id,
+            ),
+        )
+
+    async def get_user_by_id(self, user_id: int) -> User | None:
+        """Find user by primary key."""
+        return await self._user_repo.find_user_by_id(self._db, user_id)
+
+    async def get_attendance_record(self, record_id: int) -> AttendanceRecord | None:
+        """Find single attendance record by primary key."""
+        return await self._attendance_repo.find_record_by_id(self._db, record_id)
 
     async def get_user_monthly_visits(
         self,

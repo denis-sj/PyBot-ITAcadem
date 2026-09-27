@@ -14,10 +14,16 @@ from pybot.dto import (
 from pybot.presentation.texts.attendance import (
     format_draft_preview,
     format_duration,
+    format_edit_visits_dates_screen,
+    format_edit_visits_record_card,
+    format_edit_visits_user_screen,
+    format_edit_visits_users_list,
     format_import_notification,
     format_monthly_report,
     format_my_visits_month_report,
+    format_user_full_name,
     format_user_rank,
+    format_user_short_name,
     format_user_summary,
     format_user_visits,
 )
@@ -414,3 +420,84 @@ def test_format_my_visits_month_report() -> None:
     assert "23.06 — 12:25–17:05 (4 ч 40 мин) · импорт #123" in text
     assert "24.06 — 14:25–16:30 (2 ч 05 мин) · импорт #123 · время изменено администратором" in text
     assert "25.06 — 10:00–11:00 (1 ч) · добавлено вручную" in text
+
+
+def test_format_user_name_helpers() -> None:
+    class DummyUser1:
+        last_name = "Иванов"
+        first_name = "Иван"
+        patronymic = "Иванович"
+
+    u1 = DummyUser1()
+    assert format_user_full_name(u1) == "Иванов Иван Иванович"
+    assert format_user_short_name(u1) == "Иванов И. И."
+
+    class DummyUser2:
+        last_name = "Петров"
+        first_name = "Петр"
+        patronymic = None
+
+    u2 = DummyUser2()
+    assert format_user_full_name(u2) == "Петров Петр"
+    assert format_user_short_name(u2) == "Петров П."
+
+
+def test_format_edit_visits_users_list() -> None:
+    class DummyUser:
+        def __init__(self, last: str, first: str, patr: str | None = None) -> None:
+            self.last_name = last
+            self.first_name = first
+            self.patronymic = patr
+
+    users = [DummyUser("Иванов", "Иван", "Иванович"), DummyUser("Петров", "Петр")]
+    rendered = format_edit_visits_users_list(users, page=0, page_size=40)
+    assert "<blockquote expandable>" in rendered
+    assert "1. Иванов Иван Иванович" in rendered
+    assert "2. Петров Петр" in rendered
+    assert "Введите номер участника." in rendered
+
+
+def test_format_edit_visits_user_screen() -> None:
+    class DummyUser:
+        last_name = "Иванов"
+        first_name = "Иван"
+        patronymic = "Иванович"
+
+    user = DummyUser()
+    with_visits = format_edit_visits_user_screen(user, has_visits=True)
+    assert "👤 <b>Иванов Иван Иванович</b>" in with_visits
+    assert "Выберите месяц или добавьте посещение:" in with_visits
+
+    no_visits = format_edit_visits_user_screen(user, has_visits=False)
+    assert "👤 <b>Иванов Иван Иванович</b>" in no_visits
+    assert "У участника пока нет посещений." in no_visits
+
+
+def test_format_edit_visits_dates_screen() -> None:
+    class DummyUser:
+        last_name = "Иванов"
+        first_name = "Иван"
+        patronymic = "Иванович"
+
+    rendered = format_edit_visits_dates_screen(DummyUser(), year=2026, month=9)
+    assert "👤 <b>Иванов И. И. · Сентябрь 2026</b>" in rendered
+    assert "Выберите дату посещения:" in rendered
+
+
+def test_format_edit_visits_record_card() -> None:
+    class DummyUser:
+        last_name = "Иванов"
+        first_name = "Иван"
+        patronymic = "Иванович"
+
+    class DummyRecord:
+        date = date(2026, 9, 25)
+        start_time = time(18, 0)
+        end_time = time(20, 0)
+        duration_minutes = 120
+        import_id = 42
+
+    rendered = format_edit_visits_record_card(DummyUser(), DummyRecord())
+    assert "👤 <b>Иванов И. И. · 25.09.2026</b>" in rendered
+    assert "Время: <b>18:00–20:00</b> (2 ч)" in rendered
+    assert "Источник: импорт #42" in rendered

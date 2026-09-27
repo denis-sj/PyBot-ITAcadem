@@ -496,6 +496,28 @@ class AttendanceRepository:
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    async def find_record_by_id(
+        self,
+        db: AsyncSession,
+        record_id: int,
+    ) -> AttendanceRecord | None:
+        """Find an AttendanceRecord by primary key with user loaded.
+
+        Args:
+            db: Database session.
+            record_id: Primary key of AttendanceRecord.
+
+        Returns:
+            AttendanceRecord | None: Loaded model or None.
+        """
+        stmt = (
+            select(AttendanceRecord)
+            .options(selectinload(AttendanceRecord.user))
+            .where(AttendanceRecord.id == record_id)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def find_import_photo(
         self,
         db: AsyncSession,

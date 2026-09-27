@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 from collections.abc import Sequence
 from datetime import date, time
+from typing import Any
 
 from ...dto import (
     AttendanceDraftDateBlockDTO,
@@ -22,6 +23,11 @@ BTN_EXCLUDE = "🗑 Исключить строку"
 BTN_CANCEL = "❌ Отменить импорт"
 BTN_CLOSE = "✖ Закрыть"
 BTN_TO_MONTHS = "← К месяцам"
+BTN_TO_USERS = "← К списку участников"
+BTN_ADD_VISIT = "➕ Добавить посещение"
+BTN_TO_DATES = "← К датам"
+BTN_EDIT_VISIT_TIME = "🕒 Изменить время"
+BTN_DELETE_VISIT = "🗑 Удалить"
 MY_VISITS_CHOOSE_MONTH = "📅 <b>Ваши посещения</b>\n\nВыберите месяц:"
 MY_VISITS_NO_VISITS = "У вас пока нет подтверждённых посещений."
 MONTH_NAMES_RU: dict[int, str] = {
@@ -354,4 +360,70 @@ def format_my_visits_month_report(
         mod_part = " · время изменено администратором" if getattr(v, "is_time_modified", False) else ""
         lines.append(f"{d_str} — {time_part} ({dur_part}) · {source_part}{mod_part}")
 
+    return "\n".join(lines)
+
+
+def format_user_full_name(user: Any) -> str:
+    """Format full name as 'Фамилия Имя Отчество'."""
+    parts = [getattr(user, "last_name", None), getattr(user, "first_name", None), getattr(user, "patronymic", None)]
+    return " ".join(p.strip() for p in parts if p and p.strip())
+
+
+def format_user_short_name(user: Any) -> str:
+    """Format user name as 'Фамилия И. О.' or 'Фамилия И.' if no patronymic."""
+    last = getattr(user, "last_name", None) or ""
+    first = getattr(user, "first_name", None) or ""
+    patr = getattr(user, "patronymic", None) or ""
+    f_init = f"{first[0]}." if first else ""
+    p_init = f" {patr[0]}." if patr else ""
+    full_init = f"{f_init}{p_init}".strip()
+    return f"{last} {full_init}".strip() if full_init else last
+
+
+def format_edit_visits_users_list(users: Sequence[Any], page: int = 0, page_size: int = 40) -> str:
+    """Format Screen 1: quote-wrapped list of all registered participants with 1-based indexing."""
+    start = page * page_size
+    page_users = users[start : start + page_size]
+
+    lines = ["<blockquote expandable>"]
+    for idx, u in enumerate(page_users, start=start + 1):
+        name = format_user_full_name(u)
+        lines.append(f"{idx}. {html.escape(name)}")
+    lines.append("</blockquote>")
+    lines.append("\nВведите номер участника.")
+    return "\n".join(lines)
+
+
+def format_edit_visits_user_screen(user: Any, has_visits: bool) -> str:
+    """Format Screen 2: participant card with month selection or no-visits notice."""
+    full_name = html.escape(format_user_full_name(user))
+    if not has_visits:
+        return f"👤 <b>{full_name}</b>\n\nУ участника пока нет посещений."
+    return f"👤 <b>{full_name}</b>\n\nВыберите месяц или добавьте посещение:"
+
+
+def format_edit_visits_dates_screen(user: Any, year: int, month: int) -> str:
+    """Format Screen 3: header for choosing a visit date in the selected month."""
+    short_name = html.escape(format_user_short_name(user))
+    month_name = MONTH_NAMES_RU_CAPITALIZED.get(month, f"Месяц {month}")
+    return f"👤 <b>{short_name} · {month_name} {year}</b>\n\nВыберите дату посещения:"
+
+
+def format_edit_visits_record_card(user: Any, record: Any) -> str:
+    """Format Screen 4: single visit details card."""
+    short_name = html.escape(format_user_short_name(user))
+    date_str = record.date.strftime("%d.%m.%Y")
+    time_part = (
+        f"{record.start_time.strftime('%H:%M')}–{record.end_time.strftime('%H:%M')}"
+        if record.start_time and record.end_time
+        else "без фиксации времени"
+    )
+    dur_str = format_duration(record.duration_minutes)
+    source_part = f"импорт #{record.import_id}" if getattr(record, "import_id", None) else "добавлено вручную"
+
+    lines = [
+        f"👤 <b>{short_name} · {date_str}</b>",
+        f"Время: <b>{time_part}</b> ({dur_str})",
+        f"Источник: {source_part}",
+    ]
     return "\n".join(lines)
