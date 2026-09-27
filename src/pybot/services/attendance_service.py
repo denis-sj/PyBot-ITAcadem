@@ -22,6 +22,7 @@ from ..domain.exceptions import (
     AttendanceRecognitionError,
     AttendanceUserNotFoundError,
 )
+from ..domain.services import AttendanceRankingCalculator, ParticipantAttendanceStat
 from ..dto import (
     AttendanceDraftDateBlockDTO,
     AttendanceDraftDTO,
@@ -45,19 +46,21 @@ _MIN_CONFIDENCE_THRESHOLD: float = 0.7
 class AttendanceService:
     """Service orchestrating the photo attendance lifecycle and reporting."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         db: AsyncSession,
         attendance_repo: AttendanceRepository,
         user_repo: UserRepository,
         recognition_port: AttendanceRecognitionPort,
         settings: AppSettings,
+        ranking_calculator: AttendanceRankingCalculator | None = None,
     ) -> None:
         self._db = db
         self._attendance_repo = attendance_repo
         self._user_repo = user_repo
         self._recognition_port = recognition_port
         self._settings = settings
+        self._ranking_calculator = ranking_calculator or AttendanceRankingCalculator()
 
     # ============ PUBLIC API (NEWSPAPER RULE: HIGH-LEVEL INTENT) ============
 
@@ -428,6 +431,43 @@ class AttendanceService:
         await self._db.commit()
         return count
 
+    async def get_monthly_rankings(
+        self,
+        year: int | None = None,
+        month: int | None = None,
+    ) -> list[AttendanceMonthlyRankingItemDTO]:
+        """Get monthly rankings of active participants using competition ranking (1, 2, 2, 4).
+
+        Args:
+            year: Optional calendar year. Defaults to current year in configured timezone.
+            month: Optional calendar month (1..12). Defaults to current month.
+
+        Returns:
+            list[AttendanceMonthlyRankingItemDTO]: Ordered monthly rankings for active participants.
+        """
+        _, _, start_date, end_date = self._get_month_bounds(year, month)
+        raw_rankings = await self._attendance_repo.get_monthly_rankings(self._db, start_date, end_date)
+        stats = [
+            ParticipantAttendanceStat(
+                user_id=u.id,
+                user_full_name=self._format_user_full_name(u),
+                total_minutes=total_min,
+                visits_count=visits,
+            )
+            for u, total_min, visits in raw_rankings
+        ]
+        ranked = self._ranking_calculator.calculate_rankings(stats)
+        return [
+            AttendanceMonthlyRankingItemDTO(
+                rank=r.rank,
+                user_id=r.user_id,
+                user_full_name=r.user_full_name,
+                total_minutes=r.total_minutes,
+                visits_count=r.visits_count,
+            )
+            for r in ranked
+        ]
+
     async def get_user_monthly_summary(
         self,
         user_id: int,
@@ -444,25 +484,30 @@ class AttendanceService:
         Returns:
             AttendanceUserSummaryDTO: Aggregated user metrics.
         """
-        _, _, start_date, end_date = self._get_month_bounds(year, month)
         user = await self._user_repo.find_user_by_id(self._db, user_id)
         if user is None:
             raise AttendanceUserNotFoundError(f"Пользователь с ID {user_id} не найден")
 
         full_name = self._format_user_full_name(user)
-        total_min, rank, total_part, visits = await self._attendance_repo.get_user_monthly_summary(
-            db=self._db,
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
+        rankings = await self.get_monthly_rankings(year, month)
+        total_participants = len(rankings)
+
+        user_stat = next((item for item in rankings if item.user_id == user_id), None)
+        if user_stat is not None:
+            total_min = user_stat.total_minutes
+            rank = user_stat.rank
+            visits = user_stat.visits_count
+        else:
+            total_min = 0
+            rank = 0
+            visits = 0
 
         return AttendanceUserSummaryDTO(
             user_id=user_id,
             user_full_name=full_name,
             total_minutes=total_min,
             rank=rank,
-            total_participants=total_part,
+            total_participants=total_participants,
             visits_count=visits,
         )
 
@@ -523,23 +568,11 @@ class AttendanceService:
             AttendanceMonthlyReportDTO: Aggregated report.
         """
         calc_year, calc_month, start_date, end_date = self._get_month_bounds(year, month)
-        rankings_raw = await self._attendance_repo.get_monthly_rankings(self._db, start_date, end_date)
+        rankings = await self.get_monthly_rankings(year, month)
 
-        total_club_minutes = sum(total_min for _, total_min, _ in rankings_raw)
-        active_participants_count = len(rankings_raw)
+        total_club_minutes = sum(r.total_minutes for r in rankings)
+        active_participants_count = len(rankings)
         avg_minutes = total_club_minutes // active_participants_count if active_participants_count > 0 else 0
-
-        rankings = [
-            AttendanceMonthlyRankingItemDTO(
-                rank=idx,
-                user_id=u.id,
-                user_full_name=self._format_user_full_name(u),
-                total_minutes=total_min,
-                visits_count=visits,
-            )
-            for idx, (u, total_min, visits) in enumerate(rankings_raw, start=1)
-        ]
-
         records: list[AttendanceRecordReadDTO] = []
         if detailed:
             records_raw = await self._attendance_repo.get_monthly_records(self._db, start_date, end_date)

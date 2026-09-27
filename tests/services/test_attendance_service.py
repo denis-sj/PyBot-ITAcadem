@@ -885,8 +885,14 @@ async def test_get_user_monthly_summary(
     mock_user_repo: AsyncMock,
 ) -> None:
     user = User(id=10, first_name="Иван", last_name="Иванов")
+    user2 = User(id=20, first_name="Петр", last_name="Петров")
+    user3 = User(id=30, first_name="Сидор", last_name="Сидоров")
     mock_user_repo.find_user_by_id.return_value = user
-    mock_attendance_repo.get_user_monthly_summary.return_value = (180, 1, 5, 2)
+    mock_attendance_repo.get_monthly_rankings.return_value = [
+        (user, 180, 2),
+        (user2, 120, 1),
+        (user3, 60, 1),
+    ]
 
     summary = await service.get_user_monthly_summary(user_id=10, year=2026, month=9)
 
@@ -894,8 +900,53 @@ async def test_get_user_monthly_summary(
     assert summary.user_full_name == "Иванов Иван"
     assert summary.total_minutes == 180
     assert summary.rank == 1
-    assert summary.total_participants == 5
+    assert summary.total_participants == 3
     assert summary.visits_count == 2
+
+
+@pytest.mark.asyncio
+async def test_get_user_monthly_summary_without_visits(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+) -> None:
+    user = User(id=99, first_name="Новый", last_name="Участник")
+    active_user = User(id=1, first_name="Иван", last_name="Иванов")
+    mock_user_repo.find_user_by_id.return_value = user
+    mock_attendance_repo.get_monthly_rankings.return_value = [
+        (active_user, 180, 2),
+    ]
+
+    summary = await service.get_user_monthly_summary(user_id=99, year=2026, month=9)
+
+    assert summary.user_id == 99
+    assert summary.user_full_name == "Участник Новый"
+    assert summary.total_minutes == 0
+    assert summary.rank == 0
+    assert summary.total_participants == 1
+    assert summary.visits_count == 0
+
+
+@pytest.mark.asyncio
+async def test_get_monthly_rankings_competition_rule(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    u1 = User(id=1, first_name="Алексей", last_name="Алексеев")
+    u2 = User(id=2, first_name="Борис", last_name="Борисов")
+    u3 = User(id=3, first_name="Василий", last_name="Васильев")
+    u4 = User(id=4, first_name="Григорий", last_name="Григорьев")
+    mock_attendance_repo.get_monthly_rankings.return_value = [
+        (u1, 200, 2),
+        (u2, 150, 2),
+        (u3, 150, 1),
+        (u4, 80, 1),
+    ]
+
+    rankings = await service.get_monthly_rankings(year=2026, month=9)
+
+    assert [r.rank for r in rankings] == [1, 2, 2, 4]
+    assert [r.user_id for r in rankings] == [1, 2, 3, 4]
 
 
 @pytest.mark.asyncio

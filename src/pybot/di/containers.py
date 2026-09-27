@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from ..core import logger
 from ..core.config import AppSettings, get_settings
 from ..db.database import create_database_engine
-from ..domain.services.level_calculator import LevelCalculator
+from ..domain.services import AttendanceRankingCalculator, LevelCalculator
 from ..infrastructure import (
     AttendanceRepository,
     CompetenceRepository,
@@ -230,13 +230,14 @@ class ServiceProvider(Provider):
         )
 
     @provide(scope=Scope.REQUEST)
-    def attendance_service(
+    def attendance_service(  # noqa: PLR0913
         self,
         db: AsyncSession,
         attendance_repository: AttendanceRepository,
         user_repository: UserRepository,
         recognition_port: AttendanceRecognitionPort,
         settings: AppSettings,
+        ranking_calculator: AttendanceRankingCalculator,
     ) -> AttendanceService:
         return AttendanceService(
             db=db,
@@ -244,6 +245,7 @@ class ServiceProvider(Provider):
             user_repo=user_repository,
             recognition_port=recognition_port,
             settings=settings,
+            ranking_calculator=ranking_calculator,
         )
 
 
@@ -278,6 +280,10 @@ class DomainServiceProvider(Provider):
     @provide(scope=Scope.APP)
     def level_calculator(self) -> LevelCalculator:
         return LevelCalculator()
+
+    @provide(scope=Scope.APP)
+    def attendance_ranking_calculator(self) -> AttendanceRankingCalculator:
+        return AttendanceRankingCalculator()
 
 
 class ConfigProvider(Provider):

@@ -126,6 +126,35 @@ async def test_cmd_my_hours_registered_user(
 
 
 @pytest.mark.asyncio
+async def test_cmd_my_hours_registered_user_no_visits(
+    monkeypatch: pytest.MonkeyPatch,
+    settings_obj: AppSettings,
+) -> None:
+    msg = _build_message(text="/my_hours")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
+
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_user_monthly_summary.return_value = AttendanceUserSummaryDTO(
+        user_id=10,
+        user_full_name="Иванов Иван",
+        total_minutes=0,
+        rank=0,
+        total_participants=5,
+        visits_count=0,
+    )
+
+    await cmd_my_hours(msg, user_service, attendance_service, settings_obj)
+
+    answer_mock.assert_awaited_once()
+    assert "В этом месяце у вас пока нет посещений." in answer_mock.call_args[0][0]
+    assert "Место в рейтинге" not in answer_mock.call_args[0][0]
+
+
+@pytest.mark.asyncio
 async def test_cmd_my_hours_unregistered_user(
     monkeypatch: pytest.MonkeyPatch,
     settings_obj: AppSettings,
@@ -206,6 +235,35 @@ async def test_cmd_my_rank_registered_user(
 
     answer_mock.assert_awaited_once()
     assert "#3" in answer_mock.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_cmd_my_rank_registered_user_no_visits(
+    monkeypatch: pytest.MonkeyPatch,
+    settings_obj: AppSettings,
+) -> None:
+    msg = _build_message(text="/my_rank")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = _build_user_read_dto()
+
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_user_monthly_summary.return_value = AttendanceUserSummaryDTO(
+        user_id=10,
+        user_full_name="Иванов Иван",
+        total_minutes=0,
+        rank=0,
+        total_participants=5,
+        visits_count=0,
+    )
+
+    await cmd_my_rank(msg, user_service, attendance_service, settings_obj)
+
+    answer_mock.assert_awaited_once()
+    assert "В этом месяце у вас пока нет посещений." in answer_mock.call_args[0][0]
+    assert "Место:" not in answer_mock.call_args[0][0]
 
 
 # ============ ADMIN COMMANDS TESTS ============

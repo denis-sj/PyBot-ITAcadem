@@ -161,13 +161,18 @@ def _format_draft_summary(
 def format_user_summary(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
     """Format personal hours and club ranking for /my_hours command."""
     month_name = MONTH_NAMES_RU.get(month, "")
-    rank_display = f"#{summary.rank}" if summary.rank > 0 else "—"
+    if summary.visits_count == 0 or summary.total_minutes == 0 or summary.rank <= 0:
+        return (
+            f"⏱ <b>Ваши часы посещаемости за {month_name} {year}:</b>\n\n"
+            f"👤 Участник: <b>{html.escape(summary.user_full_name)}</b>\n\n"
+            "В этом месяце у вас пока нет посещений."
+        )
     return (
         f"⏱ <b>Ваши часы посещаемости за {month_name} {year}:</b>\n\n"
         f"👤 Участник: <b>{html.escape(summary.user_full_name)}</b>\n"
         f"⏳ Налетанное время: <b>{format_duration(summary.total_minutes)}</b>\n"
         f"🏢 Количество визитов: <b>{summary.visits_count}</b>\n"
-        f"🏆 Место в рейтинге: <b>{rank_display}</b> из {summary.total_participants}\n"
+        f"🏆 Место в рейтинге: <b>#{summary.rank}</b> из {summary.total_participants}\n"
     )
 
 
@@ -196,10 +201,11 @@ def format_user_visits(visits: list[AttendanceRecordReadDTO], month: int, year: 
 def format_user_rank(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
     """Format user ranking for /my_rank command."""
     month_name = MONTH_NAMES_RU.get(month, "")
-    rank_str = f"<b>#{summary.rank}</b>" if summary.rank > 0 else "<i>нет в рейтинге</i>"
+    if summary.visits_count == 0 or summary.total_minutes == 0 or summary.rank <= 0:
+        return f"🏆 <b>Ваша позиция в клубе за {month_name} {year}:</b>\n\nВ этом месяце у вас пока нет посещений."
     return (
         f"🏆 <b>Ваша позиция в клубе за {month_name} {year}:</b>\n\n"
-        f"Место: {rank_str} (всего участников: {summary.total_participants})\n"
+        f"Место: <b>#{summary.rank}</b> из {summary.total_participants}\n"
         f"Часов налета: <b>{format_duration(summary.total_minutes)}</b> ({summary.visits_count} посещ.)"
     )
 

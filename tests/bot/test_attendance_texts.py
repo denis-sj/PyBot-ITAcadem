@@ -110,6 +110,22 @@ def test_format_user_summary() -> None:
     assert "2" in text
 
 
+def test_format_user_summary_no_visits() -> None:
+    summary = AttendanceUserSummaryDTO(
+        user_id=10,
+        user_full_name="Петров Петр",
+        total_minutes=0,
+        rank=0,
+        total_participants=5,
+        visits_count=0,
+    )
+    text = format_user_summary(summary, month=9, year=2026)
+
+    assert "Петров Петр" in text
+    assert "В этом месяце у вас пока нет посещений." in text
+    assert "Место в рейтинге" not in text
+
+
 def test_format_user_visits_empty() -> None:
     text = format_user_visits([], month=9, year=2026)
     assert "пока нет" in text
@@ -148,6 +164,21 @@ def test_format_user_rank() -> None:
     assert "#5" in text
     assert "12" in text
     assert "1 ч" in text
+
+
+def test_format_user_rank_no_visits() -> None:
+    summary = AttendanceUserSummaryDTO(
+        user_id=10,
+        user_full_name="Сидоров С.",
+        total_minutes=0,
+        rank=0,
+        total_participants=5,
+        visits_count=0,
+    )
+    text = format_user_rank(summary, month=9, year=2026)
+    assert "В этом месяце у вас пока нет посещений." in text
+    assert "Место:" not in text
+    assert "Часов налета" not in text
 
 
 def test_format_monthly_report_short_and_detailed() -> None:
