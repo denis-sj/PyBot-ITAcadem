@@ -4,7 +4,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class BroadcastMenuSG(StatesGroup):
-    """States of the «Рассылка всем» scenario: waiting for the text, then for the confirmation."""
+    """States of the «Рассылка всем» scenario: text, confirmation, then the sending itself."""
 
     waiting_for_text = State()
     waiting_for_confirmation = State()
+    sending = State()

@@ -31,9 +31,14 @@ class MenuAction(StrEnum):
 
 
 class MainMenuCB(CallbackData, prefix="menu"):
-    """Callback data for main menu buttons."""
+    """Callback data for main menu buttons.
+
+    ``draft`` binds the buttons of a broadcast confirmation to one concrete draft, so that a button
+    left under an older message can never send or cancel a newer draft. It is empty for other buttons.
+    """
 
     action: MenuAction
+    draft: str = ""
 
 
 def get_main_menu_keyboard(*, show_broadcast: bool = False) -> InlineKeyboardMarkup:
@@ -68,24 +73,24 @@ def get_open_bot_registration_keyboard(bot_username: str) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=[[link_button]])
 
 
-def get_broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
-    """Return buttons that confirm or cancel the drafted broadcast."""
+def get_broadcast_confirm_keyboard(draft_id: str) -> InlineKeyboardMarkup:
+    """Return buttons that confirm or cancel the broadcast draft with the given ID."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                _menu_button(BUTTON_BROADCAST_SEND, MenuAction.BROADCAST_SEND, style="success"),
-                _menu_button(BUTTON_CANCEL, MenuAction.BROADCAST_CANCEL, style="danger"),
+                _menu_button(BUTTON_BROADCAST_SEND, MenuAction.BROADCAST_SEND, style="success", draft=draft_id),
+                _menu_button(BUTTON_CANCEL, MenuAction.BROADCAST_CANCEL, style="danger", draft=draft_id),
             ]
         ]
     )
 
 
 def get_broadcast_cancel_keyboard() -> InlineKeyboardMarkup:
-    """Return a single button that abandons the broadcast scenario."""
+    """Return a single button that abandons the broadcast scenario before any draft exists."""
     return InlineKeyboardMarkup(
         inline_keyboard=[[_menu_button(BUTTON_CANCEL, MenuAction.BROADCAST_CANCEL, style="danger")]]
     )
 
 
-def _menu_button(text: str, action: MenuAction, style: str | None = None) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=text, callback_data=MainMenuCB(action=action).pack(), style=style)
+def _menu_button(text: str, action: MenuAction, style: str | None = None, draft: str = "") -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=MainMenuCB(action=action, draft=draft).pack(), style=style)

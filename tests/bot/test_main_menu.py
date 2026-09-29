@@ -44,10 +44,11 @@ from pybot.presentation.bot.keyboards.main_menu import (
 from pybot.presentation.bot.utils.menu_access import can_use_broadcast_menu
 from pybot.presentation.bot.utils.registration_prompt import answer_registration_required
 from pybot.presentation.texts import (
-    BROADCAST_ALREADY_RUNNING,
+    BROADCAST_MENU_ALREADY_RUNNING,
     BROADCAST_MENU_CANCELLED,
     BROADCAST_MENU_CONFIRM,
-    BROADCAST_MENU_DRAFT_LOST,
+    BROADCAST_MENU_DRAFT_OUTDATED,
+    BROADCAST_MENU_IN_PROGRESS,
     BROADCAST_MENU_PROMPT,
     BROADCAST_NO_RECIPIENTS,
     HELP_PRIVATE,
@@ -169,7 +170,7 @@ def test_menu_callback_data_fits_telegram_limit() -> None:
     markups = [
         get_main_menu_keyboard(show_broadcast=True),
         get_start_registration_keyboard(),
-        get_broadcast_confirm_keyboard(),
+        get_broadcast_confirm_keyboard("0123abcd"),
         get_broadcast_cancel_keyboard(),
     ]
 
@@ -197,9 +198,15 @@ def test_open_bot_registration_keyboard_links_to_bot_chat_with_start_payload() -
     assert button.callback_data is None
 
 
-def test_broadcast_confirmation_offers_send_and_cancel() -> None:
-    assert _button_actions(get_broadcast_confirm_keyboard()) == [MenuAction.BROADCAST_SEND, MenuAction.BROADCAST_CANCEL]
+def test_broadcast_confirmation_offers_send_and_cancel_bound_to_the_draft() -> None:
+    markup = get_broadcast_confirm_keyboard("0123abcd")
+
+    assert _button_actions(markup) == [MenuAction.BROADCAST_SEND, MenuAction.BROADCAST_CANCEL]
+    for row in markup.inline_keyboard:
+        for button in row:
+            assert MainMenuCB.unpack(button.callback_data).draft == "0123abcd"
     assert _button_actions(get_broadcast_cancel_keyboard()) == [MenuAction.BROADCAST_CANCEL]
+    assert MainMenuCB.unpack(get_broadcast_cancel_keyboard().inline_keyboard[0][0].callback_data).draft == ""
 
 
 # ============ ACCESS AND REGISTRATION PROMPT ============
@@ -483,33 +490,59 @@ async def test_cb_menu_leaderboard_reports_unexpected_error() -> None:
 
 # ============ BROADCAST FROM THE MENU ============
 
+DRAFT_ID = "draft001"
+NEWER_DRAFT_ID = "draft002"
+
 
 @dataclass(slots=True)
 class StubNotificationFacade:
     notify_user: AsyncMock = field(default_factory=AsyncMock)
 
 
-def _build_broadcast_service(
-    result: BroadcastResult | None = None,
-    error: Exception | None = None,
-) -> BroadcastService:
+def _build_broadcast_service(side_effect: object = None) -> BroadcastService:
     service = AsyncMock(spec=BroadcastService)
-    service.broadcast_for_all.return_value = result or BroadcastResult(
+    service.broadcast_for_all.return_value = BroadcastResult(
         attempted=5,
         sent=3,
         failed_temporary=1,
         failed_permanent=1,
         skipped_invalid_user=0,
     )
-    service.broadcast_for_all.side_effect = error
+    service.broadcast_for_all.side_effect = side_effect
     return cast(BroadcastService, service)
 
 
-async def _state_with_draft(text: str = "Всем привет") -> FSMContext:
+def _broadcast_mock(service: BroadcastService) -> AsyncMock:
+    return cast(AsyncMock, service.broadcast_for_all)
+
+
+def _press(action: MenuAction, draft: str = "") -> MainMenuCB:
+    return MainMenuCB(action=action, draft=draft)
+
+
+async def _state_with_draft(text: str = "Всем привет", draft_id: str = DRAFT_ID) -> FSMContext:
     state = _build_fsm_context()
     await state.set_state(BroadcastMenuSG.waiting_for_confirmation)
-    await state.update_data({"broadcast_text": text})
+    await state.update_data({"broadcast_text": text, "broadcast_draft_id": draft_id})
     return state
+
+
+async def _press_send(
+    state: FSMContext,
+    broadcast_service: BroadcastService,
+    notification_facade: StubNotificationFacade | None = None,
+    draft: str = DRAFT_ID,
+    callback: AsyncMock | None = None,
+) -> AsyncMock:
+    callback = callback or _build_callback()
+    await broadcast_menu.cb_menu_broadcast_send(
+        callback,
+        _press(MenuAction.BROADCAST_SEND, draft),
+        state,
+        broadcast_service=broadcast_service,
+        notification_facade=cast(NotificationFacade, notification_facade or StubNotificationFacade()),
+    )
+    return callback
 
 
 @pytest.mark.asyncio
@@ -529,6 +562,20 @@ async def test_cb_menu_broadcast_asks_for_text_and_waits_for_it() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cb_menu_broadcast_does_not_restart_scenario_while_sending() -> None:
+    callback = _build_callback()
+    state = await _state_with_draft()
+    await state.set_state(BroadcastMenuSG.sending)
+
+    await broadcast_menu.cb_menu_broadcast(callback, state)
+
+    assert await state.get_state() == BroadcastMenuSG.sending.state
+    assert (await state.get_data())["broadcast_text"] == "Всем привет"
+    callback.message.answer.assert_not_awaited()
+    callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
+
+
+@pytest.mark.asyncio
 async def test_broadcast_text_handler_saves_draft_and_asks_for_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
     reply_mock = AsyncMock()
     monkeypatch.setattr(Message, "reply", reply_mock)
@@ -537,9 +584,28 @@ async def test_broadcast_text_handler_saves_draft_and_asks_for_confirmation(monk
 
     await broadcast_menu.msg_receive_broadcast_text(_build_message(text="Всем привет"), state)
 
+    data = await state.get_data()
     assert await state.get_state() == BroadcastMenuSG.waiting_for_confirmation.state
-    assert (await state.get_data())["broadcast_text"] == "Всем привет"
-    reply_mock.assert_awaited_once_with(BROADCAST_MENU_CONFIRM, reply_markup=get_broadcast_confirm_keyboard())
+    assert data["broadcast_text"] == "Всем привет"
+    reply_mock.assert_awaited_once_with(
+        BROADCAST_MENU_CONFIRM,
+        reply_markup=get_broadcast_confirm_keyboard(data["broadcast_draft_id"]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_every_new_draft_gets_its_own_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Message, "reply", AsyncMock())
+    draft_ids = []
+
+    for text in ("первый", "второй"):
+        state = _build_fsm_context()
+        await state.set_state(BroadcastMenuSG.waiting_for_text)
+        await broadcast_menu.msg_receive_broadcast_text(_build_message(text=text), state)
+        draft_ids.append((await state.get_data())["broadcast_draft_id"])
+
+    assert draft_ids[0] != draft_ids[1]
+    assert all(len(draft_id) == 8 for draft_id in draft_ids)
 
 
 @pytest.mark.asyncio
@@ -557,98 +623,152 @@ async def test_broadcast_text_handler_ignores_blank_text(monkeypatch: pytest.Mon
 
 @pytest.mark.asyncio
 async def test_confirmed_broadcast_goes_to_all_users_and_reports_summary_to_initiator() -> None:
-    callback = _build_callback()
     state = await _state_with_draft("Всем привет")
     broadcast_service = _build_broadcast_service()
     notification_facade = StubNotificationFacade()
 
-    await broadcast_menu.cb_menu_broadcast_send(
-        callback,
-        state,
-        broadcast_service=broadcast_service,
-        notification_facade=cast(NotificationFacade, notification_facade),
-    )
+    callback = await _press_send(state, broadcast_service, notification_facade)
 
-    cast(AsyncMock, broadcast_service.broadcast_for_all).assert_awaited_once_with(
-        BroadcastDTO(broadcast_message="Всем привет")
-    )
+    _broadcast_mock(broadcast_service).assert_awaited_once_with(BroadcastDTO(broadcast_message="Всем привет"))
     notification_facade.notify_user.assert_awaited_once()
     notify_dto = notification_facade.notify_user.await_args.args[0]
     assert notify_dto.recipient_id == TELEGRAM_ID
     assert notify_dto.kind is TaskScheduleKind.IMMEDIATE
-    assert notify_dto.message == broadcast_result_summary(broadcast_service.broadcast_for_all.return_value)
+    assert notify_dto.message == broadcast_result_summary(_broadcast_mock(broadcast_service).return_value)
     callback.message.edit_reply_markup.assert_awaited_once_with(reply_markup=None)
     assert await state.get_state() is None
+    assert await state.get_data() == {}
 
 
 @pytest.mark.asyncio
-async def test_repeated_press_of_send_button_does_not_broadcast_twice() -> None:
+async def test_stale_confirm_button_never_sends_a_newer_draft() -> None:
+    state = await _state_with_draft("новый текст", draft_id=NEWER_DRAFT_ID)
+    broadcast_service = _build_broadcast_service()
+
+    callback = await _press_send(state, broadcast_service, draft=DRAFT_ID)
+
+    _broadcast_mock(broadcast_service).assert_not_awaited()
+    callback.message.edit_reply_markup.assert_awaited_once_with(reply_markup=None)
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+    assert await state.get_state() == BroadcastMenuSG.waiting_for_confirmation.state
+    assert (await state.get_data())["broadcast_text"] == "новый текст"
+
+
+@pytest.mark.asyncio
+async def test_confirm_button_of_replaced_draft_does_not_send_after_scenario_restart() -> None:
+    state = await _state_with_draft("старый текст", draft_id=DRAFT_ID)
+    broadcast_service = _build_broadcast_service()
+    await broadcast_menu.cb_menu_broadcast(_build_callback(), state)
+
+    callback = await _press_send(state, broadcast_service, draft=DRAFT_ID)
+
+    _broadcast_mock(broadcast_service).assert_not_awaited()
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+    assert await state.get_state() == BroadcastMenuSG.waiting_for_text.state
+
+
+@pytest.mark.asyncio
+async def test_repeated_press_after_sending_does_not_broadcast_twice() -> None:
     state = await _state_with_draft()
     broadcast_service = _build_broadcast_service()
-    notification_facade = StubNotificationFacade()
-    first_press = _build_callback()
-    second_press = _build_callback()
 
-    for callback in (first_press, second_press):
-        await broadcast_menu.cb_menu_broadcast_send(
-            callback,
-            state,
-            broadcast_service=broadcast_service,
-            notification_facade=cast(NotificationFacade, notification_facade),
-        )
+    await _press_send(state, broadcast_service)
+    second_press = await _press_send(state, broadcast_service)
 
-    cast(AsyncMock, broadcast_service.broadcast_for_all).assert_awaited_once()
-    second_press.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_LOST)
+    _broadcast_mock(broadcast_service).assert_awaited_once()
+    second_press.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
 
 
 @pytest.mark.asyncio
-async def test_send_button_without_draft_reports_lost_draft_and_keeps_foreign_state() -> None:
-    callback = _build_callback()
+async def test_press_while_sending_is_answered_without_second_broadcast() -> None:
+    state = await _state_with_draft()
+    await state.set_state(BroadcastMenuSG.sending)
+    broadcast_service = _build_broadcast_service()
+
+    callback = await _press_send(state, broadcast_service)
+
+    _broadcast_mock(broadcast_service).assert_not_awaited()
+    callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
+    callback.message.answer.assert_not_awaited()
+    assert await state.get_state() == BroadcastMenuSG.sending.state
+
+
+@pytest.mark.asyncio
+async def test_send_button_without_draft_reports_outdated_and_keeps_foreign_state() -> None:
     state = _build_fsm_context()
     await state.set_state("SomeOtherScenario:step")
     broadcast_service = _build_broadcast_service()
 
-    await broadcast_menu.cb_menu_broadcast_send(
-        callback,
-        state,
-        broadcast_service=broadcast_service,
-        notification_facade=cast(NotificationFacade, StubNotificationFacade()),
-    )
+    callback = await _press_send(state, broadcast_service)
 
-    cast(AsyncMock, broadcast_service.broadcast_for_all).assert_not_awaited()
-    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_LOST)
+    _broadcast_mock(broadcast_service).assert_not_awaited()
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
     assert await state.get_state() == "SomeOtherScenario:step"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("error", "expected_text"),
-    [
-        (UsersNotFoundError(), BROADCAST_NO_RECIPIENTS),
-        (BroadcastAlreadyRunningError(), BROADCAST_ALREADY_RUNNING),
-    ],
-)
-async def test_confirmed_broadcast_reports_domain_errors(error: Exception, expected_text: str) -> None:
-    callback = _build_callback()
+async def test_confirmed_broadcast_without_recipients_reports_it_and_drops_draft() -> None:
+    state = await _state_with_draft()
     notification_facade = StubNotificationFacade()
 
-    await broadcast_menu.cb_menu_broadcast_send(
-        callback,
-        await _state_with_draft(),
-        broadcast_service=_build_broadcast_service(error=error),
-        notification_facade=cast(NotificationFacade, notification_facade),
-    )
+    callback = await _press_send(state, _build_broadcast_service(UsersNotFoundError()), notification_facade)
 
-    callback.message.answer.assert_awaited_once_with(expected_text)
+    callback.message.answer.assert_awaited_once_with(BROADCAST_NO_RECIPIENTS)
     notification_facade.notify_user.assert_not_awaited()
+    assert await state.get_state() is None
 
 
 @pytest.mark.asyncio
-async def test_cancel_drops_draft_and_sends_nothing() -> None:
+async def test_broadcast_already_running_keeps_draft_and_offers_to_retry() -> None:
+    state = await _state_with_draft("Всем привет")
+    broadcast_service = _build_broadcast_service(BroadcastAlreadyRunningError())
+    notification_facade = StubNotificationFacade()
+
+    callback = await _press_send(state, broadcast_service, notification_facade)
+
+    callback.message.answer.assert_awaited_once_with(
+        BROADCAST_MENU_ALREADY_RUNNING,
+        reply_markup=get_broadcast_confirm_keyboard(DRAFT_ID),
+    )
+    notification_facade.notify_user.assert_not_awaited()
+    assert await state.get_state() == BroadcastMenuSG.waiting_for_confirmation.state
+    assert (await state.get_data())["broadcast_text"] == "Всем привет"
+    assert (await state.get_data())["broadcast_draft_id"] == DRAFT_ID
+
+
+@pytest.mark.asyncio
+async def test_retry_after_already_running_sends_the_saved_text() -> None:
+    state = await _state_with_draft("Всем привет")
+    result = BroadcastResult(attempted=1, sent=1, failed_temporary=0, failed_permanent=0, skipped_invalid_user=0)
+    broadcast_service = _build_broadcast_service([BroadcastAlreadyRunningError(), result])
+    notification_facade = StubNotificationFacade()
+
+    await _press_send(state, broadcast_service, notification_facade)
+    await _press_send(state, broadcast_service, notification_facade)
+
+    assert _broadcast_mock(broadcast_service).await_count == 2
+    for call in _broadcast_mock(broadcast_service).await_args_list:
+        assert call.args[0] == BroadcastDTO(broadcast_message="Всем привет")
+    notification_facade.notify_user.assert_awaited_once()
+    assert await state.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_unexpected_broadcast_error_drops_draft_and_is_not_swallowed() -> None:
+    state = await _state_with_draft()
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await _press_send(state, _build_broadcast_service(RuntimeError("boom")))
+
+    assert await state.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_drops_draft_of_the_pressed_button_and_sends_nothing() -> None:
     callback = _build_callback()
     state = await _state_with_draft()
 
-    await broadcast_menu.cb_menu_broadcast_cancel(callback, state)
+    await broadcast_menu.cb_menu_broadcast_cancel(callback, _press(MenuAction.BROADCAST_CANCEL, DRAFT_ID), state)
 
     assert await state.get_state() is None
     assert await state.get_data() == {}
@@ -658,12 +778,48 @@ async def test_cancel_drops_draft_and_sends_nothing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stale_cancel_button_does_not_reset_another_scenario() -> None:
+async def test_stale_cancel_button_does_not_drop_a_newer_draft() -> None:
+    callback = _build_callback()
+    state = await _state_with_draft("новый текст", draft_id=NEWER_DRAFT_ID)
+
+    await broadcast_menu.cb_menu_broadcast_cancel(callback, _press(MenuAction.BROADCAST_CANCEL, DRAFT_ID), state)
+
+    assert await state.get_state() == BroadcastMenuSG.waiting_for_confirmation.state
+    assert (await state.get_data())["broadcast_text"] == "новый текст"
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+
+
+@pytest.mark.asyncio
+async def test_prompt_cancel_button_leaves_the_scenario() -> None:
+    callback = _build_callback()
+    state = _build_fsm_context()
+    await state.set_state(BroadcastMenuSG.waiting_for_text)
+
+    await broadcast_menu.cb_menu_broadcast_cancel(callback, _press(MenuAction.BROADCAST_CANCEL), state)
+
+    assert await state.get_state() is None
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_CANCELLED)
+
+
+@pytest.mark.asyncio
+async def test_stale_prompt_cancel_button_does_not_reset_another_scenario() -> None:
     callback = _build_callback()
     state = _build_fsm_context()
     await state.set_state("SomeOtherScenario:step")
 
-    await broadcast_menu.cb_menu_broadcast_cancel(callback, state)
+    await broadcast_menu.cb_menu_broadcast_cancel(callback, _press(MenuAction.BROADCAST_CANCEL), state)
 
     assert await state.get_state() == "SomeOtherScenario:step"
-    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_CANCELLED)
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+
+
+@pytest.mark.asyncio
+async def test_cancel_cannot_interrupt_broadcast_being_sent() -> None:
+    callback = _build_callback()
+    state = await _state_with_draft()
+    await state.set_state(BroadcastMenuSG.sending)
+
+    await broadcast_menu.cb_menu_broadcast_cancel(callback, _press(MenuAction.BROADCAST_CANCEL), state)
+
+    assert await state.get_state() == BroadcastMenuSG.sending.state
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
