@@ -32,7 +32,7 @@ from .keyboards import (
     get_edit_visits_user_keyboard,
     get_edit_visits_users_keyboard,
 )
-from .states import EditVisitsSG
+from .states import EditVisitsSG, clear_attendance_fsm_state
 
 attendance_edit_visits_router = Router(name="attendance_edit_visits")
 
@@ -70,6 +70,7 @@ async def cmd_edit_visits(
         await message.answer("Команда доступна только в личном чате с ботом.")
         return
 
+    await clear_attendance_fsm_state(state)
     await state.set_state(EditVisitsSG.waiting_for_user_number)
     await state.update_data(page=0)
 
@@ -703,7 +704,7 @@ async def cb_save_manual(
     state: FSMContext,
     attendance_service: FromDishka[AttendanceService],
 ) -> None:
-    """Persist manual visit, notify participant, and open Screen 4 (record card)."""
+    """Persist a manual visit and replace its confirmation with a success message."""
     if not callback.message or not isinstance(callback.message, Message) or not callback.from_user:
         await callback.answer()
         return
@@ -727,7 +728,7 @@ async def cb_save_manual(
     admin_name = callback.from_user.full_name or callback.from_user.first_name or "Администратор"
 
     try:
-        record = await attendance_service.create_manual_visit(
+        await attendance_service.create_manual_visit(
             user_id=callback_data.user_id,
             visit_date=visit_date,
             start_time=start_time,
@@ -736,20 +737,8 @@ async def cb_save_manual(
             admin_name=admin_name,
         )
 
-        user = record.user or await attendance_service.get_user_by_id(callback_data.user_id)
-        if user is None:
-            await callback.answer("Участник не найден", show_alert=True)
-            return
-
-        history = await attendance_service.get_record_change_history(user.id, record.date)
-        text = format_edit_visits_record_card(user, record, history=history)
-        keyboard = get_edit_visits_record_keyboard(
-            user_id=callback_data.user_id,
-            year=visit_date.year,
-            month=visit_date.month,
-            record=record,
-        )
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-        await callback.answer("Посещение успешно добавлено!")
+        success_text = f"✅ Добавлено посещение {visit_date:%d.%m.%Y}: {start_time:%H:%M}–{end_time:%H:%M}"
+        await callback.message.edit_text(success_text, reply_markup=None)
+        await callback.answer("Посещение добавлено")
     except AttendanceDomainError as exc:
         await callback.answer(exc.message, show_alert=True)

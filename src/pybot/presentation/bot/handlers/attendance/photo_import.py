@@ -233,11 +233,12 @@ async def msg_select_row_for_time(
     await state.update_data(item_id=item.item_id)
     await state.set_state(AttendanceEditSG.waiting_for_new_time)
 
-    cur_time = (
-        f"{item.start_time.strftime('%H:%M')}–{item.end_time.strftime('%H:%M')}"
-        if item.start_time and item.end_time
-        else "не указано"
-    )
+    if item.start_time and item.end_time:
+        cur_time = f"{item.start_time.strftime('%H:%M')}–{item.end_time.strftime('%H:%M')}"
+    elif item.time_raw:
+        cur_time = f"на листе «{html.escape(item.time_raw)}»"
+    else:
+        cur_time = "не указано"
     item_name = html.escape(item.matched_user_name or item.raw_name or "—")
     await message.answer(
         f"Выбрана строка {row_index} ({item_name}).\n"

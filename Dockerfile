@@ -3,7 +3,8 @@ FROM python:3.14-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    UV_HTTP_TIMEOUT=300
 
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /usr/local/bin/uv
 
@@ -31,6 +32,7 @@ FROM python:3.14-slim AS tooling
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
+    UV_HTTP_TIMEOUT=300 \
     UV_PROJECT_ENVIRONMENT=/opt/pybot-tooling/.venv \
     PATH="/opt/pybot-tooling/.venv/bin:$PATH"
 

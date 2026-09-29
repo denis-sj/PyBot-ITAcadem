@@ -1,6 +1,7 @@
 """Unit tests for AttendanceService orchestration and use cases."""
 
 from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
@@ -104,6 +105,34 @@ def service(
     )
 
 
+@pytest.mark.asyncio
+async def test_photo_browser_service_uses_month_date_range(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.find_import_photo_months.return_value = [(2026, 9)]
+    mock_attendance_repo.find_import_photo_dates_for_month.return_value = [(date(2026, 9, 25), 42)]
+
+    months = await service.get_import_photo_months()
+    dates = await service.get_import_photo_dates_for_month(year=2026, month=9)
+
+    assert months == [(2026, 9)]
+    assert dates == [(date(2026, 9, 25), 42)]
+    mock_attendance_repo.find_import_photo_dates_for_month.assert_awaited_once()
+    args = mock_attendance_repo.find_import_photo_dates_for_month.await_args
+    assert args is not None
+    assert args.args[1:] == (date(2026, 9, 1), date(2026, 9, 30))
+
+
+@pytest.mark.asyncio
+async def test_photo_browser_service_rejects_invalid_month_without_query(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    assert await service.get_import_photo_dates_for_month(year=2026, month=13) == []
+    mock_attendance_repo.find_import_photo_dates_for_month.assert_not_awaited()
+
+
 # ============ PHOTO INGESTION TESTS ============
 
 
@@ -199,7 +228,7 @@ async def test_ingest_attendance_photo_happy_path(
     date_block = draft.dates[0]
     assert date_block.date == today
     assert date_block.is_ignored is False
-    assert len(date_block.items) == 1
+    assert len(date_block.items) == 2
 
     # Check item 1: Иванов Иван, 120 min duration, recognized
     item1 = date_block.items[0]
@@ -207,6 +236,15 @@ async def test_ingest_attendance_photo_happy_path(
     assert item1.duration_minutes == 120
     assert item1.status == "recognized"
     assert item1.is_empty_time is False
+
+    # Absence rows stay visible in the draft as N markers but cannot be confirmed as visits.
+    item2 = date_block.items[1]
+    assert item2.raw_name == "Петров Петр"
+    assert item2.is_empty_time is True
+    assert item2.duration_minutes == 0
+    assert item2.start_time is None
+    assert item2.end_time is None
+    assert item2.is_excluded is True
     # Verify stale drafts expired before draft creation
     mock_attendance_repo.expire_stale_drafts.assert_awaited_once()
     # Transactions committed (stale drafts expired + draft created)
@@ -941,6 +979,49 @@ async def test_ingest_attendance_photo_preserves_needs_manual_review_and_low_con
     assert items[1].status == "needs_manual_review"
     assert items[2].confidence == 0.0
     assert items[2].status == "needs_manual_review"
+
+
+@pytest.mark.asyncio
+async def test_ingest_attendance_photo_keeps_incomplete_time_for_manual_entry(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_recognition_port: AsyncMock,
+    settings_obj: AppSettings,
+) -> None:
+    tz = ZoneInfo(str(settings_obj.attendance_timezone))
+    now = datetime.now(tz)
+    today = date(now.year, now.month, 15)
+    mock_user_repo.find_all_users.return_value = [User(id=1, first_name="Иван", last_name="Иванов")]
+    mock_recognition_port.recognize_attendance_sheet.return_value = AttendanceRecognitionResultDTO(
+        quality=AttendanceQualityDTO(is_good=True, comment="ОК", problems=[]),
+        dates=[
+            AttendanceRecognizedDateBlockDTO(
+                date=today,
+                rows=[
+                    AttendanceRecognizedRowDTO(
+                        raw_name="Иванов Иван",
+                        time_raw="8:40-",
+                        is_empty_time=False,
+                        confidence=0.95,
+                        status="needs_manual_review",
+                    )
+                ],
+            )
+        ],
+    )
+    mock_attendance_repo.create_draft.return_value = AttendanceImport(id=44, status=AttendanceImportStatus.DRAFT.value)
+
+    draft = await service.ingest_attendance_photo(author_tg_id=777, photo_bytes=b"photo", mime_type="image/jpeg")
+
+    item = draft.dates[0].items[0]
+    assert item.time_raw == "8:40-"
+    assert item.start_time is None
+    assert item.end_time is None
+    assert item.duration_minutes == 0
+    assert item.is_empty_time is False
+    assert item.is_excluded is False
+    assert item.status == "needs_manual_review"
 
 
 # ============ PHOTO EVIDENCE TESTS ============

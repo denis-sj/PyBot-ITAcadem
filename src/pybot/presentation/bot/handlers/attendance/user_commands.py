@@ -6,6 +6,7 @@ from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.enums import ChatType, ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from dishka.integrations.aiogram import FromDishka
@@ -23,8 +24,10 @@ from ....texts.attendance import (
     format_user_summary,
 )
 from .keyboards import (
+    AttendancePhotoBackCB,
     AttendancePhotoCB,
     MyVisitsCB,
+    get_attendance_photo_back_keyboard,
     get_my_visits_month_report_keyboard,
     get_my_visits_months_keyboard,
 )
@@ -167,13 +170,14 @@ async def cb_view_attendance_photo(
         )
 
         dates_str = ", ".join(d.strftime("%d.%m.%Y") for d in dates) if dates else "дата не указана"
-        caption = f"Импорт #{import_id} · {dates_str}"
+        caption = f"Номер фото #{import_id} · {dates_str}"
         ext = "png" if "png" in mime_type.lower() else "jpg"
         photo_file = BufferedInputFile(photo_bytes, filename=f"attendance_import_{import_id}.{ext}")
 
         await callback.message.answer_photo(
             photo=photo_file,
             caption=caption,
+            reply_markup=get_attendance_photo_back_keyboard(),
         )
         await callback.answer()
     except AttendancePhotoAccessDeniedError as exc:
@@ -183,6 +187,21 @@ async def cb_view_attendance_photo(
     except Exception:
         logger.exception("Unexpected error while sending attendance photo")
         await callback.answer("Фотография недоступна", show_alert=True)
+
+
+@attendance_user_router.callback_query(AttendancePhotoBackCB.filter())
+async def cb_back_from_attendance_photo(callback: CallbackQuery) -> None:
+    """Delete the just-sent photo to reveal the preceding selection or details screen."""
+    if not callback.message or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+
+    try:
+        await callback.message.delete()
+        await callback.answer()
+    except TelegramBadRequest:
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("Не удалось вернуться к предыдущему экрану.", show_alert=True)
 
 
 async def _render_month_report(  # noqa: PLR0913

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from aiogram.types import InlineKeyboardMarkup
 from dishka import Provider, Scope, provide
 
-from pybot.dto import NotifyDTO
-from pybot.services.ports import NotificationPort
+from pybot.dto import AttendanceRecognitionResultDTO, NotifyDTO
+from pybot.services.ports import AttendanceRecognitionPort, NotificationPort
 
 __test__ = False
 
@@ -50,6 +50,18 @@ class FakeNotificationPort(NotificationPort):
         status_text: str,
     ) -> None:
         return None
+
+
+class FakeAttendanceRecognitionPort(AttendanceRecognitionPort):
+    """Fail explicitly if an integration test tries to call external vision API."""
+
+    async def recognize_attendance_sheet(
+        self,
+        photo_bytes: bytes,
+        mime_type: str,
+        candidate_user_names: list[str],
+    ) -> AttendanceRecognitionResultDTO:
+        raise AssertionError("Attendance photo recognition must be mocked in tests")
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +116,7 @@ class TestOverridesProvider(Provider):
         super().__init__()
         self._fake_bot = FakeBot()
         self._notification_port = FakeNotificationPort()
+        self._attendance_recognition_port = FakeAttendanceRecognitionPort()
 
     @provide(scope=Scope.APP)
     def provide_bot(self) -> FakeBot:
@@ -112,6 +125,10 @@ class TestOverridesProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_notification_port(self) -> NotificationPort:
         return self._notification_port
+
+    @provide(scope=Scope.APP)
+    def provide_attendance_recognition_port(self) -> AttendanceRecognitionPort:
+        return self._attendance_recognition_port
 
     @provide(scope=Scope.APP)
     def provide_fake_notification_port(self) -> FakeNotificationPort:

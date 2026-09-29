@@ -98,6 +98,51 @@ async def test_find_draft_by_id_returns_entity_when_found(repository: Attendance
 
 
 @pytest.mark.asyncio
+async def test_find_import_photo_months_and_recorded_dates(
+    repository: AttendanceRepository, sqlite_session: AsyncSession
+) -> None:
+    confirmed_with_photo = AttendanceImport(
+        author_tg_id=1,
+        status=AttendanceImportStatus.CONFIRMED.value,
+        photo_data=b"photo",
+        photo_mime_type="image/jpeg",
+    )
+    confirmed_without_photo = AttendanceImport(
+        author_tg_id=1,
+        status=AttendanceImportStatus.CONFIRMED.value,
+        photo_data=None,
+        photo_mime_type="image/jpeg",
+    )
+    draft_with_photo = AttendanceImport(
+        author_tg_id=1,
+        status=AttendanceImportStatus.DRAFT.value,
+        photo_data=b"draft-photo",
+        photo_mime_type="image/jpeg",
+    )
+    sqlite_session.add_all([confirmed_with_photo, confirmed_without_photo, draft_with_photo])
+    await sqlite_session.flush()
+    sqlite_session.add_all(
+        [
+            AttendanceDate(import_id=confirmed_with_photo.id, date=date(2026, 9, 25)),
+            AttendanceDate(import_id=confirmed_with_photo.id, date=date(2026, 9, 27)),
+            AttendanceDate(import_id=confirmed_without_photo.id, date=date(2026, 8, 30)),
+            AttendanceDate(import_id=draft_with_photo.id, date=date(2026, 7, 1)),
+        ]
+    )
+    await sqlite_session.flush()
+
+    months = await repository.find_import_photo_months(sqlite_session)
+    dates = await repository.find_import_photo_dates_for_month(
+        sqlite_session,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+
+    assert months == [(2026, 9)]
+    assert dates == [(date(2026, 9, 25), confirmed_with_photo.id), (date(2026, 9, 27), confirmed_with_photo.id)]
+
+
+@pytest.mark.asyncio
 async def test_get_draft_by_id_raises_when_missing_per_adr_008(repository: AttendanceRepository) -> None:
     db = AsyncMock()
     result_mock = MagicMock()
@@ -450,10 +495,10 @@ def test_is_attendance_record_duplicate_error_patterns() -> None:
     assert _is_attendance_record_duplicate_error(pg_exc) is True
 
     # Postgres orig attribute constraint_name
-    class MockOrig:
+    class MockOrig(Exception):
         constraint_name = "uq_attendance_records_user_date"
 
-    pg_attr_exc = IntegrityError("duplicate", params=None, orig=MockOrig())  # type: ignore[arg-type]
+    pg_attr_exc = IntegrityError("duplicate", params=None, orig=MockOrig("duplicate"))
     assert _is_attendance_record_duplicate_error(pg_attr_exc) is True
 
     # SQLite duplicate constraint pattern

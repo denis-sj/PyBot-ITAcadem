@@ -63,7 +63,8 @@ def test_format_draft_preview() -> None:
         duration_minutes=0,
         is_empty_time=True,
         confidence=0.8,
-        status="needs_manual_review",
+        status="recognized",
+        is_excluded=True,
     )
     ignored_block = AttendanceDraftDateBlockDTO(
         date=date(2026, 8, 30),
@@ -95,9 +96,10 @@ def test_format_draft_preview() -> None:
     assert "18:00–20:00" in rendered
     assert "2 ч" in rendered
     assert "Неизвестный Н." in rendered
-    assert "время не указано" in rendered
+    assert "Неизвестный Н.»</i>: N" in rendered
+    assert "время не указано" not in rendered
     assert "прошлый месяц" in rendered
-    assert "Требует внимания: <b>1</b> ⚠️" in rendered
+    assert "Требует внимания" not in rendered
 
 
 def test_format_draft_preview_all_dates_processed() -> None:
@@ -119,7 +121,7 @@ def test_format_draft_preview_all_dates_processed() -> None:
         status="DRAFT",
     )
     rendered = format_draft_preview(draft)
-    assert "Все даты на фото уже учтены (импорт #42). Сохранять нечего." in rendered
+    assert "Все даты на фото уже учтены (Номер фото #42). Сохранять нечего." in rendered
 
 
 def test_format_draft_preview_one_date_processed_one_active() -> None:
@@ -159,7 +161,7 @@ def test_format_draft_preview_one_date_processed_one_active() -> None:
         status="DRAFT",
     )
     rendered = format_draft_preview(draft)
-    assert "20.09.2026 уже учтена (импорт #15). Строки за эту дату не будут сохранены." in rendered
+    assert "20.09.2026 уже учтена (Номер фото #15). Строки за эту дату не будут сохранены." in rendered
     assert "21.09.2026" in rendered
     assert "Иванов Иван" in rendered
 
@@ -380,7 +382,7 @@ def test_format_import_notification_single_visit() -> None:
     text = format_import_notification(import_id=123, user_visits=visits)
     assert "✅ <b>Добавлено посещение:</b>" in text
     assert "20.09.2026 — 18:00–20:00 (2 ч)" in text
-    assert "Источник: импорт #123." in text
+    assert "Номер фото #123." in text
     assert "/my_visits" in text
 
 
@@ -451,8 +453,8 @@ def test_format_my_visits_month_report() -> None:
 
     assert "📅 <b>Июнь 2026</b>" in text
     assert "Посещений: 2 · Всего: 7 ч 41 мин · Место: 3 из 12" in text
-    assert "23.06 — 12:25–17:05 (4 ч 40 мин) · импорт #123" in text
-    assert "24.06 — 14:25–16:30 (2 ч 05 мин) · импорт #123 · время изменено администратором" in text
+    assert "23.06 — 12:25–17:05 (4 ч 40 мин) · Номер фото #123" in text
+    assert "24.06 — 14:25–16:30 (2 ч 05 мин) · Номер фото #123 · время изменено администратором" in text
     assert "25.06 — 10:00–11:00 (1 ч) · добавлено вручную" in text
 
 
@@ -485,7 +487,8 @@ def test_format_edit_visits_users_list() -> None:
 
     users = [DummyUser("Иванов", "Иван", "Иванович"), DummyUser("Петров", "Петр")]
     rendered = format_edit_visits_users_list(users, page=0, page_size=40)
-    assert "<blockquote expandable>" in rendered
+    assert "<blockquote>" in rendered
+    assert "<blockquote expandable>" not in rendered
     assert "1. Иванов Иван Иванович" in rendered
     assert "2. Петров Петр" in rendered
     assert "Введите номер участника." in rendered
@@ -534,4 +537,36 @@ def test_format_edit_visits_record_card() -> None:
     rendered = format_edit_visits_record_card(DummyUser(), DummyRecord())
     assert "👤 <b>Иванов И. И. · 25.09.2026</b>" in rendered
     assert "Время: <b>18:00–20:00</b> (2 ч)" in rendered
-    assert "Источник: импорт #42" in rendered
+    assert "Источник: Номер фото #42" in rendered
+
+
+def test_format_draft_preview_keeps_incomplete_handwritten_time_visible() -> None:
+    item = AttendanceDraftItemDTO(
+        item_id="i1",
+        date=date(2026, 6, 16),
+        raw_name="Участник Тестовый",
+        matched_user_id=1,
+        matched_user_name="Участник Тестовый",
+        start_time=None,
+        end_time=None,
+        duration_minutes=0,
+        is_empty_time=False,
+        confidence=0.95,
+        status="needs_manual_review",
+        time_raw="8:40-",
+    )
+    draft = AttendanceDraftDTO(
+        draft_id=7,
+        author_tg_id=1,
+        created_at=datetime(2026, 6, 16, 20, 0),
+        photo_mime_type="image/jpeg",
+        photo_file_size=1024,
+        photo_checksum="sha",
+        dates=[AttendanceDraftDateBlockDTO(date=date(2026, 6, 16), items=[item])],
+        status="DRAFT",
+    )
+
+    rendered = format_draft_preview(draft)
+
+    assert "⚠️ Участник Тестовый: на листе «8:40-» (требует ввода времени)" in rendered
+    assert "Требует внимания: <b>1</b>" in rendered

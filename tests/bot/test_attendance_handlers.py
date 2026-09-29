@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandObject
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Chat, Message, PhotoSize, User
 
 from pybot.core.config import AppSettings
@@ -22,6 +25,8 @@ from pybot.dto import (
 )
 from pybot.dto.value_objects import Points
 from pybot.presentation.bot.handlers.attendance.admin_commands import (
+    cb_attendance_photo_back_to_months,
+    cb_attendance_photo_select_month,
     cb_generate_report,
     cmd_attendance_photo,
     cmd_current_month,
@@ -30,6 +35,8 @@ from pybot.presentation.bot.handlers.attendance.admin_commands import (
 from pybot.domain.exceptions import AttendancePhotoAccessDeniedError, AttendancePhotoNotFoundError
 from pybot.presentation.bot.handlers.attendance.keyboards import (
     AttendanceDraftCB,
+    AttendancePhotoBackCB,
+    AttendancePhotoBrowseCB,
     AttendancePhotoCB,
     AttendanceReportCB,
     MyVisitsCB,
@@ -37,6 +44,7 @@ from pybot.presentation.bot.handlers.attendance.keyboards import (
     get_report_keyboard,
 )
 from pybot.presentation.bot.handlers.attendance.user_commands import (
+    cb_back_from_attendance_photo,
     cb_my_visits_navigation,
     cb_my_visits_to_months,
     cb_view_attendance_photo,
@@ -44,6 +52,7 @@ from pybot.presentation.bot.handlers.attendance.user_commands import (
     cmd_my_rank,
     cmd_my_visits,
 )
+from pybot.presentation.bot.handlers.attendance.states import EditVisitsSG
 from pybot.presentation.bot.handlers.attendance.photo_import import (
     cb_cancel_draft,
     cb_cancel_fsm,
@@ -107,6 +116,12 @@ def _build_callback_mock() -> AsyncMock:
     cb.message = msg
     cb.answer = AsyncMock()
     return cb
+
+
+def _build_fsm_context(user_id: int = 12345) -> FSMContext:
+    storage = MemoryStorage()
+    key = StorageKey(bot_id=1, chat_id=user_id, user_id=user_id)
+    return FSMContext(storage=storage, key=key)
 
 
 # ============ USER COMMANDS TESTS ============
@@ -286,12 +301,12 @@ async def test_cmd_my_visits_single_month_renders_screen_2(
     text = answer_mock.call_args[0][0]
     assert "Сентябрь 2026" in text
     assert "Посещений: 1 · Всего: 2 ч · Место: 1 из 3" in text
-    assert "25.09 — 18:00–20:00 (2 ч) · импорт #5" in text
+    assert "25.09 — 18:00–20:00 (2 ч) · Номер фото #5" in text
 
     reply_markup = answer_mock.call_args.kwargs["reply_markup"]
     buttons = [b for row in reply_markup.inline_keyboard for b in row]
     # Has photo button for import 5 and close button (no "to months")
-    assert any(b.text == "📷 Фото импорта #5" for b in buttons)
+    assert any(b.text == "📷 Номер фото #5" for b in buttons)
     assert any(b.text == "✖ Закрыть" for b in buttons)
     assert not any(b.text == "← К месяцам" for b in buttons)
 
@@ -362,7 +377,7 @@ async def test_cmd_my_visits_multiple_months_flow(
     assert "Сентябрь 2026" in screen2_text
     screen2_markup = edit_mock.call_args.kwargs["reply_markup"]
     screen2_buttons = [b for row in screen2_markup.inline_keyboard for b in row]
-    assert any(b.text == "📷 Фото импорта #10" for b in screen2_buttons)
+    assert any(b.text == "📷 Номер фото #10" for b in screen2_buttons)
     assert any(b.text == "← К месяцам" for b in screen2_buttons)
 
     # Click "← К месяцам" -> Screen 1
@@ -437,7 +452,7 @@ async def test_cmd_my_rank_registered_user_no_visits(
 
 def test_get_attendance_photo_button() -> None:
     btn = get_attendance_photo_button(import_id=42)
-    assert btn.text == "📷 Фото импорта #42"
+    assert btn.text == "📷 Номер фото #42"
     assert btn.callback_data is not None
     cb = AttendancePhotoCB.unpack(btn.callback_data)
     assert cb.import_id == 42
@@ -470,7 +485,8 @@ async def test_cb_view_attendance_photo_success() -> None:
 
     answer_photo_mock.assert_awaited_once()
     call_kwargs = answer_photo_mock.call_args.kwargs
-    assert call_kwargs["caption"] == "Импорт #15 · 20.09.2026, 21.09.2026"
+    assert call_kwargs["caption"] == "Номер фото #15 · 20.09.2026, 21.09.2026"
+    assert call_kwargs["reply_markup"].inline_keyboard[0][0].text == "← Назад"
     callback.answer.assert_awaited_once_with()
 
 
@@ -531,16 +547,20 @@ async def test_cmd_current_month(
     settings_obj: AppSettings,
 ) -> None:
     msg = _build_message(text="/current_month")
+    state = _build_fsm_context()
+    await state.set_state(EditVisitsSG.waiting_for_edit_time)
     answer_mock = AsyncMock()
     monkeypatch.setattr(Message, "answer", answer_mock)
 
-    await cmd_current_month(msg, settings_obj)
+    await cmd_current_month(msg, settings_obj, state)
 
     answer_mock.assert_awaited_once()
     msg_text = answer_mock.call_args[0][0]
     assert "Asia/Yekaterinburg" not in msg_text
     assert "Часовой пояс" not in msg_text
     assert "Текущий расчётный месяц учёта" in msg_text
+    assert "Предыдущий ввод посещения отменён" in msg_text
+    assert await state.get_state() is None
 
 
 @pytest.mark.asyncio
@@ -549,14 +569,14 @@ async def test_cmd_report_menu(monkeypatch: pytest.MonkeyPatch) -> None:
     answer_mock = AsyncMock()
     monkeypatch.setattr(Message, "answer", answer_mock)
 
-    await cmd_report_menu(msg)
+    await cmd_report_menu(msg, _build_fsm_context())
 
     answer_mock.assert_awaited_once()
-    assert "Отчёты по посещаемости" in answer_mock.call_args[0][0]
+    assert "Учёт посещаемости" in answer_mock.call_args[0][0]
     reply_markup = answer_mock.call_args.kwargs.get("reply_markup")
     assert reply_markup is not None
     all_buttons = [b for row in reply_markup.inline_keyboard for b in row]
-    assert any(b.text == "✖ Закрыть" for b in all_buttons)
+    assert not any(b.text == "✖ Закрыть" for b in all_buttons)
 
 
 @pytest.mark.asyncio
@@ -588,10 +608,11 @@ async def test_cb_generate_report_sends_html(monkeypatch: pytest.MonkeyPatch) ->
     assert call.kwargs["parse_mode"] == ParseMode.HTML
 
 
-def test_get_report_keyboard_contains_close_button() -> None:
+def test_get_report_keyboard_has_colored_action_buttons_without_close() -> None:
     kb = get_report_keyboard()
     all_buttons = [b for row in kb.inline_keyboard for b in row]
-    assert any(b.text == "✖ Закрыть" for b in all_buttons)
+    assert not any(b.text == "✖ Закрыть" for b in all_buttons)
+    assert next(button for button in all_buttons if "Добавить часы" in button.text).style == "success"
 
 
 @pytest.mark.asyncio
@@ -606,13 +627,14 @@ async def test_cmd_attendance_photo_valid_id(
     attendance_service.get_photo_evidence.return_value = (b"image_bytes", "image/jpeg")
 
     cmd_obj = CommandObject(prefix="/", command="attendance_photo", args="42")
-    await cmd_attendance_photo(msg, cmd_obj, attendance_service)
+    await cmd_attendance_photo(msg, cmd_obj, attendance_service, _build_fsm_context())
 
     photo_mock.assert_awaited_once()
+    assert photo_mock.call_args.kwargs["reply_markup"].inline_keyboard[0][0].text == "← Назад"
 
 
 @pytest.mark.asyncio
-async def test_cmd_attendance_photo_missing_arg(
+async def test_cmd_attendance_photo_without_arg_lists_recorded_months(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     msg = _build_message(text="/attendance_photo")
@@ -620,12 +642,101 @@ async def test_cmd_attendance_photo_missing_arg(
     monkeypatch.setattr(Message, "answer", answer_mock)
 
     attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_months.return_value = [(2026, 9)]
     cmd_obj = CommandObject(prefix="/", command="attendance_photo", args=None)
 
-    await cmd_attendance_photo(msg, cmd_obj, attendance_service)
+    await cmd_attendance_photo(msg, cmd_obj, attendance_service, _build_fsm_context())
 
     answer_mock.assert_awaited_once()
-    assert "Укажите номер импорта" in answer_mock.call_args[0][0]
+    assert "Выберите месяц" in answer_mock.call_args[0][0]
+    buttons = [button for row in answer_mock.call_args.kwargs["reply_markup"].inline_keyboard for button in row]
+    assert buttons[0].text == "Сентябрь 2026"
+
+
+@pytest.mark.asyncio
+async def test_cmd_attendance_photo_without_recorded_months_shows_empty_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = _build_message(text="/attendance_photo")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_months.return_value = []
+    cmd_obj = CommandObject(prefix="/", command="attendance_photo", args=None)
+
+    await cmd_attendance_photo(msg, cmd_obj, attendance_service, _build_fsm_context())
+
+    assert "Сохранённых фото посещаемости пока нет" in answer_mock.call_args[0][0]
+    assert "reply_markup" not in answer_mock.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_cb_attendance_photo_select_month_shows_only_recorded_dates() -> None:
+    callback = _build_callback_mock()
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_dates_for_month.return_value = [
+        (date(2026, 9, 25), 42),
+        (date(2026, 9, 27), 45),
+    ]
+
+    await cb_attendance_photo_select_month(
+        callback,
+        AttendancePhotoBrowseCB(action="month", year=2026, month=9),
+        attendance_service,
+    )
+
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [button.text for button in buttons] == [
+        "25.09.2026 · Номер фото #42",
+        "27.09.2026 · Номер фото #45",
+        "← К месяцам",
+    ]
+    assert callback.answer.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_cb_attendance_photo_back_to_months_renders_month_keyboard() -> None:
+    callback = _build_callback_mock()
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_months.return_value = [(2026, 9)]
+
+    await cb_attendance_photo_back_to_months(callback, attendance_service)
+
+    assert "Выберите месяц" in callback.message.edit_text.call_args[0][0]
+    buttons = [
+        button for row in callback.message.edit_text.call_args.kwargs["reply_markup"].inline_keyboard for button in row
+    ]
+    assert buttons[0].text == "Сентябрь 2026"
+
+
+@pytest.mark.asyncio
+async def test_cb_attendance_photo_select_month_keeps_back_button_when_no_dates() -> None:
+    callback = _build_callback_mock()
+    attendance_service = AsyncMock(spec=AttendanceService)
+    attendance_service.get_import_photo_dates_for_month.return_value = []
+
+    await cb_attendance_photo_select_month(
+        callback,
+        AttendancePhotoBrowseCB(action="month", year=2026, month=9),
+        attendance_service,
+    )
+
+    assert callback.message.edit_text.call_args[0][0] == "За этот месяц нет доступных фото."
+    markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [button.text for button in buttons] == ["← К месяцам"]
+
+
+@pytest.mark.asyncio
+async def test_cb_back_from_attendance_photo_deletes_photo_message() -> None:
+    callback = _build_callback_mock()
+
+    await cb_back_from_attendance_photo(callback)
+
+    callback.message.delete.assert_awaited_once()
+    callback.answer.assert_awaited_once_with()
 
 
 # ============ PHOTO INGESTION AND CALLBACK TESTS ============
@@ -718,7 +829,7 @@ async def test_handle_attendance_photo_all_dates_processed_shows_close_keyboard(
     assert answer_mock.await_count == 2
     final_call_args = answer_mock.call_args_list[1]
     final_text = final_call_args[0][0]
-    assert "Все даты на фото уже учтены (импорт #12). Сохранять нечего." in final_text
+    assert "Все даты на фото уже учтены (Номер фото #12). Сохранять нечего." in final_text
     keyboard = final_call_args[1].get("reply_markup") or final_call_args.kwargs.get("reply_markup")
     assert keyboard is not None
     buttons = [b for row in keyboard.inline_keyboard for b in row]

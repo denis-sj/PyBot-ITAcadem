@@ -84,7 +84,7 @@ def _format_ignored_date_block(block: AttendanceDraftDateBlockDTO) -> str:
     """Format ignored date block reason."""
     date_str = block.date.strftime("%d.%m.%Y")
     if block.ignore_reason == "дата уже обработана":
-        import_part = f" (импорт #{block.processed_import_id})" if block.processed_import_id else ""
+        import_part = f" (Номер фото #{block.processed_import_id})" if block.processed_import_id else ""
         return f"  ⚠️ {date_str} уже учтена{import_part}. Строки за эту дату не будут сохранены.\n"
     if block.ignore_reason == "будущая дата":
         return "  ⚠️ <i>Дата пропущена (будущая дата)</i>\n"
@@ -129,7 +129,7 @@ def format_draft_preview(draft: AttendanceDraftDTO) -> str:
     )
     if all_processed:
         imports = [f"#{b.processed_import_id}" for b in draft.dates if b.processed_import_id]
-        import_part = f" (импорт {', '.join(dict.fromkeys(imports))})" if imports else ""
+        import_part = f" (Номер фото {', '.join(dict.fromkeys(imports))})" if imports else ""
         return (
             f"📸 <b>Предпросмотр листа посещаемости</b> (черновик #{draft.draft_id})\n\n"
             f"Все даты на фото уже учтены{import_part}. Сохранять нечего."
@@ -168,8 +168,21 @@ def format_draft_preview(draft: AttendanceDraftDTO) -> str:
     return "\n".join(lines)
 
 
+def _format_draft_item_name(item: AttendanceDraftItemDTO) -> str:
+    """Format a participant name or its recognition placeholder."""
+    if item.matched_user_name:
+        return html.escape(item.matched_user_name)
+    if item.raw_name:
+        return f"❓ <i>«{html.escape(item.raw_name)}»</i>"
+    return "❓ <i>[Имя не распознано]</i>"
+
+
 def _format_draft_item(item: AttendanceDraftItemDTO, counter: int) -> str:
     """Format a single item row in draft preview."""
+    name_display = _format_draft_item_name(item)
+    if item.is_empty_time:
+        return f"  {counter}. ➖ {name_display}: N"
+
     if item.is_excluded:
         status_icon = "🚫"
     elif item.status == "recognized":
@@ -177,15 +190,10 @@ def _format_draft_item(item: AttendanceDraftItemDTO, counter: int) -> str:
     else:
         status_icon = "⚠️"
 
-    if item.matched_user_name:
-        name_display = html.escape(item.matched_user_name)
-    elif item.raw_name:
-        name_display = f"❓ <i>«{html.escape(item.raw_name)}»</i>"
-    else:
-        name_display = "❓ <i>[Имя не распознано]</i>"
-
     if item.start_time and item.end_time:
         time_display = f"{item.start_time.strftime('%H:%M')}–{item.end_time.strftime('%H:%M')}"
+    elif item.time_raw:
+        time_display = f"на листе «{html.escape(item.time_raw)}»"
     else:
         time_display = "время не указано"
     dur_str = format_duration(item.duration_minutes) if item.duration_minutes > 0 else "требует ввода времени"
@@ -325,10 +333,7 @@ def format_import_notification(
         dur_str = format_duration(dur)
         lines.append(f"{d_str} — {t_str} ({dur_str})")
 
-    lines.append(
-        f"\nИсточник: импорт #{import_id}. "
-        "Чтобы посмотреть фото журнала, нажмите кнопку ниже. Все посещения: /my_visits"
-    )
+    lines.append(f"\nНомер фото #{import_id}. Нажмите кнопку ниже, чтобы открыть фото. Все посещения: /my_visits")
     return "\n".join(lines)
 
 
@@ -361,7 +366,7 @@ def format_my_visits_month_report(
             else "без фиксации времени"
         )
         dur_part = format_duration(v.duration_minutes)
-        source_part = f"импорт #{v.import_id}" if v.import_id else "добавлено вручную"
+        source_part = f"Номер фото #{v.import_id}" if v.import_id else "добавлено вручную"
         mod_part = " · время изменено администратором" if getattr(v, "is_time_modified", False) else ""
         lines.append(f"{d_str} — {time_part} ({dur_part}) · {source_part}{mod_part}")
 
@@ -390,7 +395,7 @@ def format_edit_visits_users_list(users: Sequence[Any], page: int = 0, page_size
     start = page * page_size
     page_users = users[start : start + page_size]
 
-    lines = ["<blockquote expandable>"]
+    lines = ["<blockquote>"]
     for idx, u in enumerate(page_users, start=start + 1):
         name = format_user_full_name(u)
         lines.append(f"{idx}. {html.escape(name)}")
@@ -424,7 +429,7 @@ def format_edit_visits_record_card(user: Any, record: Any, history: Sequence[Any
         else "без фиксации времени"
     )
     dur_str = format_duration(record.duration_minutes)
-    source_part = f"импорт #{record.import_id}" if getattr(record, "import_id", None) else "добавлено вручную"
+    source_part = f"Номер фото #{record.import_id}" if getattr(record, "import_id", None) else "добавлено вручную"
 
     lines = [
         f"👤 <b>{short_name} · {date_str}</b>",

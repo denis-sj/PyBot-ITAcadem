@@ -1,7 +1,7 @@
 """Inline keyboards and callback data for attendance presentation."""
 
 from collections.abc import Sequence
-from datetime import time
+from datetime import date, time
 from typing import Any
 
 from aiogram.filters.callback_data import CallbackData
@@ -37,18 +37,101 @@ class AttendanceReportCB(CallbackData, prefix="att_rep"):
     mode: str
 
 
+class AttendanceUploadCB(CallbackData, prefix="att_upload"):
+    """Callback data for starting attendance photo upload."""
+
+    action: str
+
+
 class AttendancePhotoCB(CallbackData, prefix="att_photo"):
     """Callback data for viewing attendance import photo."""
 
     import_id: int
 
 
+class AttendancePhotoBackCB(CallbackData, prefix="att_photo_back"):
+    """Callback data for returning from a photo to the previous screen."""
+
+    action: str = "back"
+
+
+class AttendancePhotoBrowseCB(CallbackData, prefix="att_photo_browse"):
+    """Callback data for month selection in /attendance_photo."""
+
+    action: str
+    year: int = 0
+    month: int = 0
+
+
 def get_attendance_photo_button(import_id: int) -> InlineKeyboardButton:
     """Generate an inline button to view attendance sheet photo."""
     return InlineKeyboardButton(
-        text=f"📷 Фото импорта #{import_id}",
+        text=f"📷 Номер фото #{import_id}",
         callback_data=AttendancePhotoCB(import_id=import_id).pack(),
+        style="primary",
     )
+
+
+def get_attendance_photo_back_keyboard() -> InlineKeyboardMarkup:
+    """Generate a button that removes the opened photo and reveals the previous screen."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="← Назад",
+                    callback_data=AttendancePhotoBackCB().pack(),
+                    style="primary",
+                )
+            ]
+        ]
+    )
+
+
+def get_attendance_photo_months_keyboard(months: list[tuple[int, int]]) -> InlineKeyboardMarkup:
+    """Generate an inline keyboard for months that have confirmed photo imports."""
+    keyboard_rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for year, month in months:
+        month_name = MONTH_NAMES_RU_CAPITALIZED.get(month, f"Месяц {month}")
+        row.append(
+            InlineKeyboardButton(
+                text=f"{month_name} {year}",
+                callback_data=AttendancePhotoBrowseCB(action="month", year=year, month=month).pack(),
+                style="primary",
+            )
+        )
+        if len(row) == MY_VISITS_BUTTONS_PER_ROW:
+            keyboard_rows.append(row)
+            row = []
+    if row:
+        keyboard_rows.append(row)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
+
+
+def get_attendance_photo_dates_keyboard(
+    dates: list[tuple[date, int]],
+) -> InlineKeyboardMarkup:
+    """Generate recorded date buttons and a return-to-months button."""
+    keyboard_rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{visit_date:%d.%m.%Y} · Номер фото #{import_id}",
+                callback_data=AttendancePhotoCB(import_id=import_id).pack(),
+                style="primary",
+            )
+        ]
+        for visit_date, import_id in dates
+    ]
+    keyboard_rows.append(
+        [
+            InlineKeyboardButton(
+                text="← К месяцам",
+                callback_data=AttendancePhotoBrowseCB(action="months").pack(),
+                style="primary",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
 
 MY_VISITS_PAGE_SIZE: int = 10
@@ -86,26 +169,31 @@ def get_draft_actions_keyboard(draft_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text=BTN_CONFIRM,
                 callback_data=AttendanceDraftCB(action="confirm", draft_id=draft_id).pack(),
+                style="success",
             )
         ],
         [
             InlineKeyboardButton(
                 text=BTN_EDIT_TIME,
                 callback_data=AttendanceDraftCB(action="edittime", draft_id=draft_id).pack(),
+                style="primary",
             ),
             InlineKeyboardButton(
                 text=BTN_EDIT_USER,
                 callback_data=AttendanceDraftCB(action="edituser", draft_id=draft_id).pack(),
+                style="primary",
             ),
         ],
         [
             InlineKeyboardButton(
                 text=BTN_EXCLUDE,
                 callback_data=AttendanceDraftCB(action="exclude", draft_id=draft_id).pack(),
+                style="danger",
             ),
             InlineKeyboardButton(
                 text=BTN_CANCEL,
                 callback_data=AttendanceDraftCB(action="cancel", draft_id=draft_id).pack(),
+                style="danger",
             ),
         ],
     ]
@@ -113,20 +201,26 @@ def get_draft_actions_keyboard(draft_id: int) -> InlineKeyboardMarkup:
 
 
 def get_report_keyboard() -> InlineKeyboardMarkup:
-    """Generate keyboard for selecting report type."""
+    """Generate the attendance menu with photo import and report actions."""
     buttons = [
+        [
+            InlineKeyboardButton(
+                text="📸 Добавить часы по фото",
+                callback_data=AttendanceUploadCB(action="photo").pack(),
+                style="success",
+            )
+        ],
         [
             InlineKeyboardButton(
                 text="📄 Краткий отчёт",
                 callback_data=AttendanceReportCB(mode="short").pack(),
+                style="primary",
             ),
             InlineKeyboardButton(
                 text="📋 Подробный отчёт",
                 callback_data=AttendanceReportCB(mode="detailed").pack(),
+                style="primary",
             ),
-        ],
-        [
-            get_close_button(),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -139,6 +233,7 @@ def get_cancel_edit_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="❌ Отмена",
                 callback_data="att_fsm_cancel",
+                style="danger",
             )
         ]
     ]
@@ -162,6 +257,7 @@ def get_my_visits_months_keyboard(
         btn = InlineKeyboardButton(
             text=f"{m_name} {y}",
             callback_data=MyVisitsCB(action="month", year=y, month=m, page=page).pack(),
+            style="primary",
         )
         row.append(btn)
         if len(row) == MY_VISITS_BUTTONS_PER_ROW:
@@ -177,6 +273,7 @@ def get_my_visits_months_keyboard(
             InlineKeyboardButton(
                 text="← Раньше",
                 callback_data=MyVisitsCB(action="page", page=page + 1).pack(),
+                style="primary",
             )
         )
     if page > 0:
@@ -184,6 +281,7 @@ def get_my_visits_months_keyboard(
             InlineKeyboardButton(
                 text="Позже →",
                 callback_data=MyVisitsCB(action="page", page=page - 1).pack(),
+                style="primary",
             )
         )
     if nav_row:
@@ -209,6 +307,7 @@ def get_my_visits_month_report_keyboard(
                 InlineKeyboardButton(
                     text=BTN_TO_MONTHS,
                     callback_data=MyVisitsCB(action="months", page=page).pack(),
+                    style="primary",
                 )
             ]
         )
@@ -223,7 +322,7 @@ def get_edit_visits_users_keyboard(
     page: int = 0,
     page_size: int = EDIT_VISITS_PAGE_SIZE,
 ) -> InlineKeyboardMarkup:
-    """Generate pagination and close keyboard for Screen 1."""
+    """Generate pagination keyboard for Screen 1."""
     keyboard_rows: list[list[InlineKeyboardButton]] = []
 
     total_pages = (total_users + page_size - 1) // page_size if total_users > 0 else 1
@@ -233,6 +332,7 @@ def get_edit_visits_users_keyboard(
             InlineKeyboardButton(
                 text="←",
                 callback_data=EditVisitsCB(action="page", page=page - 1).pack(),
+                style="primary",
             )
         )
     if page < total_pages - 1:
@@ -240,12 +340,12 @@ def get_edit_visits_users_keyboard(
             InlineKeyboardButton(
                 text="→",
                 callback_data=EditVisitsCB(action="page", page=page + 1).pack(),
+                style="primary",
             )
         )
     if nav_row:
         keyboard_rows.append(nav_row)
 
-    keyboard_rows.append([get_close_button()])
     return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
 
@@ -262,6 +362,7 @@ def get_edit_visits_user_keyboard(
         btn = InlineKeyboardButton(
             text=f"{m_name} {y}",
             callback_data=EditVisitsCB(action="month", user_id=user_id, year=y, month=m).pack(),
+            style="primary",
         )
         row.append(btn)
         if len(row) == MY_VISITS_BUTTONS_PER_ROW:
@@ -275,6 +376,7 @@ def get_edit_visits_user_keyboard(
             InlineKeyboardButton(
                 text=BTN_ADD_VISIT,
                 callback_data=EditVisitsCB(action="start_manual", user_id=user_id).pack(),
+                style="success",
             )
         ]
     )
@@ -283,6 +385,7 @@ def get_edit_visits_user_keyboard(
             InlineKeyboardButton(
                 text=BTN_TO_USERS,
                 callback_data=EditVisitsCB(action="users").pack(),
+                style="primary",
             )
         ]
     )
@@ -316,6 +419,7 @@ def get_edit_visits_month_dates_keyboard(
                 month=month,
                 record_id=r.id,
             ).pack(),
+            style="primary",
         )
         row.append(btn)
         if len(row) == MY_VISITS_BUTTONS_PER_ROW:
@@ -329,6 +433,7 @@ def get_edit_visits_month_dates_keyboard(
             InlineKeyboardButton(
                 text=BTN_TO_MONTHS,
                 callback_data=EditVisitsCB(action="user", user_id=user_id).pack(),
+                style="primary",
             )
         ]
     )
@@ -358,6 +463,7 @@ def get_edit_visits_record_keyboard(
                     month=month,
                     record_id=record.id,
                 ).pack(),
+                style="primary",
             ),
             InlineKeyboardButton(
                 text=BTN_DELETE_VISIT,
@@ -368,6 +474,7 @@ def get_edit_visits_record_keyboard(
                     month=month,
                     record_id=record.id,
                 ).pack(),
+                style="danger",
             ),
         ]
     )
@@ -377,6 +484,7 @@ def get_edit_visits_record_keyboard(
             InlineKeyboardButton(
                 text=BTN_TO_DATES,
                 callback_data=EditVisitsCB(action="month", user_id=user_id, year=year, month=month).pack(),
+                style="primary",
             )
         ]
     )
@@ -403,6 +511,7 @@ def get_edit_visits_cancel_keyboard(
                         month=month,
                         record_id=record_id,
                     ).pack(),
+                    style="danger",
                 )
             ]
         ]
@@ -428,6 +537,7 @@ def get_edit_visits_confirm_time_keyboard(
                         month=month,
                         record_id=record_id,
                     ).pack(),
+                    style="success",
                 ),
                 InlineKeyboardButton(
                     text="← Отмена",
@@ -438,6 +548,7 @@ def get_edit_visits_confirm_time_keyboard(
                         month=month,
                         record_id=record_id,
                     ).pack(),
+                    style="danger",
                 ),
             ]
         ]
@@ -463,6 +574,7 @@ def get_edit_visits_confirm_delete_keyboard(
                         month=month,
                         record_id=record_id,
                     ).pack(),
+                    style="danger",
                 ),
                 InlineKeyboardButton(
                     text="← Отмена",
@@ -473,6 +585,7 @@ def get_edit_visits_confirm_delete_keyboard(
                         month=month,
                         record_id=record_id,
                     ).pack(),
+                    style="danger",
                 ),
             ]
         ]
@@ -492,6 +605,7 @@ def get_edit_visits_confirm_manual_keyboard(
                         action="save_manual",
                         user_id=user_id,
                     ).pack(),
+                    style="success",
                 ),
                 InlineKeyboardButton(
                     text="← Отмена",
@@ -499,6 +613,7 @@ def get_edit_visits_confirm_manual_keyboard(
                         action="user",
                         user_id=user_id,
                     ).pack(),
+                    style="danger",
                 ),
             ]
         ]

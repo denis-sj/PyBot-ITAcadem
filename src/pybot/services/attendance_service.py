@@ -49,7 +49,9 @@ from ..presentation.texts.attendance import MONTH_NAMES_RU, format_import_notifi
 from .ports import AttendanceRecognitionPort, NotificationPort
 
 DRAFT_TTL_HOURS: int = 24
+CALENDAR_MONTHS_PER_YEAR: int = 12
 _MIN_CONFIDENCE_THRESHOLD: float = 0.7
+_EMPTY_TIME_INDICATORS: frozenset[str] = frozenset({"", "-", "—", "–", "нет", "прочерк", "н", "n", "0"})
 
 
 class AttendanceService:
@@ -570,6 +572,35 @@ class AttendanceService:
         """
         return await self._attendance_repo.find_user_visit_months(self._db, user_id)
 
+    async def get_import_photo_months(self) -> list[tuple[int, int]]:
+        """Return months with confirmed attendance dates whose photos are available.
+
+        Returns:
+            list[tuple[int, int]]: Distinct (year, month) pairs, newest first.
+        """
+        return await self._attendance_repo.find_import_photo_months(self._db)
+
+    async def get_import_photo_dates_for_month(self, year: int, month: int) -> list[tuple[date, int]]:
+        """Return recorded attendance dates and photo numbers for one calendar month.
+
+        Args:
+            year: Calendar year.
+            month: Calendar month from 1 to 12.
+
+        Returns:
+            list[tuple[date, int]]: Recorded dates paired with photo numbers.
+        """
+        if not 1 <= month <= CALENDAR_MONTHS_PER_YEAR:
+            return []
+
+        start_date = date(year, month, 1)
+        end_date = date(year, month, calendar.monthrange(year, month)[1])
+        return await self._attendance_repo.find_import_photo_dates_for_month(
+            self._db,
+            start_date,
+            end_date,
+        )
+
     async def get_sorted_participants(self) -> list[User]:
         """Return all registered participants sorted alphabetically by last name, first name, patronymic."""
         users = await self._user_repo.find_all_users(self._db)
@@ -1043,7 +1074,15 @@ class AttendanceService:
         if not raw_name or not raw_name.strip():
             return None, None, "needs_manual_review"
 
-        normalized_target = self._normalize_name(raw_name)
+        # The attendance sheet prints the cohort after a comma. It is not part
+        # of the participant's name and should not prevent an exact match.
+        name_without_cohort = re.sub(
+            r",\s*[A-ZА-ЯЁ]{2,}-\d{2}/\d+(?:-\d+)?\s*$",
+            "",
+            raw_name,
+            flags=re.IGNORECASE,
+        )
+        normalized_target = self._normalize_name(name_without_cohort)
         if not normalized_target:
             return None, None, "needs_manual_review"
 
@@ -1201,12 +1240,28 @@ class AttendanceService:
     ) -> AttendanceDraftItemDTO | None:
         """Process one recognized row and build a draft item DTO.
 
-        Returns None if row represents an absent participant (empty time).
+        Returns an excluded N marker for an absent participant.
         """
-        if row.is_empty_time:
-            return None
-        if not row.time_raw or row.time_raw.strip() in ("", "-", "—", "–", "нет", "прочерк", "н", "n", "0"):
-            return None
+        if row.is_empty_time or not row.time_raw or row.time_raw.strip().lower() in _EMPTY_TIME_INDICATORS:
+            matched_user_id, matched_user_name, _ = self._match_participant(row.raw_name, users)
+            item_id = f"{date_val.isoformat()}_{row_idx}_{uuid.uuid4().hex[:6]}"
+            requires_manual_review = row.status == "needs_manual_review"
+            return AttendanceDraftItemDTO(
+                item_id=item_id,
+                date=date_val,
+                raw_name=row.raw_name,
+                matched_user_id=matched_user_id,
+                matched_user_name=matched_user_name,
+                start_time=None,
+                end_time=None,
+                duration_minutes=0,
+                is_empty_time=True,
+                confidence=row.confidence,
+                status="needs_manual_review" if requires_manual_review else "recognized",
+                is_duplicate_date=is_already_processed,
+                is_out_of_month=is_out_of_month,
+                is_excluded=not requires_manual_review,
+            )
 
         start_time, end_time, duration_minutes = self._resolve_row_time(
             time_raw=row.time_raw,
@@ -1255,6 +1310,7 @@ class AttendanceService:
             is_empty_time=False,
             confidence=row.confidence,
             status=status,
+            time_raw=row.time_raw,
             is_duplicate_date=is_already_processed,
             is_out_of_month=is_out_of_month,
             is_excluded=is_excluded,

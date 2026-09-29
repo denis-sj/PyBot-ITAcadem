@@ -123,6 +123,10 @@ class AttendanceDraftItemDTO(BaseDTO):
     is_empty_time: bool
     confidence: float
     status: Literal["recognized", "needs_manual_review"]
+    time_raw: str | None = Field(
+        default=None,
+        description="Handwritten time exactly as read from the sheet, kept even when it is incomplete.",
+    )
     is_duplicate_date: bool = False
     is_out_of_month: bool = False
     is_excluded: bool = False

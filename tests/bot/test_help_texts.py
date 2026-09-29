@@ -51,5 +51,11 @@ def test_help_private_contains_edit_visits_command() -> None:
     assert "/edit_visits - управление посещениями участников" in HELP_PRIVATE
 
 
+def test_help_private_attendance_commands_stay_compact() -> None:
+    assert "/report - отчёты и добавление часов по фото" in HELP_PRIVATE
+    assert "/attendance_photo - выбрать фото по месяцу и дате" in HELP_PRIVATE
+    assert "откройте /report и нажмите" not in HELP_PRIVATE
+
+
 def test_help_private_public_my_visits_description() -> None:
     assert "/my_visits - выбор месяца и просмотр посещений" in HELP_PRIVATE_PUBLIC

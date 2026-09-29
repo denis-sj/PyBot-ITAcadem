@@ -20,6 +20,7 @@ def get_close_button(text: str = BUTTON_CLOSE) -> InlineKeyboardButton:
     return InlineKeyboardButton(
         text=text,
         callback_data=CommonNavigationCB(action="close").pack(),
+        style="danger",
     )
 
 
