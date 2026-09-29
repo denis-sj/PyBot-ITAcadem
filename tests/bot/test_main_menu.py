@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -208,9 +208,10 @@ def test_broadcast_confirmation_offers_send_and_cancel_bound_to_the_draft() -> N
     assert _button_actions(markup) == [MenuAction.BROADCAST_SEND, MenuAction.BROADCAST_CANCEL]
     for row in markup.inline_keyboard:
         for button in row:
-            assert MainMenuCB.unpack(button.callback_data).draft == "0123abcd"
+            assert MainMenuCB.unpack(cast(str, button.callback_data)).draft == "0123abcd"
     assert _button_actions(get_broadcast_cancel_keyboard()) == [MenuAction.BROADCAST_CANCEL]
-    assert MainMenuCB.unpack(get_broadcast_cancel_keyboard().inline_keyboard[0][0].callback_data).draft == ""
+    cancel_data = cast(str, get_broadcast_cancel_keyboard().inline_keyboard[0][0].callback_data)
+    assert MainMenuCB.unpack(cancel_data).draft == ""
 
 
 # ============ ACCESS AND REGISTRATION PROMPT ============
@@ -562,8 +563,8 @@ async def _let_other_tasks_run() -> None:
 
 
 async def _run_racing(
-    first: Callable[[], Awaitable[object]],
-    second: Callable[[], Awaitable[object]],
+    first: Callable[[], Coroutine[Any, Any, object]],
+    second: Callable[[], Coroutine[Any, Any, object]],
     *,
     delay: int,
     broadcast: _LockedBroadcast | None = None,
@@ -739,7 +740,7 @@ async def test_confirmed_broadcast_goes_to_all_users_and_reports_summary_to_init
 
     _broadcast_mock(broadcast_service).assert_awaited_once_with(BroadcastDTO(broadcast_message="Всем привет"))
     notification_facade.notify_user.assert_awaited_once()
-    notify_dto = notification_facade.notify_user.await_args.args[0]
+    notify_dto = notification_facade.notify_user.await_args_list[0].args[0]
     assert notify_dto.recipient_id == TELEGRAM_ID
     assert notify_dto.kind is TaskScheduleKind.IMMEDIATE
     assert notify_dto.message == broadcast_result_summary(_broadcast_mock(broadcast_service).return_value)
