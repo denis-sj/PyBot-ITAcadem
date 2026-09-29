@@ -69,3 +69,10 @@ def test_help_private_attendance_commands_stay_compact() -> None:
 
 def test_help_private_public_visits_description() -> None:
     assert "/visits - моя посещаемость: часы, рейтинг и история" in HELP_PRIVATE_PUBLIC
+
+
+def test_help_describes_start_as_profile_with_main_menu() -> None:
+    start_line = "/start - открыть профиль и главное меню или пройти регистрацию"
+
+    assert start_line in HELP_PRIVATE
+    assert start_line in HELP_PRIVATE_PUBLIC

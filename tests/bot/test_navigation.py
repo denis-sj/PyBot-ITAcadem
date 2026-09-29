@@ -145,6 +145,7 @@ def test_get_close_button_carries_owner_id() -> None:
 @pytest.mark.asyncio
 async def test_cb_close_message_ignores_press_from_other_user_in_group() -> None:
     message_mock = AsyncMock(spec=Message)
+    message_mock.delete = AsyncMock()
     callback = AsyncMock(spec=CallbackQuery)
     callback.message = message_mock
     callback.from_user = AsyncMock()
@@ -163,6 +164,7 @@ async def test_cb_close_message_ignores_press_from_other_user_in_group() -> None
 @pytest.mark.asyncio
 async def test_cb_close_message_owner_can_close_personal_card() -> None:
     message_mock = AsyncMock(spec=Message)
+    message_mock.delete = AsyncMock()
     callback = AsyncMock(spec=CallbackQuery)
     callback.message = message_mock
     callback.from_user = AsyncMock()

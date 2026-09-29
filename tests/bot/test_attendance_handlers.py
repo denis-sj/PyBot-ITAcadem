@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, time
 from unittest.mock import AsyncMock
 
 import pytest
+from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import EditMessageText
@@ -11,7 +12,7 @@ from aiogram.filters import CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Chat, Message, PhotoSize, User
+from aiogram.types import CallbackQuery, Chat, Message, PhotoSize, User
 
 from pybot.core.config import AppSettings
 from pybot.core.constants import PointsTypeEnum
@@ -57,12 +58,17 @@ from pybot.presentation.bot.handlers.attendance import user_commands
 from pybot.presentation.bot.handlers.attendance.user_commands import (
     cb_back_from_attendance_photo,
     cb_my_visits_navigation,
+    cb_menu_visits,
     cb_my_visits_to_months,
     cb_view_attendance_photo,
     cb_visits_hub,
     cmd_visits,
 )
 from pybot.presentation.bot.handlers.attendance.states import EditVisitsSG
+from pybot.presentation.bot.keyboards.main_menu import (
+    get_open_bot_registration_keyboard,
+    get_start_registration_keyboard,
+)
 from pybot.presentation.bot.handlers.attendance.photo_import import (
     cb_cancel_draft,
     cb_cancel_fsm,
@@ -121,6 +127,12 @@ def _build_callback_mock() -> AsyncMock:
     cb.message = msg
     cb.answer = AsyncMock()
     return cb
+
+
+def _build_bot(username: str | None = "pybot_test_bot") -> AsyncMock:
+    bot = AsyncMock(spec=Bot)
+    bot.me.return_value = User(id=1, is_bot=True, first_name="PyBot", username=username)
+    return bot
 
 
 def _build_fsm_context(user_id: int = 12345) -> FSMContext:
@@ -199,7 +211,7 @@ async def test_cmd_visits_registered_user_shows_home_card(
     monkeypatch.setattr(Message, "answer", answer_mock)
     user_service, attendance_service = _build_registered_services()
 
-    await cmd_visits(msg, user_service, attendance_service)
+    await cmd_visits(msg, user_service, attendance_service, _build_bot())
 
     answer_mock.assert_awaited_once()
     text = answer_mock.call_args[0][0]
@@ -224,7 +236,7 @@ async def test_cmd_visits_card_buttons_carry_owner_and_fit_callback_limit(
     monkeypatch.setattr(Message, "answer", answer_mock)
     user_service, attendance_service = _build_registered_services()
 
-    await cmd_visits(msg, user_service, attendance_service)
+    await cmd_visits(msg, user_service, attendance_service, _build_bot())
 
     markup = answer_mock.call_args.kwargs["reply_markup"]
     for row in markup.inline_keyboard:
@@ -243,25 +255,131 @@ async def test_cmd_visits_without_visits_still_offers_buttons(
     user_service, attendance_service = _build_registered_services()
     attendance_service.get_user_monthly_summary.return_value = _build_summary(total_minutes=0, rank=0, visits_count=0)
 
-    await cmd_visits(msg, user_service, attendance_service)
+    await cmd_visits(msg, user_service, attendance_service, _build_bot())
 
     assert "у вас пока нет подтверждённых посещений" in answer_mock.call_args[0][0]
     assert "📅 Мои посещения" in _button_texts(answer_mock.call_args.kwargs["reply_markup"])
 
 
 @pytest.mark.asyncio
-async def test_cmd_visits_unregistered_user(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_cmd_visits_unregistered_user_in_private_chat_gets_start_registration_button(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     msg = _build_message(text="/visits")
     answer_mock = AsyncMock()
     monkeypatch.setattr(Message, "answer", answer_mock)
     user_service = AsyncMock(spec=UserService)
     user_service.find_user_by_telegram_id.return_value = None
     attendance_service = AsyncMock(spec=AttendanceService)
+    bot = _build_bot()
 
-    await cmd_visits(msg, user_service, attendance_service)
+    await cmd_visits(msg, user_service, attendance_service, bot)
 
     assert "не зарегистрированы" in answer_mock.call_args[0][0]
+    assert answer_mock.call_args.kwargs["reply_markup"] == get_start_registration_keyboard()
+    bot.me.assert_not_awaited()
     attendance_service.get_user_monthly_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chat_type", ["group", "supergroup"])
+async def test_cmd_visits_unregistered_user_in_group_gets_link_to_bot_chat(
+    monkeypatch: pytest.MonkeyPatch,
+    chat_type: str,
+) -> None:
+    msg = _build_message(text="/visits", chat_type=chat_type)
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = None
+    attendance_service = AsyncMock(spec=AttendanceService)
+
+    await cmd_visits(msg, user_service, attendance_service, _build_bot("pybot_test_bot"))
+
+    assert answer_mock.call_args.kwargs["reply_markup"] == get_open_bot_registration_keyboard("pybot_test_bot")
+    attendance_service.get_user_monthly_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cmd_visits_unregistered_user_in_group_without_bot_username_gets_text_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = _build_message(text="/visits", chat_type="group")
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = None
+
+    await cmd_visits(msg, user_service, AsyncMock(spec=AttendanceService), _build_bot(username=None))
+
+    assert "не зарегистрированы" in answer_mock.call_args[0][0]
+    assert answer_mock.call_args.kwargs["reply_markup"] is None
+
+
+@pytest.mark.asyncio
+async def test_cb_menu_visits_sends_home_card_below_the_menu() -> None:
+    callback = _build_callback_mock()
+    callback.from_user.id = 12345
+    user_service, attendance_service = _build_registered_services()
+
+    await cb_menu_visits(callback, user_service, attendance_service, _build_bot())
+
+    callback.message.answer.assert_awaited_once()
+    text = callback.message.answer.call_args[0][0]
+    assert "Посещаемость" in text
+    assert "Иванов Иван" in text
+    assert callback.message.answer.call_args.kwargs["parse_mode"] == ParseMode.HTML
+    assert _button_texts(callback.message.answer.call_args.kwargs["reply_markup"]) == [
+        "🏆 Топ недели",
+        "🏆 Топ месяца",
+        "📅 Мои посещения",
+        "✖ Закрыть",
+    ]
+    callback.message.edit_text.assert_not_awaited()
+    callback.answer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_cb_menu_visits_unregistered_user_gets_registration_button() -> None:
+    callback = _build_callback_mock()
+    callback.from_user.id = 12345
+    callback.message.chat = Chat(id=12345, type="private")
+    user_service = AsyncMock(spec=UserService)
+    user_service.find_user_by_telegram_id.return_value = None
+    attendance_service = AsyncMock(spec=AttendanceService)
+
+    await cb_menu_visits(callback, user_service, attendance_service, _build_bot())
+
+    assert "не зарегистрированы" in callback.message.answer.call_args[0][0]
+    assert callback.message.answer.call_args.kwargs["reply_markup"] == get_start_registration_keyboard()
+    attendance_service.get_user_monthly_summary.assert_not_awaited()
+    callback.answer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_cb_menu_visits_domain_error_is_shown_as_alert() -> None:
+    callback = _build_callback_mock()
+    callback.from_user.id = 12345
+    user_service, attendance_service = _build_registered_services()
+    attendance_service.get_user_monthly_summary.side_effect = AttendanceDomainError("Нет данных")
+
+    await cb_menu_visits(callback, user_service, attendance_service, _build_bot())
+
+    callback.message.answer.assert_not_awaited()
+    callback.answer.assert_awaited_once_with("Нет данных", show_alert=True)
+
+
+@pytest.mark.asyncio
+async def test_cb_menu_visits_ignores_inaccessible_message() -> None:
+    callback = AsyncMock(spec=CallbackQuery)
+    callback.message = None
+    callback.answer = AsyncMock()
+    user_service, attendance_service = _build_registered_services()
+
+    await cb_menu_visits(callback, user_service, attendance_service, _build_bot())
+
+    user_service.find_user_by_telegram_id.assert_not_awaited()
+    callback.answer.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
@@ -272,7 +390,7 @@ async def test_cmd_visits_domain_error_is_reported(monkeypatch: pytest.MonkeyPat
     user_service, attendance_service = _build_registered_services()
     attendance_service.get_user_monthly_summary.side_effect = AttendanceDomainError("Нет данных")
 
-    await cmd_visits(msg, user_service, attendance_service)
+    await cmd_visits(msg, user_service, attendance_service, _build_bot())
 
     assert answer_mock.call_args[0][0] == "⚠️ Нет данных"
 
@@ -518,6 +636,7 @@ async def test_my_visits_callbacks_reject_press_from_other_user() -> None:
 @pytest.mark.asyncio
 async def test_cb_view_attendance_photo_rejects_press_from_other_user() -> None:
     callback = _build_callback_mock()
+    callback.message.answer_photo = AsyncMock()
     callback.from_user.id = 999
     user_service, attendance_service = _build_registered_services()
 

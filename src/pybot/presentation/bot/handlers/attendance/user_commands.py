@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
@@ -25,6 +25,8 @@ from ....texts.attendance import (
     format_visits_home,
     format_week_top,
 )
+from ...keyboards.main_menu import MainMenuCB, MenuAction
+from ...utils.registration_prompt import answer_registration_required
 from .keyboards import (
     AttendancePhotoBackCB,
     AttendancePhotoCB,
@@ -40,10 +42,6 @@ from .keyboards import (
 
 attendance_user_router = Router(name="attendance_user")
 
-_USER_NOT_REGISTERED_MSG = (
-    "ℹ️ <b>Вы ещё не зарегистрированы в системе клуба.</b>\n\n"
-    "Пожалуйста, отправьте команду /start, чтобы пройти короткую регистрацию."
-)
 _MONTHS_PER_YEAR = 12
 
 type _Screen = tuple[str, InlineKeyboardMarkup]
@@ -54,6 +52,7 @@ async def cmd_visits(
     message: Message,
     user_service: FromDishka[UserService],
     attendance_service: FromDishka[AttendanceService],
+    bot: Bot,
 ) -> None:
     """Open the personal attendance card in a private or group chat."""
     if not message.from_user:
@@ -61,7 +60,7 @@ async def cmd_visits(
 
     user = await user_service.find_user_by_telegram_id(message.from_user.id)
     if user is None:
-        await message.answer(_USER_NOT_REGISTERED_MSG, parse_mode=ParseMode.HTML)
+        await answer_registration_required(message, bot)
         return
 
     try:
@@ -69,6 +68,32 @@ async def cmd_visits(
         await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     except AttendanceDomainError as exc:
         await message.answer(f"⚠️ {exc.message}")
+
+
+@attendance_user_router.callback_query(MainMenuCB.filter(F.action == MenuAction.VISITS))
+async def cb_menu_visits(
+    callback: CallbackQuery,
+    user_service: FromDishka[UserService],
+    attendance_service: FromDishka[AttendanceService],
+    bot: Bot,
+) -> None:
+    """Main menu button «Посещаемость»: send the same card as /visits below the menu."""
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+
+    user = await user_service.find_user_by_telegram_id(callback.from_user.id)
+    if user is None:
+        await answer_registration_required(callback.message, bot)
+        await callback.answer()
+        return
+
+    try:
+        text, keyboard = await _build_home_screen(user.id, callback.from_user.id, attendance_service)
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        await callback.answer()
+    except AttendanceDomainError as exc:
+        await callback.answer(exc.message, show_alert=True)
 
 
 @attendance_user_router.callback_query(VisitsHubCB.filter())
