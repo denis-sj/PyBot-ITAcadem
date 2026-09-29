@@ -234,6 +234,11 @@ BROADCAST_MENU_DRAFT_OUTDATED = (
     "Чтобы начать заново, откройте меню через /start."
 )
 BROADCAST_MENU_IN_PROGRESS = "Рассылка уже отправляется, подождите."
+# Also shown as a Telegram alert, which is limited to 200 characters.
+BROADCAST_MENU_INTERRUPTED = (
+    "⚠️ Отправка рассылки была прервана: часть пользователей могла уже получить сообщение. "
+    "Повторно оно не отправлялось. Чтобы начать заново, нажмите «Рассылка всем»."
+)
 BROADCAST_MENU_ALREADY_RUNNING = (
     "Сейчас уже выполняется другая рассылка. Текст сохранён: нажмите «Отправить всем», когда она завершится."
 )

@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator, Iterator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
-from typing import cast
-from unittest.mock import AsyncMock, Mock
+from typing import Any, cast
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.base import StateType, StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.methods import EditMessageText
 from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message, User
@@ -49,6 +52,7 @@ from pybot.presentation.texts import (
     BROADCAST_MENU_CONFIRM,
     BROADCAST_MENU_DRAFT_OUTDATED,
     BROADCAST_MENU_IN_PROGRESS,
+    BROADCAST_MENU_INTERRUPTED,
     BROADCAST_MENU_PROMPT,
     BROADCAST_NO_RECIPIENTS,
     HELP_PRIVATE,
@@ -139,9 +143,9 @@ def _build_profile_service() -> UserProfileService:
     return cast(UserProfileService, service)
 
 
-def _build_fsm_context() -> FSMContext:
-    key = StorageKey(bot_id=1, chat_id=TELEGRAM_ID, user_id=TELEGRAM_ID)
-    return FSMContext(storage=MemoryStorage(), key=key)
+def _build_fsm_context(storage: MemoryStorage | None = None, user_id: int = TELEGRAM_ID) -> FSMContext:
+    key = StorageKey(bot_id=1, chat_id=user_id, user_id=user_id)
+    return FSMContext(storage=storage or MemoryStorage(), key=key)
 
 
 def _bad_request(reason: str) -> TelegramBadRequest:
@@ -492,6 +496,67 @@ async def test_cb_menu_leaderboard_reports_unexpected_error() -> None:
 
 DRAFT_ID = "draft001"
 NEWER_DRAFT_ID = "draft002"
+OTHER_ADMIN_ID = TELEGRAM_ID + 1
+TELEGRAM_ALERT_LIMIT = 200
+SUMMARY = BroadcastResult(attempted=5, sent=3, failed_temporary=1, failed_permanent=1, skipped_invalid_user=0)
+
+
+@pytest.fixture(autouse=True)
+def _no_leftover_sending_claims() -> Iterator[None]:
+    """The claims live in module state: a test must neither inherit nor leave one."""
+    broadcast_menu._sending_admins.clear()
+    yield
+    broadcast_menu._sending_admins.clear()
+
+
+class _YieldingStorage(MemoryStorage):
+    """In-memory storage that yields to the event loop on every call, as a network storage (Redis) does.
+
+    Without it every FSM call finishes without a real suspension and parallel handlers never interleave.
+    """
+
+    async def get_state(self, key: StorageKey) -> str | None:
+        await asyncio.sleep(0)
+        return await super().get_state(key)
+
+    async def set_state(self, key: StorageKey, state: StateType = None) -> None:
+        await asyncio.sleep(0)
+        await super().set_state(key, state)
+
+    async def get_data(self, key: StorageKey) -> dict[str, Any]:
+        await asyncio.sleep(0)
+        return await super().get_data(key)
+
+    async def set_data(self, key: StorageKey, data: Mapping[str, Any]) -> None:
+        await asyncio.sleep(0)
+        await super().set_data(key, data)
+
+
+class _LockedBroadcast:
+    """Stands in for ``BroadcastService.broadcast_for_all``: one broadcast at a time, it ends on ``release``."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+        self._is_running = False
+
+    async def broadcast(self, broadcast_data: BroadcastDTO) -> BroadcastResult:
+        if self._is_running:
+            raise BroadcastAlreadyRunningError
+        self._is_running = True
+        self.calls += 1
+        self.entered.set()
+        try:
+            await self.release.wait()
+        finally:
+            self._is_running = False
+        return SUMMARY
+
+
+async def _let_other_tasks_run() -> None:
+    for _ in range(50):
+        await asyncio.sleep(0)
 
 
 @dataclass(slots=True)
@@ -520,8 +585,12 @@ def _press(action: MenuAction, draft: str = "") -> MainMenuCB:
     return MainMenuCB(action=action, draft=draft)
 
 
-async def _state_with_draft(text: str = "Всем привет", draft_id: str = DRAFT_ID) -> FSMContext:
-    state = _build_fsm_context()
+async def _state_with_draft(
+    text: str = "Всем привет",
+    draft_id: str = DRAFT_ID,
+    storage: MemoryStorage | None = None,
+) -> FSMContext:
+    state = _build_fsm_context(storage)
     await state.set_state(BroadcastMenuSG.waiting_for_confirmation)
     await state.update_data({"broadcast_text": text, "broadcast_draft_id": draft_id})
     return state
@@ -545,6 +614,19 @@ async def _press_send(
     return callback
 
 
+@asynccontextmanager
+async def _live_sending(state: FSMContext) -> AsyncIterator[_LockedBroadcast]:
+    """Run a real confirm-button handler and keep it in the middle of the sending until the block is left."""
+    broadcast = _LockedBroadcast()
+    task = asyncio.create_task(_press_send(state, _build_broadcast_service(broadcast.broadcast)))
+    try:
+        await asyncio.wait_for(broadcast.entered.wait(), timeout=1)
+        yield broadcast
+    finally:
+        broadcast.release.set()
+        await asyncio.wait_for(task, timeout=1)
+
+
 @pytest.mark.asyncio
 async def test_cb_menu_broadcast_asks_for_text_and_waits_for_it() -> None:
     callback = _build_callback()
@@ -563,16 +645,16 @@ async def test_cb_menu_broadcast_asks_for_text_and_waits_for_it() -> None:
 
 @pytest.mark.asyncio
 async def test_cb_menu_broadcast_does_not_restart_scenario_while_sending() -> None:
-    callback = _build_callback()
     state = await _state_with_draft()
-    await state.set_state(BroadcastMenuSG.sending)
 
-    await broadcast_menu.cb_menu_broadcast(callback, state)
+    async with _live_sending(state):
+        callback = _build_callback()
+        await broadcast_menu.cb_menu_broadcast(callback, state)
 
-    assert await state.get_state() == BroadcastMenuSG.sending.state
-    assert (await state.get_data())["broadcast_text"] == "Всем привет"
-    callback.message.answer.assert_not_awaited()
-    callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
+        assert await state.get_state() == BroadcastMenuSG.sending.state
+        assert (await state.get_data())["broadcast_text"] == "Всем привет"
+        callback.message.answer.assert_not_awaited()
+        callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
 
 
 @pytest.mark.asyncio
@@ -682,15 +764,16 @@ async def test_repeated_press_after_sending_does_not_broadcast_twice() -> None:
 @pytest.mark.asyncio
 async def test_press_while_sending_is_answered_without_second_broadcast() -> None:
     state = await _state_with_draft()
-    await state.set_state(BroadcastMenuSG.sending)
-    broadcast_service = _build_broadcast_service()
 
-    callback = await _press_send(state, broadcast_service)
+    async with _live_sending(state) as broadcast:
+        second_service = _build_broadcast_service()
+        callback = await _press_send(state, second_service)
 
-    _broadcast_mock(broadcast_service).assert_not_awaited()
-    callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
-    callback.message.answer.assert_not_awaited()
-    assert await state.get_state() == BroadcastMenuSG.sending.state
+        _broadcast_mock(second_service).assert_not_awaited()
+        callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
+        callback.message.answer.assert_not_awaited()
+        assert await state.get_state() == BroadcastMenuSG.sending.state
+        assert broadcast.calls == 1
 
 
 @pytest.mark.asyncio
@@ -761,6 +844,7 @@ async def test_unexpected_broadcast_error_drops_draft_and_is_not_swallowed() -> 
         await _press_send(state, _build_broadcast_service(RuntimeError("boom")))
 
     assert await state.get_state() is None
+    assert not broadcast_menu._sending_admins
 
 
 @pytest.mark.asyncio
@@ -815,11 +899,189 @@ async def test_stale_prompt_cancel_button_does_not_reset_another_scenario() -> N
 
 @pytest.mark.asyncio
 async def test_cancel_cannot_interrupt_broadcast_being_sent() -> None:
+    state = await _state_with_draft()
+
+    async with _live_sending(state):
+        callback = _build_callback()
+        await broadcast_menu.cb_menu_broadcast_cancel(callback, _press(MenuAction.BROADCAST_CANCEL), state)
+
+        assert await state.get_state() == BroadcastMenuSG.sending.state
+        assert (await state.get_data())["broadcast_text"] == "Всем привет"
+        callback.message.answer.assert_not_awaited()
+        callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
+
+
+# ============ BROADCAST: PARALLEL PRESSES, CANCELLATION, INTERRUPTED SENDING ============
+
+
+@pytest.mark.asyncio
+async def test_parallel_confirm_presses_send_the_draft_only_once() -> None:
+    state = await _state_with_draft(storage=_YieldingStorage())
+    broadcast = _LockedBroadcast()
+    service = _build_broadcast_service(broadcast.broadcast)
+    notification_facade = StubNotificationFacade()
+    callbacks = [_build_callback(), _build_callback()]
+
+    tasks = [
+        asyncio.create_task(_press_send(state, service, notification_facade, callback=callback))
+        for callback in callbacks
+    ]
+    await asyncio.wait_for(broadcast.entered.wait(), timeout=1)
+    await _let_other_tasks_run()
+    broadcast.release.set()
+    await asyncio.wait_for(asyncio.gather(*tasks), timeout=1)
+
+    assert broadcast.calls == 1
+    assert _broadcast_mock(service).await_count == 1
+    rejected = [cb for cb in callbacks if call(BROADCAST_MENU_IN_PROGRESS) in cb.answer.await_args_list]
+    assert len(rejected) == 1
+    notification_facade.notify_user.assert_awaited_once()
+    # neither press was offered a retry that would send the same draft once more
+    for cb in callbacks:
+        assert all(BROADCAST_MENU_ALREADY_RUNNING not in c.args for c in cb.message.answer.await_args_list)
+    assert await state.get_state() is None
+    assert await state.get_data() == {}
+
+    late_press = await _press_send(state, service, notification_facade)
+
+    late_press.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+    assert broadcast.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_many_parallel_presses_still_send_once() -> None:
+    state = await _state_with_draft(storage=_YieldingStorage())
+    broadcast = _LockedBroadcast()
+    service = _build_broadcast_service(broadcast.broadcast)
+
+    tasks = [asyncio.create_task(_press_send(state, service)) for _ in range(5)]
+    await asyncio.wait_for(broadcast.entered.wait(), timeout=1)
+    await _let_other_tasks_run()
+    broadcast.release.set()
+    await asyncio.wait_for(asyncio.gather(*tasks), timeout=1)
+
+    assert broadcast.calls == 1
+    assert await state.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_sending_of_one_administrator_does_not_block_another_one() -> None:
+    state = await _state_with_draft()
+    other_state = _build_fsm_context(MemoryStorage(), user_id=OTHER_ADMIN_ID)
+    await other_state.set_state(BroadcastMenuSG.waiting_for_confirmation)
+    await other_state.update_data({"broadcast_text": "текст второго", "broadcast_draft_id": NEWER_DRAFT_ID})
+    other_callback = _build_callback()
+    other_callback.from_user = User(id=OTHER_ADMIN_ID, is_bot=False, first_name="Второй")
+
+    async with _live_sending(state):
+        # the service lock, not the per-administrator claim, serializes different administrators
+        service = _build_broadcast_service(BroadcastAlreadyRunningError())
+        await _press_send(other_state, service, draft=NEWER_DRAFT_ID, callback=other_callback)
+
+        _broadcast_mock(service).assert_awaited_once()
+        other_callback.message.answer.assert_awaited_once_with(
+            BROADCAST_MENU_ALREADY_RUNNING,
+            reply_markup=get_broadcast_confirm_keyboard(NEWER_DRAFT_ID),
+        )
+        assert await other_state.get_state() == BroadcastMenuSG.waiting_for_confirmation.state
+
+
+@pytest.mark.asyncio
+async def test_cancelled_sending_frees_the_scenario_and_warns_about_partial_delivery() -> None:
+    state = await _state_with_draft()
+    broadcast = _LockedBroadcast()
     callback = _build_callback()
+    notification_facade = StubNotificationFacade()
+    service = _build_broadcast_service(broadcast.broadcast)
+    task = asyncio.create_task(_press_send(state, service, notification_facade, callback=callback))
+    await asyncio.wait_for(broadcast.entered.wait(), timeout=1)
+    assert await state.get_state() == BroadcastMenuSG.sending.state
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=1)
+
+    assert await state.get_state() is None
+    assert await state.get_data() == {}
+    assert not broadcast_menu._sending_admins
+    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_INTERRUPTED)
+    notification_facade.notify_user.assert_not_awaited()
+
+    next_press = _build_callback()
+    await broadcast_menu.cb_menu_broadcast(next_press, state)
+
+    assert await state.get_state() == BroadcastMenuSG.waiting_for_text.state
+    next_press.answer.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_failed_warning_does_not_replace_the_cancellation_or_leave_the_state_locked() -> None:
+    state = await _state_with_draft()
+    broadcast = _LockedBroadcast()
+    callback = _build_callback()
+    callback.message.answer.side_effect = _bad_request("chat not found")
+    task = asyncio.create_task(_press_send(state, _build_broadcast_service(broadcast.broadcast), callback=callback))
+    await asyncio.wait_for(broadcast.entered.wait(), timeout=1)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=1)
+
+    assert await state.get_state() is None
+    assert not broadcast_menu._sending_admins
+
+
+async def _orphaned_sending_state() -> FSMContext:
+    """The state a Redis storage keeps after the bot died in the middle of a sending: nobody sends it anymore."""
     state = await _state_with_draft()
     await state.set_state(BroadcastMenuSG.sending)
+    return state
+
+
+@pytest.mark.asyncio
+async def test_menu_button_drops_orphaned_sending_and_warns_then_works_again() -> None:
+    state = await _orphaned_sending_state()
+    callback = _build_callback()
+
+    await broadcast_menu.cb_menu_broadcast(callback, state)
+
+    assert await state.get_state() is None
+    assert await state.get_data() == {}
+    callback.answer.assert_awaited_once_with(BROADCAST_MENU_INTERRUPTED, show_alert=True)
+    callback.message.answer.assert_not_awaited()
+
+    next_press = _build_callback()
+    await broadcast_menu.cb_menu_broadcast(next_press, state)
+
+    assert await state.get_state() == BroadcastMenuSG.waiting_for_text.state
+
+
+@pytest.mark.asyncio
+async def test_confirm_button_does_not_send_over_orphaned_sending() -> None:
+    state = await _orphaned_sending_state()
+    service = _build_broadcast_service()
+
+    callback = await _press_send(state, service)
+
+    _broadcast_mock(service).assert_not_awaited()
+    callback.message.edit_reply_markup.assert_awaited_once_with(reply_markup=None)
+    callback.answer.assert_awaited_once_with(BROADCAST_MENU_INTERRUPTED, show_alert=True)
+    callback.message.answer.assert_not_awaited()
+    assert await state.get_state() is None
+    assert not broadcast_menu._sending_admins
+
+
+@pytest.mark.asyncio
+async def test_cancel_button_drops_orphaned_sending_and_warns() -> None:
+    state = await _orphaned_sending_state()
+    callback = _build_callback()
 
     await broadcast_menu.cb_menu_broadcast_cancel(callback, _press(MenuAction.BROADCAST_CANCEL), state)
 
-    assert await state.get_state() == BroadcastMenuSG.sending.state
-    callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+    assert await state.get_state() is None
+    callback.answer.assert_awaited_once_with(BROADCAST_MENU_INTERRUPTED, show_alert=True)
+
+
+def test_broadcast_alert_texts_fit_telegram_alert_limit() -> None:
+    assert len(BROADCAST_MENU_INTERRUPTED) <= TELEGRAM_ALERT_LIMIT
+    assert len(BROADCAST_MENU_IN_PROGRESS) <= TELEGRAM_ALERT_LIMIT
