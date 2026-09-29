@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -503,10 +503,12 @@ SUMMARY = BroadcastResult(attempted=5, sent=3, failed_temporary=1, failed_perman
 
 @pytest.fixture(autouse=True)
 def _no_leftover_sending_claims() -> Iterator[None]:
-    """The claims live in module state: a test must neither inherit nor leave one."""
+    """The claims and locks live in module state: a test must neither inherit nor leave them."""
     broadcast_menu._sending_admins.clear()
+    broadcast_menu._scenario_locks.clear()
     yield
     broadcast_menu._sending_admins.clear()
+    broadcast_menu._scenario_locks.clear()
 
 
 class _YieldingStorage(MemoryStorage):
@@ -555,8 +557,32 @@ class _LockedBroadcast:
 
 
 async def _let_other_tasks_run() -> None:
-    for _ in range(50):
+    for _ in range(200):
         await asyncio.sleep(0)
+
+
+async def _run_racing(
+    first: Callable[[], Awaitable[object]],
+    second: Callable[[], Awaitable[object]],
+    *,
+    delay: int,
+    broadcast: _LockedBroadcast | None = None,
+) -> None:
+    """Run two handlers as parallel tasks, the second one ``delay`` event loop turns after the first one.
+
+    A sending started by them is kept in the service until both handlers had time to reach their conclusions.
+    """
+
+    async def delayed() -> None:
+        for _ in range(delay):
+            await asyncio.sleep(0)
+        await second()
+
+    tasks = [asyncio.create_task(first()), asyncio.create_task(delayed())]
+    await _let_other_tasks_run()
+    if broadcast is not None:
+        broadcast.release.set()
+    await asyncio.wait_for(asyncio.gather(*tasks), timeout=1)
 
 
 @dataclass(slots=True)
@@ -1085,3 +1111,100 @@ async def test_cancel_button_drops_orphaned_sending_and_warns() -> None:
 def test_broadcast_alert_texts_fit_telegram_alert_limit() -> None:
     assert len(BROADCAST_MENU_INTERRUPTED) <= TELEGRAM_ALERT_LIMIT
     assert len(BROADCAST_MENU_IN_PROGRESS) <= TELEGRAM_ALERT_LIMIT
+
+
+# ============ BROADCAST: SCENARIO CHANGES RACING WITH THE CONFIRMATION ============
+
+RACE_DELAYS = range(12)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_first", [True, False])
+@pytest.mark.parametrize("delay", RACE_DELAYS)
+async def test_cancel_racing_with_confirm_never_disagrees_with_what_was_sent(cancel_first: bool, delay: int) -> None:
+    state = await _state_with_draft(storage=_YieldingStorage())
+    broadcast = _LockedBroadcast()
+    service = _build_broadcast_service(broadcast.broadcast)
+    cancel_callback, send_callback = _build_callback(), _build_callback()
+
+    async def cancel() -> None:
+        await broadcast_menu.cb_menu_broadcast_cancel(
+            cancel_callback, _press(MenuAction.BROADCAST_CANCEL, DRAFT_ID), state
+        )
+
+    async def send() -> None:
+        await _press_send(state, service, draft=DRAFT_ID, callback=send_callback)
+
+    first, second = (cancel, send) if cancel_first else (send, cancel)
+    await _run_racing(first, second, delay=delay, broadcast=broadcast)
+
+    was_cancelled = call(BROADCAST_MENU_CANCELLED) in cancel_callback.message.answer.await_args_list
+    was_sent = broadcast.calls == 1
+    # The administrator is never told «cancelled» about a draft that goes out, and never sends what was cancelled.
+    assert was_cancelled != was_sent
+    if was_sent:
+        cancel_callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
+    else:
+        send_callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+    assert await state.get_state() is None
+    assert await state.get_data() == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("menu_first", [True, False])
+@pytest.mark.parametrize("delay", RACE_DELAYS)
+async def test_menu_button_racing_with_confirm_never_replaces_the_scenario_of_a_sent_draft(
+    menu_first: bool,
+    delay: int,
+) -> None:
+    state = await _state_with_draft(storage=_YieldingStorage())
+    broadcast = _LockedBroadcast()
+    service = _build_broadcast_service(broadcast.broadcast)
+    menu_callback, send_callback = _build_callback(), _build_callback()
+
+    async def menu() -> None:
+        await broadcast_menu.cb_menu_broadcast(menu_callback, state)
+
+    async def send() -> None:
+        await _press_send(state, service, draft=DRAFT_ID, callback=send_callback)
+
+    first, second = (menu, send) if menu_first else (send, menu)
+    await _run_racing(first, second, delay=delay, broadcast=broadcast)
+
+    was_restarted = menu_callback.message.answer.await_count == 1
+    was_sent = broadcast.calls == 1
+    assert was_restarted != was_sent
+    if was_sent:
+        menu_callback.answer.assert_awaited_once_with(BROADCAST_MENU_IN_PROGRESS)
+        assert await state.get_state() is None
+    else:
+        send_callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_DRAFT_OUTDATED)
+        assert await state.get_state() == BroadcastMenuSG.waiting_for_text.state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_first", [True, False])
+@pytest.mark.parametrize("delay", RACE_DELAYS)
+async def test_cancel_racing_with_draft_text_leaves_no_ghost_draft(
+    monkeypatch: pytest.MonkeyPatch,
+    cancel_first: bool,
+    delay: int,
+) -> None:
+    monkeypatch.setattr(Message, "reply", AsyncMock())
+    state = _build_fsm_context(_YieldingStorage())
+    await state.set_state(BroadcastMenuSG.waiting_for_text)
+    cancel_callback = _build_callback()
+
+    async def cancel() -> None:
+        await broadcast_menu.cb_menu_broadcast_cancel(cancel_callback, _press(MenuAction.BROADCAST_CANCEL), state)
+
+    async def receive_text() -> None:
+        await broadcast_menu.msg_receive_broadcast_text(_build_message(text="Всем привет"), state)
+
+    first, second = (cancel, receive_text) if cancel_first else (receive_text, cancel)
+    await _run_racing(first, second, delay=delay)
+
+    cancel_callback.message.answer.assert_awaited_once_with(BROADCAST_MENU_CANCELLED)
+    # The scenario is left, so a text that arrived after the cancel must not bring a draft back to life.
+    assert await state.get_state() is None
+    assert await state.get_data() == {}

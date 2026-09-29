@@ -2,7 +2,9 @@
 
 import asyncio
 import contextlib
+from enum import Enum, auto
 from uuid import uuid4
+from weakref import WeakValueDictionary
 
 from aiogram import F
 from aiogram.exceptions import TelegramBadRequest
@@ -42,15 +44,28 @@ _BROADCAST_TEXT_KEY = "broadcast_text"
 _BROADCAST_DRAFT_ID_KEY = "broadcast_draft_id"
 _DRAFT_ID_LENGTH = 8
 
-# Administrators whose confirmed draft is being sent by this bot process right now.
+# Concurrency model of the scenario.
 #
-# The FSM state alone cannot keep one draft from being sent twice: reading it and switching it to ``sending``
-# are separate awaits, and every update is handled in its own task, so parallel presses can both pass the check.
-# The claim is taken without an ``await`` between the check and the ``add``, which makes it atomic for the event
-# loop. The broadcast lock of ``BroadcastService`` is process-local as well, so a process-local claim is enough.
+# Every update is handled in its own task and every FSM call is an await, so two handlers of the same administrator
+# can interleave in the middle of «read the state, then change it». That is how a cancel could clear a draft that a
+# confirm press had already taken for sending, or two confirm presses could both send it. Both guards below are
+# process-local, like the broadcast lock of ``BroadcastService`` itself.
 #
-# The set is empty after a restart, which is what tells a live ``sending`` state from an orphaned one.
+# * ``_scenario_lock`` serializes the short «check the state and change it» sections of the scenario per
+#   administrator. Nothing slow runs under it: answers to Telegram and the sending itself stay outside.
+# * ``_sending_admins`` holds the administrators whose draft is being sent right now. It is filled under the lock,
+#   together with the switch to ``sending``, and it is what tells a live ``sending`` state from a leftover one:
+#   after a restart the set is empty, while a Redis storage may still keep ``sending``.
+_scenario_locks: WeakValueDictionary[int, asyncio.Lock] = WeakValueDictionary()
 _sending_admins: set[int] = set()
+
+
+class _Sending(Enum):
+    """What the sending of an administrator means for a pressed button."""
+
+    NONE = auto()
+    IN_PROGRESS = auto()  # a live handler of this process is sending the draft right now
+    INTERRUPTED = auto()  # a leftover of an interrupted sending, it has just been reset
 
 
 @broadcast_menu_private_router.callback_query(
@@ -59,13 +74,19 @@ _sending_admins: set[int] = set()
 )
 async def cb_menu_broadcast(callback: CallbackQuery, state: FSMContext) -> None:
     """Main menu button «Рассылка всем»: ask the administrator for the broadcast text."""
-    if await _reject_while_sending(callback, state):
-        return
+    message = callback.message
+    admin_id = callback.from_user.id
+    async with _scenario_lock(admin_id):
+        sending = await _check_sending(state, admin_id)
+        is_started = sending is _Sending.NONE and isinstance(message, Message)
+        if is_started:
+            await state.clear()
+            await state.set_state(BroadcastMenuSG.waiting_for_text)
 
-    if isinstance(callback.message, Message):
-        await state.clear()
-        await state.set_state(BroadcastMenuSG.waiting_for_text)
-        await callback.message.answer(
+    if await _answer_if_sending(callback, sending):
+        return
+    if is_started and isinstance(message, Message):
+        await message.answer(
             BROADCAST_MENU_PROMPT,
             parse_mode="HTML",
             reply_markup=get_broadcast_cancel_keyboard(),
@@ -86,8 +107,12 @@ async def msg_receive_broadcast_text(message: Message, state: FSMContext) -> Non
         return
 
     draft_id = uuid4().hex[:_DRAFT_ID_LENGTH]
-    await state.update_data({_BROADCAST_TEXT_KEY: text, _BROADCAST_DRAFT_ID_KEY: draft_id})
-    await state.set_state(BroadcastMenuSG.waiting_for_confirmation)
+    # This router is private-only, where the chat ID is the administrator's ID.
+    async with _scenario_lock(message.chat.id):
+        if await state.get_state() != BroadcastMenuSG.waiting_for_text.state:
+            return  # the scenario was cancelled or replaced while this update was waiting for its turn
+        await state.update_data({_BROADCAST_TEXT_KEY: text, _BROADCAST_DRAFT_ID_KEY: draft_id})
+        await state.set_state(BroadcastMenuSG.waiting_for_confirmation)
     await message.reply(BROADCAST_MENU_CONFIRM, reply_markup=get_broadcast_confirm_keyboard(draft_id))
 
 
@@ -104,8 +129,10 @@ async def cb_menu_broadcast_send(
 ) -> None:
     """Send the confirmed draft to all users and report the result to the administrator.
 
-    One administrator can have only one sending in flight: of several parallel presses exactly one takes the
-    claim and the others are told that the broadcast is already being sent.
+    One administrator can have only one sending in flight: the draft is taken for sending under the scenario lock,
+    so of several parallel presses exactly one gets it, and a cancel cannot slip in between the check and the switch
+    to ``sending``. The draft stays in the FSM while it is being sent and is dropped only when the broadcast is over,
+    so the administrator can retry after «another broadcast is already running».
     """
     message = callback.message
     if not isinstance(message, Message):
@@ -113,22 +140,40 @@ async def cb_menu_broadcast_send(
         return
 
     admin_id = callback.from_user.id
-    if admin_id in _sending_admins:
-        await callback.answer(BROADCAST_MENU_IN_PROGRESS)
-        return
-
-    _sending_admins.add(admin_id)  # no await since the check above: the claim is atomic
+    is_claimed = False
     try:
-        await _send_confirmed_draft(
+        async with _scenario_lock(admin_id):
+            sending = await _check_sending(state, admin_id)
+            broadcast_text = None
+            if sending is _Sending.NONE:
+                broadcast_text = await _start_sending_draft(state, callback_data.draft)
+            if broadcast_text is not None:
+                _sending_admins.add(admin_id)  # no await since the switch to ``sending``
+                is_claimed = True
+
+        if sending is _Sending.INTERRUPTED:
+            await _remove_buttons(message)
+        if await _answer_if_sending(callback, sending):
+            return
+
+        await _remove_buttons(message)
+        await callback.answer()
+        if broadcast_text is None:
+            await message.answer(BROADCAST_MENU_DRAFT_OUTDATED)
+            return
+
+        await _broadcast_draft(
             callback,
             message,
             callback_data.draft,
+            broadcast_text,
             state,
             broadcast_service,
             notification_facade,
         )
     finally:
-        _sending_admins.discard(admin_id)
+        if is_claimed:
+            _sending_admins.discard(admin_id)
 
 
 @broadcast_menu_private_router.callback_query(
@@ -137,43 +182,29 @@ async def cb_menu_broadcast_send(
 )
 async def cb_menu_broadcast_cancel(callback: CallbackQuery, callback_data: MainMenuCB, state: FSMContext) -> None:
     """Drop the draft and leave the broadcast scenario without sending anything."""
-    if await _reject_while_sending(callback, state):
-        return
+    admin_id = callback.from_user.id
+    async with _scenario_lock(admin_id):
+        sending = await _check_sending(state, admin_id)
+        is_cancelled = sending is _Sending.NONE and await _cancel_scenario(state, callback_data.draft)
 
-    is_cancelled = await _cancel_scenario(state, callback_data.draft)
+    if await _answer_if_sending(callback, sending):
+        return
     if isinstance(callback.message, Message):
         await _remove_buttons(callback.message)
         await callback.message.answer(BROADCAST_MENU_CANCELLED if is_cancelled else BROADCAST_MENU_DRAFT_OUTDATED)
     await callback.answer()
 
 
-async def _send_confirmed_draft(  # noqa: PLR0913
+async def _broadcast_draft(  # noqa: PLR0913
     callback: CallbackQuery,
     message: Message,
     draft_id: str,
+    broadcast_text: str,
     state: FSMContext,
     broadcast_service: BroadcastService,
     notification_facade: NotificationFacade,
 ) -> None:
-    """Send the draft of the pressed button; the caller holds the administrator's sending claim.
-
-    The draft stays in the FSM while the sending is in progress and is dropped only when the broadcast is over,
-    so the administrator can retry after «another broadcast is already running».
-    """
-    if await state.get_state() == BroadcastMenuSG.sending.state:
-        # The claim is ours, so no live handler owns this state: it is a leftover of an interrupted sending.
-        await state.clear()
-        await _remove_buttons(message)
-        await callback.answer(BROADCAST_MENU_INTERRUPTED, show_alert=True)
-        return
-
-    broadcast_text = await _start_sending_draft(state, draft_id)
-    await _remove_buttons(message)
-    await callback.answer()
-    if broadcast_text is None:
-        await message.answer(BROADCAST_MENU_DRAFT_OUTDATED)
-        return
-
+    """Send the draft that has just been taken for sending; the caller holds the administrator's claim."""
     try:
         result = await broadcast_service.broadcast_for_all(BroadcastDTO(broadcast_message=broadcast_text))
     except UsersNotFoundError:
@@ -196,23 +227,37 @@ async def _send_confirmed_draft(  # noqa: PLR0913
     await notify_broadcast_result(message, notification_facade, result, recipient_id=callback.from_user.id)
 
 
-async def _reject_while_sending(callback: CallbackQuery, state: FSMContext) -> bool:
-    """Answer the press and return ``True`` if the scenario is busy with a sending that must not be disturbed.
+def _scenario_lock(admin_id: int) -> asyncio.Lock:
+    """Return the lock that serializes the changes of one administrator's broadcast scenario."""
+    lock = _scenario_locks.get(admin_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _scenario_locks[admin_id] = lock
+    return lock
 
-    A live sending is reported as «in progress». A ``sending`` state that no running handler owns is a leftover of
-    an interrupted sending (the bot restarted, for example): it is dropped here, so that it does not lock the
-    scenario for good, and the administrator is told that part of the messages may have been delivered.
+
+async def _check_sending(state: FSMContext, admin_id: int) -> _Sending:
+    """Tell whether the administrator's draft is being sent; a leftover ``sending`` state is reset on the way.
+
+    A ``sending`` state that no running handler owns is a leftover of an interrupted sending (the bot restarted,
+    for example): it must not lock the scenario for good. The answer is reliable only under the scenario lock,
+    because a sending is registered only under it.
     """
-    admin_id = callback.from_user.id
-    if admin_id not in _sending_admins and await state.get_state() != BroadcastMenuSG.sending.state:
-        return False
-
-    if admin_id in _sending_admins:  # checked again: the sending may have started while the state was being read
-        await callback.answer(BROADCAST_MENU_IN_PROGRESS)
-    else:
+    if admin_id in _sending_admins:
+        return _Sending.IN_PROGRESS
+    if await state.get_state() == BroadcastMenuSG.sending.state:
         await state.clear()
+        return _Sending.INTERRUPTED
+    return _Sending.NONE
+
+
+async def _answer_if_sending(callback: CallbackQuery, sending: _Sending) -> bool:
+    """Answer a press that met a sending and return ``True``, so that the caller leaves the scenario alone."""
+    if sending is _Sending.IN_PROGRESS:
+        await callback.answer(BROADCAST_MENU_IN_PROGRESS)
+    elif sending is _Sending.INTERRUPTED:
         await callback.answer(BROADCAST_MENU_INTERRUPTED, show_alert=True)
-    return True
+    return sending is not _Sending.NONE
 
 
 async def _start_sending_draft(state: FSMContext, draft_id: str) -> str | None:
