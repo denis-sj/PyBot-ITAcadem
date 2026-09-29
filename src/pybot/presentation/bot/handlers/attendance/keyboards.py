@@ -9,6 +9,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ....texts.attendance import (
     BTN_ADD_VISIT,
+    BTN_BACK,
     BTN_CANCEL,
     BTN_CONFIRM,
     BTN_DELETE_VISIT,
@@ -19,6 +20,9 @@ from ....texts.attendance import (
     BTN_TO_DATES,
     BTN_TO_MONTHS,
     BTN_TO_USERS,
+    BTN_VISITS_MONTH_TOP,
+    BTN_VISITS_MY,
+    BTN_VISITS_WEEK_TOP,
     MONTH_NAMES_RU_CAPITALIZED,
 )
 from ...keyboards.navigation import get_close_button
@@ -44,15 +48,24 @@ class AttendanceUploadCB(CallbackData, prefix="att_upload"):
 
 
 class AttendancePhotoCB(CallbackData, prefix="att_photo"):
-    """Callback data for viewing attendance import photo."""
+    """Callback data for viewing attendance import photo.
+
+    ``owner`` is the Telegram ID of the user who may press the button in a shared chat;
+    0 means the button is not restricted to a single user.
+    """
 
     import_id: int
+    owner: int = 0
 
 
 class AttendancePhotoBackCB(CallbackData, prefix="att_photo_back"):
-    """Callback data for returning from a photo to the previous screen."""
+    """Callback data for returning from a photo to the previous screen.
+
+    ``owner`` is the Telegram ID of the only user who may remove the photo; 0 means anyone.
+    """
 
     action: str = "back"
+    owner: int = 0
 
 
 class AttendancePhotoBrowseCB(CallbackData, prefix="att_photo_browse"):
@@ -63,23 +76,23 @@ class AttendancePhotoBrowseCB(CallbackData, prefix="att_photo_browse"):
     month: int = 0
 
 
-def get_attendance_photo_button(import_id: int) -> InlineKeyboardButton:
+def get_attendance_photo_button(import_id: int, owner_id: int = 0) -> InlineKeyboardButton:
     """Generate an inline button to view attendance sheet photo."""
     return InlineKeyboardButton(
         text=f"📷 Номер фото #{import_id}",
-        callback_data=AttendancePhotoCB(import_id=import_id).pack(),
+        callback_data=AttendancePhotoCB(import_id=import_id, owner=owner_id).pack(),
         style="primary",
     )
 
 
-def get_attendance_photo_back_keyboard() -> InlineKeyboardMarkup:
+def get_attendance_photo_back_keyboard(owner_id: int = 0) -> InlineKeyboardMarkup:
     """Generate a button that removes the opened photo and reveals the previous screen."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="← Назад",
-                    callback_data=AttendancePhotoBackCB().pack(),
+                    text=BTN_BACK,
+                    callback_data=AttendancePhotoBackCB(owner=owner_id).pack(),
                     style="primary",
                 )
             ]
@@ -138,13 +151,100 @@ MY_VISITS_PAGE_SIZE: int = 10
 MY_VISITS_BUTTONS_PER_ROW: int = 2
 
 
+class VisitsHubCB(CallbackData, prefix="vis_hub"):
+    """Callback data for the screens of the /visits card.
+
+    ``owner`` is the Telegram ID of the user who opened the card; only this user may use it.
+    """
+
+    action: str  # "home", "week", "top_month", "my"
+    year: int = 0
+    month: int = 0
+    owner: int = 0
+
+
 class MyVisitsCB(CallbackData, prefix="my_vis"):
-    """Callback data for personal visits multi-month navigation."""
+    """Callback data for personal visits multi-month navigation inside the /visits card."""
 
     action: str  # "month", "months", "page"
     year: int = 0
     month: int = 0
     page: int = 0
+    owner: int = 0
+
+
+def get_visits_home_keyboard(owner_id: int) -> InlineKeyboardMarkup:
+    """Generate the main /visits keyboard: weekly top, monthly top, own visits and close."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=BTN_VISITS_WEEK_TOP,
+                    callback_data=VisitsHubCB(action="week", owner=owner_id).pack(),
+                    style="primary",
+                ),
+                InlineKeyboardButton(
+                    text=BTN_VISITS_MONTH_TOP,
+                    callback_data=VisitsHubCB(action="top_month", owner=owner_id).pack(),
+                    style="primary",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=BTN_VISITS_MY,
+                    callback_data=VisitsHubCB(action="my", owner=owner_id).pack(),
+                    style="primary",
+                )
+            ],
+            [get_close_button(owner_id=owner_id)],
+        ]
+    )
+
+
+def get_visits_back_button(owner_id: int) -> InlineKeyboardButton:
+    """Generate the button that returns from any /visits screen to the main card."""
+    return InlineKeyboardButton(
+        text=BTN_BACK,
+        callback_data=VisitsHubCB(action="home", owner=owner_id).pack(),
+        style="primary",
+    )
+
+
+def get_visits_back_keyboard(owner_id: int) -> InlineKeyboardMarkup:
+    """Generate a keyboard with only the back button, for the weekly top and empty screens."""
+    return InlineKeyboardMarkup(inline_keyboard=[[get_visits_back_button(owner_id)]])
+
+
+def get_visits_month_top_keyboard(
+    owner_id: int,
+    previous_month: tuple[int, int] | None,
+    next_month: tuple[int, int] | None,
+) -> InlineKeyboardMarkup:
+    """Generate the monthly top keyboard with arrows to neighbouring months that have visits."""
+    keyboard_rows: list[list[InlineKeyboardButton]] = []
+    nav_row: list[InlineKeyboardButton] = []
+    if previous_month is not None:
+        year, month = previous_month
+        nav_row.append(
+            InlineKeyboardButton(
+                text=f"← {MONTH_NAMES_RU_CAPITALIZED.get(month, month)} {year}",
+                callback_data=VisitsHubCB(action="top_month", year=year, month=month, owner=owner_id).pack(),
+                style="primary",
+            )
+        )
+    if next_month is not None:
+        year, month = next_month
+        nav_row.append(
+            InlineKeyboardButton(
+                text=f"{MONTH_NAMES_RU_CAPITALIZED.get(month, month)} {year} →",
+                callback_data=VisitsHubCB(action="top_month", year=year, month=month, owner=owner_id).pack(),
+                style="primary",
+            )
+        )
+    if nav_row:
+        keyboard_rows.append(nav_row)
+    keyboard_rows.append([get_visits_back_button(owner_id)])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
 
 EDIT_VISITS_PAGE_SIZE: int = 40
@@ -242,10 +342,11 @@ def get_cancel_edit_keyboard() -> InlineKeyboardMarkup:
 
 def get_my_visits_months_keyboard(
     months: list[tuple[int, int]],
+    owner_id: int = 0,
     page: int = 0,
     page_size: int = MY_VISITS_PAGE_SIZE,
 ) -> InlineKeyboardMarkup:
-    """Generate keyboard for selecting visit month with pagination and close button."""
+    """Generate keyboard for selecting visit month with pagination and a back button to the /visits card."""
     start = page * page_size
     end = start + page_size
     page_months = months[start:end]
@@ -256,7 +357,7 @@ def get_my_visits_months_keyboard(
         m_name = MONTH_NAMES_RU_CAPITALIZED.get(m, f"Месяц {m}")
         btn = InlineKeyboardButton(
             text=f"{m_name} {y}",
-            callback_data=MyVisitsCB(action="month", year=y, month=m, page=page).pack(),
+            callback_data=MyVisitsCB(action="month", year=y, month=m, page=page, owner=owner_id).pack(),
             style="primary",
         )
         row.append(btn)
@@ -272,7 +373,7 @@ def get_my_visits_months_keyboard(
         nav_row.append(
             InlineKeyboardButton(
                 text="← Раньше",
-                callback_data=MyVisitsCB(action="page", page=page + 1).pack(),
+                callback_data=MyVisitsCB(action="page", page=page + 1, owner=owner_id).pack(),
                 style="primary",
             )
         )
@@ -280,14 +381,14 @@ def get_my_visits_months_keyboard(
         nav_row.append(
             InlineKeyboardButton(
                 text="Позже →",
-                callback_data=MyVisitsCB(action="page", page=page - 1).pack(),
+                callback_data=MyVisitsCB(action="page", page=page - 1, owner=owner_id).pack(),
                 style="primary",
             )
         )
     if nav_row:
         keyboard_rows.append(nav_row)
 
-    keyboard_rows.append([get_close_button()])
+    keyboard_rows.append([get_visits_back_button(owner_id)])
     return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
 
@@ -295,24 +396,25 @@ def get_my_visits_month_report_keyboard(
     unique_import_ids: list[int],
     has_multiple_months: bool,
     page: int = 0,
+    owner_id: int = 0,
 ) -> InlineKeyboardMarkup:
-    """Generate keyboard for month visit report with photo buttons and back/close navigation."""
+    """Generate keyboard for month visit report with photo buttons and back navigation."""
     keyboard_rows: list[list[InlineKeyboardButton]] = []
     for imp_id in unique_import_ids:
-        keyboard_rows.append([get_attendance_photo_button(imp_id)])
+        keyboard_rows.append([get_attendance_photo_button(imp_id, owner_id=owner_id)])
 
     if has_multiple_months:
         keyboard_rows.append(
             [
                 InlineKeyboardButton(
                     text=BTN_TO_MONTHS,
-                    callback_data=MyVisitsCB(action="months", page=page).pack(),
+                    callback_data=MyVisitsCB(action="months", page=page, owner=owner_id).pack(),
                     style="primary",
                 )
             ]
         )
     else:
-        keyboard_rows.append([get_close_button()])
+        keyboard_rows.append([get_visits_back_button(owner_id)])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 

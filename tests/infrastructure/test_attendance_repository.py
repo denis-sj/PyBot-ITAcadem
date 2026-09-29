@@ -587,14 +587,14 @@ async def test_get_user_monthly_summary(repository: AttendanceRepository) -> Non
 
 
 @pytest.mark.asyncio
-async def test_get_monthly_rankings(repository: AttendanceRepository) -> None:
+async def test_get_rankings_for_period(repository: AttendanceRepository) -> None:
     db = AsyncMock()
     result_mock = MagicMock()
     mock_user = User(id=1, first_name="Иван")
     result_mock.all.return_value = [(mock_user, 120, 2)]
     db.execute.return_value = result_mock
 
-    rankings = await repository.get_monthly_rankings(
+    rankings = await repository.get_rankings_for_period(
         db=db,
         start_date=date(2026, 9, 1),
         end_date=date(2026, 9, 30),
@@ -640,6 +640,36 @@ async def test_get_import_dates(repository: AttendanceRepository) -> None:
     db.execute.return_value = result_mock
 
     dates = await repository.get_import_dates(db, import_id=10)
+
+
+@pytest.mark.asyncio
+async def test_get_rankings_for_period_filters_by_inclusive_dates(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.all.return_value = []
+    db.execute.return_value = result_mock
+
+    await repository.get_rankings_for_period(db, date(2026, 9, 28), date(2026, 10, 3))
+
+    statement = str(db.execute.call_args[0][0])
+    assert "attendance_records.date >=" in statement
+    assert "attendance_records.date <=" in statement
+    assert "attendance_imports" not in statement
+
+
+@pytest.mark.asyncio
+async def test_find_months_with_visits(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.all.return_value = [(2026, 9), (2026, 6)]
+    db.execute.return_value = result_mock
+
+    months = await repository.find_months_with_visits(db)
+
+    assert months == [(2026, 9), (2026, 6)]
+    statement = str(db.execute.call_args[0][0])
+    assert "attendance_records.duration_minutes >" in statement
+    assert "attendance_records.user_id" not in statement.split("WHERE")[1].split("ORDER")[0]
 
 
 @pytest.mark.asyncio

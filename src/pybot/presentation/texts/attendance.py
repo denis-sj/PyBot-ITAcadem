@@ -13,8 +13,10 @@ from ...dto import (
     AttendanceDraftItemDTO,
     AttendanceMonthlyReportDTO,
     AttendanceRecordReadDTO,
+    AttendanceTopDTO,
     AttendanceUserSummaryDTO,
 )
+from ...dto.attendance import ATTENDANCE_TOP_LIMIT
 
 BTN_CONFIRM = "✅ Подтвердить"
 BTN_EDIT_TIME = "✏️ Изменить время"
@@ -23,6 +25,10 @@ BTN_EXCLUDE = "🗑 Исключить строку"
 BTN_CANCEL = "❌ Отменить импорт"
 BTN_CLOSE = "✖ Закрыть"
 BTN_TO_MONTHS = "← К месяцам"
+BTN_BACK = "← Назад"
+BTN_VISITS_WEEK_TOP = "🏆 Топ недели"
+BTN_VISITS_MONTH_TOP = "🏆 Топ месяца"
+BTN_VISITS_MY = "📅 Мои посещения"
 BTN_TO_USERS = "← К списку участников"
 BTN_ADD_VISIT = "➕ Добавить посещение"
 BTN_TO_DATES = "← К датам"
@@ -45,6 +51,36 @@ MONTH_NAMES_RU: dict[int, str] = {
     12: "декабрь",
 }
 
+MONTH_NAMES_RU_GENITIVE: dict[int, str] = {
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
+}
+
+MONTH_NAMES_RU_PREPOSITIONAL: dict[int, str] = {
+    1: "январе",
+    2: "феврале",
+    3: "марте",
+    4: "апреле",
+    5: "мае",
+    6: "июне",
+    7: "июле",
+    8: "августе",
+    9: "сентябре",
+    10: "октябре",
+    11: "ноябре",
+    12: "декабре",
+}
+
 MONTH_NAMES_RU_CAPITALIZED: dict[int, str] = {
     1: "Январь",
     2: "Февраль",
@@ -59,6 +95,15 @@ MONTH_NAMES_RU_CAPITALIZED: dict[int, str] = {
     11: "Ноябрь",
     12: "Декабрь",
 }
+
+_LAST_FIRST_NAME_PARTS = 2
+_TOP_MAX_VISIBLE_ROWS = 10
+_PLURAL_HUNDRED = 100
+_PLURAL_TEN = 10
+_PLURAL_TEEN_START = 11
+_PLURAL_TEEN_END = 14
+_PLURAL_FEW_MIN = 2
+_PLURAL_FEW_MAX = 4
 
 _MEDALS: dict[int, str] = {
     1: "🥇 ",
@@ -226,56 +271,104 @@ def _format_draft_summary(
     return lines
 
 
-def format_user_summary(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
-    """Format personal hours and club ranking for /my_hours command."""
+def format_visits_home(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
+    """Format the main /visits card: personal hours, visits and place in the monthly ranking."""
     month_name = MONTH_NAMES_RU.get(month, "")
+    person = html.escape(format_last_first_name(summary.user_full_name))
+    header = f"📊 <b>Посещаемость · {month_name} {year}</b>\n👤 {person}\n"
     if summary.visits_count == 0 or summary.total_minutes == 0 or summary.rank <= 0:
-        return (
-            f"⏱ <b>Ваши часы посещаемости за {month_name} {year}:</b>\n\n"
-            f"👤 Участник: <b>{html.escape(summary.user_full_name)}</b>\n\n"
-            "В этом месяце у вас пока нет посещений."
-        )
+        month_in = MONTH_NAMES_RU_PREPOSITIONAL.get(month, "этом месяце")
+        return f"{header}\nВ {month_in} у вас пока нет подтверждённых посещений."
     return (
-        f"⏱ <b>Ваши часы посещаемости за {month_name} {year}:</b>\n\n"
-        f"👤 Участник: <b>{html.escape(summary.user_full_name)}</b>\n"
-        f"⏳ Налетанное время: <b>{format_duration(summary.total_minutes)}</b>\n"
-        f"🏢 Количество визитов: <b>{summary.visits_count}</b>\n"
-        f"🏆 Место в рейтинге: <b>#{summary.rank}</b> из {summary.total_participants}\n"
+        f"{header}\n"
+        f"⏱ Время: <b>{format_duration(summary.total_minutes)}</b>\n"
+        f"🗓 Посещений: <b>{summary.visits_count}</b>\n"
+        f"🏆 Место в рейтинге месяца: <b>{summary.rank}</b> из {summary.total_participants}"
     )
 
 
-def format_user_visits(visits: list[AttendanceRecordReadDTO], month: int, year: int) -> str:
-    """Format list of personal visits for /my_visits command."""
-    month_name = MONTH_NAMES_RU.get(month, "")
-    lines = [f"📋 <b>Ваши посещения за {month_name} {year}:</b>\n"]
-    if not visits:
-        lines.append("<i>В этом месяце подтвержденных посещений пока нет.</i>")
+def format_week_top(top: AttendanceTopDTO, viewer_user_id: int) -> str:
+    """Format the top of the current attendance week (Monday to Saturday)."""
+    title = f"🏆 <b>Топ недели · {format_period_range(top.period_start, top.period_end)}</b>"
+    return _format_top(title, "За эту неделю пока нет подтверждённых посещений.", top, viewer_user_id)
+
+
+def format_month_top(top: AttendanceTopDTO, viewer_user_id: int) -> str:
+    """Format the top of one calendar month; the month is taken from the period start."""
+    month = top.period_start.month
+    title = f"🏆 <b>Топ месяца · {MONTH_NAMES_RU.get(month, '')} {top.period_start.year}</b>"
+    month_in = MONTH_NAMES_RU_PREPOSITIONAL.get(month, "этом месяце")
+    return _format_top(title, f"В {month_in} пока нет подтверждённых посещений.", top, viewer_user_id)
+
+
+def format_period_range(start: date, end: date) -> str:
+    """Format an inclusive date range like '21–26 сентября' or '28 сентября – 3 октября'."""
+    end_month = MONTH_NAMES_RU_GENITIVE.get(end.month, "")
+    if (start.year, start.month) == (end.year, end.month):
+        return f"{start.day}–{end.day} {end_month}"
+    start_month = MONTH_NAMES_RU_GENITIVE.get(start.month, "")
+    return f"{start.day} {start_month} – {end.day} {end_month}"
+
+
+def format_last_first_name(full_name: str) -> str:
+    """Reduce 'Фамилия Имя Отчество' to 'Фамилия Имя'."""
+    return " ".join(full_name.split()[:_LAST_FIRST_NAME_PARTS])
+
+
+def _format_top(title: str, empty_text: str, top: AttendanceTopDTO, viewer_user_id: int) -> str:
+    """Format top rows, the tie overflow note and the viewer's own place."""
+    lines = [title, ""]
+    if not top.rows:
+        lines.append(empty_text)
         return "\n".join(lines)
 
-    total_min = sum(v.duration_minutes for v in visits)
-    for idx, v in enumerate(visits, 1):
-        date_str = v.date.strftime("%d.%m.%Y")
-        time_span = (
-            f"{v.start_time.strftime('%H:%M')}–{v.end_time.strftime('%H:%M')}"
-            if v.start_time and v.end_time
-            else "без фиксации времени"
+    shown_rows = top.rows[:_TOP_MAX_VISIBLE_ROWS]
+    for row in shown_rows:
+        row_text = (
+            f"{row.rank}. {html.escape(format_last_first_name(row.user_full_name))} — "
+            f"{format_duration(row.total_minutes)} · {_format_visits_count(row.visits_count)}"
         )
-        lines.append(f"{idx}. 📅 <b>{date_str}</b>: {time_span} — <b>{format_duration(v.duration_minutes)}</b>")
+        lines.append(f"<b>{row_text}</b>" if row.user_id == viewer_user_id else row_text)
 
-    lines.append(f"\nВсего: <b>{len(visits)}</b> визитов, <b>{format_duration(total_min)}</b>")
+    hidden_count = len(top.rows) - len(shown_rows)
+    if hidden_count > 0:
+        participants = _plural_ru(hidden_count, "участник", "участника", "участников")
+        lines.append(f"…и ещё {hidden_count} {participants} на {shown_rows[-1].rank}-м месте")
+
+    if top.total_participants < ATTENDANCE_TOP_LIMIT:
+        participants_total = _plural_ru(top.total_participants, "участник", "участника", "участников")
+        lines.append(f"\nВ рейтинге пока {top.total_participants} {participants_total}")
+
+    viewer_in_top = any(row.user_id == viewer_user_id for row in top.rows)
+    if not viewer_in_top:
+        lines.append("")
+        if top.current_user is None:
+            lines.append("Вас пока нет в рейтинге этого периода.")
+        else:
+            me = top.current_user
+            lines.append(
+                f"Вы: {me.rank}-е место из {top.total_participants} · "
+                f"{format_duration(me.total_minutes)} · {_format_visits_count(me.visits_count)}"
+            )
     return "\n".join(lines)
 
 
-def format_user_rank(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
-    """Format user ranking for /my_rank command."""
-    month_name = MONTH_NAMES_RU.get(month, "")
-    if summary.visits_count == 0 or summary.total_minutes == 0 or summary.rank <= 0:
-        return f"🏆 <b>Ваша позиция в клубе за {month_name} {year}:</b>\n\nВ этом месяце у вас пока нет посещений."
-    return (
-        f"🏆 <b>Ваша позиция в клубе за {month_name} {year}:</b>\n\n"
-        f"Место: <b>#{summary.rank}</b> из {summary.total_participants}\n"
-        f"Часов налета: <b>{format_duration(summary.total_minutes)}</b> ({summary.visits_count} посещ.)"
-    )
+def _format_visits_count(count: int) -> str:
+    """Format a visits counter with the correct Russian plural form."""
+    return f"{count} {_plural_ru(count, 'посещение', 'посещения', 'посещений')}"
+
+
+def _plural_ru(count: int, one: str, few: str, many: str) -> str:
+    """Choose the Russian plural form for a count (1 участник, 2 участника, 5 участников)."""
+    remainder_100 = abs(count) % _PLURAL_HUNDRED
+    if _PLURAL_TEEN_START <= remainder_100 <= _PLURAL_TEEN_END:
+        return many
+    remainder_10 = remainder_100 % _PLURAL_TEN
+    if remainder_10 == 1:
+        return one
+    if _PLURAL_FEW_MIN <= remainder_10 <= _PLURAL_FEW_MAX:
+        return few
+    return many
 
 
 def format_monthly_report(report: AttendanceMonthlyReportDTO, detailed: bool = False) -> str:
@@ -333,7 +426,7 @@ def format_import_notification(
         dur_str = format_duration(dur)
         lines.append(f"{d_str} — {t_str} ({dur_str})")
 
-    lines.append(f"\nНомер фото #{import_id}. Нажмите кнопку ниже, чтобы открыть фото. Все посещения: /my_visits")
+    lines.append(f"\nНомер фото #{import_id}. Нажмите кнопку ниже, чтобы открыть фото. Все посещения: /visits")
     return "\n".join(lines)
 
 
@@ -343,7 +436,7 @@ def format_my_visits_month_report(
     summary: AttendanceUserSummaryDTO,
     visits: list[AttendanceRecordReadDTO],
 ) -> str:
-    """Format personal month report for /my_visits Screen 2."""
+    """Format the personal month report shown under /visits → «Мои посещения»."""
     month_title = MONTH_NAMES_RU_CAPITALIZED.get(month, f"Месяц {month}")
     rank_display = str(summary.rank) if summary.rank > 0 else "—"
     total_dur_str = format_duration(summary.total_minutes)

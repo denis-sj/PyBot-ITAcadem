@@ -11,6 +11,7 @@ from .texts import (
     BUTTON_CANCEL,
     BUTTON_CONTINUE,
     BUTTON_CLOSE,
+    CARD_NOT_OWNER_ALERT,
     BUTTON_FINISH_REGISTRATION,
     BUTTON_REJECT,
     BUTTON_SEND_CONTACT,
@@ -176,9 +177,9 @@ from .attendance import (
     format_draft_preview as format_draft_preview,
     format_duration as format_duration,
     format_monthly_report as format_monthly_report,
-    format_user_rank as format_user_rank,
-    format_user_summary as format_user_summary,
-    format_user_visits as format_user_visits,
+    format_month_top as format_month_top,
+    format_visits_home as format_visits_home,
+    format_week_top as format_week_top,
 )
 
 __all__ = [
@@ -192,6 +193,7 @@ __all__ = [
     "BUTTON_CANCEL",
     "BUTTON_CONTINUE",
     "BUTTON_CLOSE",
+    "CARD_NOT_OWNER_ALERT",
     "BUTTON_FINISH_REGISTRATION",
     "BUTTON_REJECT",
     "BUTTON_SEND_CONTACT",
@@ -355,7 +357,7 @@ __all__ = [
     "format_draft_preview",
     "format_duration",
     "format_monthly_report",
-    "format_user_rank",
-    "format_user_summary",
-    "format_user_visits",
+    "format_month_top",
+    "format_visits_home",
+    "format_week_top",
 ]

@@ -9,6 +9,7 @@ from pybot.dto import (
     AttendanceMonthlyRankingItemDTO,
     AttendanceMonthlyReportDTO,
     AttendanceRecordReadDTO,
+    AttendanceTopDTO,
     AttendanceUserSummaryDTO,
 )
 from pybot.presentation.texts.attendance import (
@@ -21,11 +22,13 @@ from pybot.presentation.texts.attendance import (
     format_import_notification,
     format_monthly_report,
     format_my_visits_month_report,
+    format_last_first_name,
+    format_month_top,
+    format_period_range,
     format_user_full_name,
-    format_user_rank,
     format_user_short_name,
-    format_user_summary,
-    format_user_visits,
+    format_visits_home,
+    format_week_top,
 )
 
 
@@ -239,25 +242,52 @@ def test_format_draft_preview_with_excluded_item_and_reason() -> None:
     assert "У участника Иванов Иван уже есть посещение за 25.09.2026 (добавлено вручную)." in rendered
 
 
-def test_format_user_summary() -> None:
+def _ranking_item(rank: int, user_id: int, name: str, minutes: int, visits: int) -> AttendanceMonthlyRankingItemDTO:
+    return AttendanceMonthlyRankingItemDTO(
+        rank=rank,
+        user_id=user_id,
+        user_full_name=name,
+        total_minutes=minutes,
+        visits_count=visits,
+    )
+
+
+def _top(
+    rows: list[AttendanceMonthlyRankingItemDTO],
+    total: int | None = None,
+    current_user: AttendanceMonthlyRankingItemDTO | None = None,
+    period: tuple[date, date] = (date(2026, 9, 28), date(2026, 10, 3)),
+) -> AttendanceTopDTO:
+    return AttendanceTopDTO(
+        period_start=period[0],
+        period_end=period[1],
+        rows=rows,
+        total_participants=len(rows) if total is None else total,
+        current_user=current_user,
+    )
+
+
+def test_format_visits_home_shows_summary_with_last_and_first_name() -> None:
     summary = AttendanceUserSummaryDTO(
         user_id=10,
-        user_full_name="Петров Петр",
-        total_minutes=150,
-        rank=2,
-        total_participants=10,
-        visits_count=2,
+        user_full_name="Иванов Иван Иванович",
+        total_minutes=750,
+        rank=3,
+        total_participants=18,
+        visits_count=6,
     )
-    text = format_user_summary(summary, month=9, year=2026)
+    text = format_visits_home(summary, month=9, year=2026)
 
-    assert "Петров Петр" in text
-    assert "2 ч 30 мин" in text
-    assert "#2" in text
-    assert "из 10" in text
-    assert "2" in text
+    assert "📊 <b>Посещаемость · сентябрь 2026</b>" in text
+    assert "👤 Иванов Иван\n" in text
+    assert "Иванович" not in text
+    assert "⏱ Время: <b>12 ч 30 мин</b>" in text
+    assert "🗓 Посещений: <b>6</b>" in text
+    assert "🏆 Место в рейтинге месяца: <b>3</b> из 18" in text
+    assert "администратор" not in text
 
 
-def test_format_user_summary_no_visits() -> None:
+def test_format_visits_home_without_visits_names_month() -> None:
     summary = AttendanceUserSummaryDTO(
         user_id=10,
         user_full_name="Петров Петр",
@@ -266,66 +296,118 @@ def test_format_user_summary_no_visits() -> None:
         total_participants=5,
         visits_count=0,
     )
-    text = format_user_summary(summary, month=9, year=2026)
+    text = format_visits_home(summary, month=10, year=2026)
 
     assert "Петров Петр" in text
-    assert "В этом месяце у вас пока нет посещений." in text
+    assert "В октябре у вас пока нет подтверждённых посещений." in text
     assert "Место в рейтинге" not in text
 
 
-def test_format_user_visits_empty() -> None:
-    text = format_user_visits([], month=9, year=2026)
-    assert "пока нет" in text
+def test_format_last_first_name_handles_missing_parts() -> None:
+    assert format_last_first_name("Иванов Иван Иванович") == "Иванов Иван"
+    assert format_last_first_name("Иванов Иван") == "Иванов Иван"
+    assert format_last_first_name("Иванов") == "Иванов"
 
 
-def test_format_user_visits_with_data() -> None:
-    v1 = AttendanceRecordReadDTO(
-        id=1,
-        user_id=10,
-        user_full_name="Петров Петр",
-        date=date(2026, 9, 20),
-        start_time=time(18, 0),
-        end_time=time(19, 30),
-        duration_minutes=90,
-        is_empty_time=False,
-        source="photo_ai",
-        confirmed_at=datetime(2026, 9, 20, 20, 0),
-    )
-    text = format_user_visits([v1], month=9, year=2026)
+def test_format_week_top_lists_participants_with_hours_and_visits() -> None:
+    rows = [
+        _ranking_item(1, 1, "Смирнова Анна Ивановна", 570, 4),
+        _ranking_item(2, 2, "Иванов Иван", 480, 3),
+        _ranking_item(2, 3, "Ким Олег", 480, 4),
+        _ranking_item(4, 4, "Лис Мария", 375, 2),
+        _ranking_item(5, 5, "Орлов Павел", 300, 1),
+    ]
+    text = format_week_top(_top(rows), viewer_user_id=99)
 
-    assert "20.09.2026" in text
-    assert "18:00–19:30" in text
-    assert "1 ч 30 мин" in text
-
-
-def test_format_user_rank() -> None:
-    summary = AttendanceUserSummaryDTO(
-        user_id=10,
-        user_full_name="Сидоров С.",
-        total_minutes=60,
-        rank=5,
-        total_participants=12,
-        visits_count=1,
-    )
-    text = format_user_rank(summary, month=9, year=2026)
-    assert "#5" in text
-    assert "12" in text
-    assert "1 ч" in text
+    assert "🏆 <b>Топ недели · 28 сентября – 3 октября</b>" in text
+    assert "1. Смирнова Анна — 9 ч 30 мин · 4 посещения" in text
+    assert "2. Иванов Иван — 8 ч · 3 посещения" in text
+    assert "2. Ким Олег — 8 ч · 4 посещения" in text
+    assert "4. Лис Мария — 6 ч 15 мин · 2 посещения" in text
+    assert "5. Орлов Павел — 5 ч · 1 посещение" in text
+    assert "В рейтинге пока" not in text
+    assert "Вас пока нет в рейтинге этого периода." in text
 
 
-def test_format_user_rank_no_visits() -> None:
-    summary = AttendanceUserSummaryDTO(
-        user_id=10,
-        user_full_name="Сидоров С.",
-        total_minutes=0,
-        rank=0,
-        total_participants=5,
-        visits_count=0,
-    )
-    text = format_user_rank(summary, month=9, year=2026)
-    assert "В этом месяце у вас пока нет посещений." in text
-    assert "Место:" not in text
-    assert "Часов налета" not in text
+def test_format_week_top_shows_all_tied_for_last_place() -> None:
+    rows = [
+        _ranking_item(1, 1, "А Один", 600, 1),
+        _ranking_item(2, 2, "Б Два", 500, 1),
+        _ranking_item(2, 3, "В Три", 500, 1),
+        _ranking_item(4, 4, "Г Четыре", 400, 1),
+        _ranking_item(5, 5, "Д Пять", 300, 1),
+        _ranking_item(5, 6, "Е Шесть", 300, 1),
+        _ranking_item(5, 7, "Ж Семь", 300, 1),
+    ]
+    text = format_week_top(_top(rows, total=9), viewer_user_id=99)
+
+    assert "5. Д Пять" in text
+    assert "5. Е Шесть" in text
+    assert "5. Ж Семь" in text
+    assert "…и ещё" not in text
+
+
+def test_format_week_top_collapses_more_than_ten_rows() -> None:
+    rows = [_ranking_item(1, 1, "Первый Лидер", 900, 3)]
+    rows += [_ranking_item(2, uid, f"Участник{uid}", 600, 2) for uid in range(2, 14)]
+    text = format_week_top(_top(rows, total=13), viewer_user_id=99)
+
+    assert text.count("\n2. ") == 9
+    assert "…и ещё 3 участника на 2-м месте" in text
+
+
+def test_format_week_top_fewer_than_five_participants() -> None:
+    rows = [_ranking_item(1, 1, "Смирнова Анна", 120, 1), _ranking_item(2, 2, "Иванов Иван", 60, 1)]
+    text = format_week_top(_top(rows), viewer_user_id=99)
+
+    assert "В рейтинге пока 2 участника" in text
+    assert "3." not in text
+
+
+def test_format_week_top_highlights_viewer_inside_top_without_extra_line() -> None:
+    me = _ranking_item(1, 1, "Смирнова Анна", 120, 1)
+    text = format_week_top(_top([me], current_user=me), viewer_user_id=1)
+
+    assert "<b>1. Смирнова Анна — 2 ч · 1 посещение</b>" in text
+    assert "Вы:" not in text
+    assert "Вас пока нет" not in text
+
+
+def test_format_week_top_shows_viewer_place_outside_top() -> None:
+    rows = [_ranking_item(place, place, f"Участник{place}", 700 - place * 10, 1) for place in range(1, 6)]
+    me = _ranking_item(11, 99, "Я Сам", 195, 1)
+    text = format_week_top(_top(rows, total=18, current_user=me), viewer_user_id=99)
+
+    assert "Вы: 11-е место из 18 · 3 ч 15 мин · 1 посещение" in text
+
+
+def test_format_week_top_empty_period() -> None:
+    text = format_week_top(_top([]), viewer_user_id=99)
+
+    assert "За эту неделю пока нет подтверждённых посещений." in text
+    assert "Вас пока нет" not in text
+
+
+def test_format_month_top_title_and_empty_month() -> None:
+    period = (date(2026, 10, 1), date(2026, 10, 31))
+    text = format_month_top(_top([], period=period), viewer_user_id=99)
+
+    assert "🏆 <b>Топ месяца · октябрь 2026</b>" in text
+    assert "В октябре пока нет подтверждённых посещений." in text
+
+
+def test_format_month_top_escapes_names() -> None:
+    period = (date(2026, 9, 1), date(2026, 9, 30))
+    rows = [_ranking_item(1, 1, "<b>Хакер</b> Иван", 60, 1)]
+    text = format_month_top(_top(rows, period=period), viewer_user_id=99)
+
+    assert "&lt;b&gt;Хакер&lt;/b&gt; Иван" in text
+
+
+def test_format_period_range() -> None:
+    assert format_period_range(date(2026, 9, 21), date(2026, 9, 26)) == "21–26 сентября"
+    assert format_period_range(date(2026, 9, 28), date(2026, 10, 3)) == "28 сентября – 3 октября"
+    assert format_period_range(date(2025, 12, 29), date(2026, 1, 3)) == "29 декабря – 3 января"
 
 
 def test_format_monthly_report_short_and_detailed() -> None:
@@ -383,7 +465,8 @@ def test_format_import_notification_single_visit() -> None:
     assert "✅ <b>Добавлено посещение:</b>" in text
     assert "20.09.2026 — 18:00–20:00 (2 ч)" in text
     assert "Номер фото #123." in text
-    assert "/my_visits" in text
+    assert "/visits" in text
+    assert "/my_visits" not in text
 
 
 def test_format_import_notification_multiple_visits_sorted() -> None:
