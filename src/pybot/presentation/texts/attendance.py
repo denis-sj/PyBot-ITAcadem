@@ -339,8 +339,8 @@ def _format_top(title: str, empty_text: str, top: AttendanceTopDTO, viewer_user_
         participants_total = _plural_ru(top.total_participants, "участник", "участника", "участников")
         lines.append(f"\nВ рейтинге пока {top.total_participants} {participants_total}")
 
-    viewer_in_top = any(row.user_id == viewer_user_id for row in top.rows)
-    if not viewer_in_top:
+    viewer_is_visible = any(row.user_id == viewer_user_id for row in shown_rows)
+    if not viewer_is_visible:
         lines.append("")
         if top.current_user is None:
             lines.append("Вас пока нет в рейтинге этого периода.")

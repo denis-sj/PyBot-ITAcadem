@@ -356,6 +356,17 @@ def test_format_week_top_collapses_more_than_ten_rows() -> None:
     assert "…и ещё 3 участника на 2-м месте" in text
 
 
+def test_format_week_top_shows_viewer_place_when_hidden_by_tie_overflow() -> None:
+    rows = [_ranking_item(1, 1, "Первый Лидер", 900, 3)]
+    rows += [_ranking_item(2, uid, f"Участник{uid}", 600, 2) for uid in range(2, 14)]
+    hidden_viewer = rows[-1]
+    text = format_week_top(_top(rows, total=13, current_user=hidden_viewer), viewer_user_id=13)
+
+    assert "Участник13" not in text
+    assert "…и ещё 3 участника на 2-м месте" in text
+    assert "Вы: 2-е место из 13 · 10 ч · 2 посещения" in text
+
+
 def test_format_week_top_fewer_than_five_participants() -> None:
     rows = [_ranking_item(1, 1, "Смирнова Анна", 120, 1), _ranking_item(2, 2, "Иванов Иван", 60, 1)]
     text = format_week_top(_top(rows), viewer_user_id=99)
