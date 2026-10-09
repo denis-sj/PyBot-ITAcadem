@@ -34,7 +34,9 @@ class RedisAgentMemory:
 
     async def mark_reply(self, chat_id: int, topic_id: int | None, message_id: int) -> None:
         """Keep provenance independently of expiring text so old replies start new turns."""
-        await self.redis.set(self._reply_key(chat_id, topic_id, message_id), "1")
+        await self.redis.set(
+            self._reply_key(chat_id, topic_id, message_id), "1", ex=self.settings.agent_reply_mark_ttl_s
+        )
 
     async def is_agent_reply(self, chat_id: int, topic_id: int | None, message_id: int) -> bool:
         """Distinguish agent replies from regular bot messages."""

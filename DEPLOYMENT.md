@@ -698,6 +698,9 @@ Optional agent settings:
   questions and answers. Each message is truncated to 2000 characters.
 - `AGENT_MEMORY_TTL_S=1800`: between 1 and 1800 seconds, renewed after a completed
   turn; also the pending approval TTL.
+- `AGENT_REPLY_MARK_TTL_S=604800`: positive seconds; agent reply markers expire
+  after seven days by default. Outside the configured agent topic, a reply to an
+  older message needs `@bot` to address the agent.
 - `AGENT_MAX_STEPS=8`: model request limit, between 1 and 20; resumed approvals share
   the original request budget. Each run also permits at most 8 tool calls.
 - `AGENT_TIMEOUT_S=60`: between 5 and 300 seconds for a run, excluding time in the
@@ -705,9 +708,11 @@ Optional agent settings:
 
 Redis is required for agent memory even when `FSM_STORAGE_BACKEND=memory`.
 Text memory keys include chat, topic and author. Tool traces are not persisted.
-Agent reply provenance is persistent metadata (chat/topic/message IDs only),
-independent of text memory, so replying after the memory TTL starts a new question.
-These small marker keys accumulate over time and must be considered when sizing Redis.
+Agent reply provenance is expiring metadata (chat/topic/message IDs only),
+independent of text memory. Replying after the memory TTL starts a new question
+while the reply marker is still alive. Existing markers written before the TTL
+setting was introduced retain their original Redis lifetime; the TTL applies to
+new replies.
 Confirmation continuations are process-local, bound to their author and exact
 keyboard message; restarting the bot invalidates them. The local FIFO queue holds
 through Telegram delivery and is cleaned when no waiter remains. This follows the

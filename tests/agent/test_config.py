@@ -35,6 +35,7 @@ def test_agent_defaults_disabled_and_vision_unchanged():
     assert parsed.agent_model == "google/gemini-3.5-flash-lite"
     assert parsed.agent_memory_max_messages == 10
     assert parsed.agent_memory_ttl_s == 1800
+    assert parsed.agent_reply_mark_ttl_s == 604800
     assert parsed.polza_vision_model == "google/gemini-2.5-flash"
     assert settings(AGENT_GROUP_CHAT_ID="", AGENT_TOPIC_ID="").agent_topic_id is None
 
@@ -49,6 +50,7 @@ def test_agent_defaults_disabled_and_vision_unchanged():
         {"AGENT_GROUP_CHAT_ID": 100, "AGENT_TOPIC_ID": 3},
         {"AGENT_MEMORY_MAX_MESSAGES": 11},
         {"AGENT_MEMORY_TTL_S": 0},
+        {"AGENT_REPLY_MARK_TTL_S": 0},
         {"AGENT_TIMEOUT_S": 0},
         {"AGENT_MAX_STEPS": 0},
         {"AGENT_MODEL": ""},
@@ -79,6 +81,9 @@ def test_agent_enabled_with_credentials():
         ({"AGENT_GROUP_CHAT_ID": "100", "AGENT_TOPIC_ID": "3"}, True),
         ({"AGENT_MEMORY_MAX_MESSAGES": "11"}, True),
         ({"AGENT_MEMORY_TTL_S": "0"}, True),
+        ({"AGENT_REPLY_MARK_TTL_S": "0"}, True),
+        ({"AGENT_REPLY_MARK_TTL_S": "invalid"}, True),
+        ({"AGENT_REPLY_MARK_TTL_S": "604800"}, False),
         ({"AGENT_MAX_STEPS": "garbage"}, True),
         ({"AGENT_TIMEOUT_S": "301"}, True),
         ({"AGENT_MODEL": " "}, True),

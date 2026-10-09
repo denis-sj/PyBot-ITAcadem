@@ -50,6 +50,7 @@ async def test_reply_provenance_survives_memory_expiration(agent_settings, conve
         memory = RedisAgentMemory(redis, agent_settings)
         await memory.append(conversation, "question", "answer")
         await memory.mark_reply(-100, 3, 55)
+        assert 604799 <= await redis.ttl("agent:reply:-100:3:55") <= 604800
         await redis.expire(conversation.memory_key, 0)
         assert await memory.load(conversation) == []
         assert await memory.is_agent_reply(-100, 3, 55)

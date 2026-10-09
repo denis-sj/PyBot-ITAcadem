@@ -75,6 +75,7 @@ def _validate_agent_env(env_values: dict[str, str]) -> list[str]:
         "AGENT_TOPIC_ID": (1, None),
         "AGENT_MEMORY_MAX_MESSAGES": (2, 10),
         "AGENT_MEMORY_TTL_S": (1, 1800),
+        "AGENT_REPLY_MARK_TTL_S": (1, None),
         "AGENT_MAX_STEPS": (1, 20),
         "AGENT_TIMEOUT_S": (5, 300),
     }

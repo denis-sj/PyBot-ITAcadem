@@ -252,6 +252,7 @@ class AppSettings(BaseSettings):
     agent_topic_id: int | None = Field(None, alias="AGENT_TOPIC_ID", gt=0)
     agent_memory_max_messages: int = Field(10, alias="AGENT_MEMORY_MAX_MESSAGES", ge=2, le=10)
     agent_memory_ttl_s: int = Field(1800, alias="AGENT_MEMORY_TTL_S", ge=1, le=1800)
+    agent_reply_mark_ttl_s: int = Field(604800, alias="AGENT_REPLY_MARK_TTL_S", ge=1)
     agent_max_steps: int = Field(8, alias="AGENT_MAX_STEPS", ge=1, le=20)
     agent_timeout_s: int = Field(60, alias="AGENT_TIMEOUT_S", ge=5, le=300)
 

@@ -3,6 +3,9 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from aiogram import Bot
 from aiogram.types import User
+from fakeredis import FakeAsyncRedis
+
+from pybot.infrastructure.adapters.agent_memory import RedisAgentMemory
 
 from pybot.presentation.bot.handlers.agent.routing import AgentMessageFilter
 from pybot.services.ports.agent import AgentMemoryPort
@@ -86,3 +89,19 @@ async def test_photo_and_anonymous_sender_do_not_run(router_filter, bot):
     assert not await agent_filter(photo, bot)
     assert not await agent_filter(build_message().model_copy(update={"from_user": None}), bot)
     assert not await agent_filter(build_message().model_copy(update={"sender_chat": Mock()}), bot)
+
+
+@pytest.mark.asyncio
+async def test_expired_reply_marker_requires_mention(agent_settings, bot):
+    agent_settings.agent_reply_mark_ttl_s = 37
+    async with FakeAsyncRedis(decode_responses=True) as redis:
+        memory = RedisAgentMemory(redis, agent_settings)
+        agent_filter = AgentMessageFilter(agent_settings, memory)
+        reply = build_message(sender_id=99, sender_is_bot=True, message_id=50, topic_id=4)
+        question = build_message(topic_id=4, reply=reply)
+        await memory.mark_reply(-100, 4, 50)
+        assert 36 <= await redis.ttl("agent:reply:-100:4:50") <= 37
+        assert await agent_filter(question, bot)
+        await redis.expire("agent:reply:-100:4:50", 0)
+        assert not await agent_filter(question, bot)
+        assert await agent_filter(question.model_copy(update={"text": "@academy_bot помоги"}), bot)
