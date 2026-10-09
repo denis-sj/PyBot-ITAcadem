@@ -17,6 +17,7 @@ from .....domain.exceptions import (
     RoleRequestAlreadyExistsError,
     RoleRequestAlreadyProcessedError,
     RoleRequestCooldownError,
+    RoleRequestNotAllowedError,
     RoleRequestNotFoundError,
     UserNotFoundError,
 )
@@ -44,7 +45,6 @@ from ....texts import (
     ROLE_REQUEST_UNEXPECTED_ERROR,
     ROLE_REQUEST_USAGE,
     role_request_admin_notification_with_status,
-    role_request_cooldown_until,
     role_request_created,
 )
 from ...filters import check_text_message_correction, create_chat_type_routers
@@ -102,7 +102,7 @@ def _format_role_request_available_at(available_at: datetime, requested_at: date
     return f"{absolute_time} ({human_diff})"
 
 
-@role_request_private_router.message(Command("role_request"), flags={"role": "Student", "rate_limit": "moderate"})
+@role_request_private_router.message(Command("role_request"), flags={"rate_limit": "moderate"})
 async def cmd_role_request(
     message: Message,
     role_request_service: FromDishka[RoleRequestService],
@@ -115,18 +115,19 @@ async def cmd_role_request(
 
     try:
         await role_request_service.create_role_request(user_id, role.value)
+    except RoleRequestNotAllowedError as err:
+        await message.reply(err.message)
+    except RoleAlreadyAssignedError:
+        await message.reply(ROLE_REQUEST_ALREADY_ASSIGNED)
+    except RoleRequestCooldownError as err:
+        date_str = err.available_at.strftime("%d.%m.%Y")
+        await message.reply(f"Повторный запрос можно отправить после {date_str}.")
     except UserNotFoundError:
         await message.reply(ROLE_REQUEST_ADMIN_USER_NOT_FOUND)
-    except RoleRequestCooldownError as err:
-        await message.reply(
-            role_request_cooldown_until(_format_role_request_available_at(err.available_at, message.date))
-        )
     except RoleNotFoundError:
         await message.reply(ROLE_REQUEST_ADMIN_ROLE_NOT_FOUND)
     except RoleRequestAlreadyExistsError:
         await message.reply(ROLE_REQUEST_ALREADY_EXISTS)
-    except RoleAlreadyAssignedError:
-        await message.reply(ROLE_REQUEST_ALREADY_ASSIGNED)
     except Exception:
         await message.reply(ROLE_REQUEST_UNEXPECTED_ERROR)
         logger.exception("Unexpected error in cmd_role_request")

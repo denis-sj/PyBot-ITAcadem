@@ -1,5 +1,7 @@
 """Explicit tool registry and execution-time authorization."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass
 

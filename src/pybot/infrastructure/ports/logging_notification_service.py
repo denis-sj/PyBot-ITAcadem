@@ -117,3 +117,58 @@ class LoggingNotificationService(NotificationPort):
                 parse_mode=message_data.parse_mode,
             )
             raise NotificationPermanentError(message="Failed to log direct notification") from exc
+
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        """Логирует уведомление о посещениях для участника."""
+        cleaned_text = text.strip()
+        event = NotificationLogEvent(
+            event_type="attendance_confirmed",
+            recipient_id=recipient_tg_id,
+            message_text=cleaned_text,
+            import_id=import_id,
+        )
+
+        try:
+            logger.info(
+                "Attendance notification (logging backend) | recipient_id={recipient_id} "
+                "import_id={import_id} message_preview={message_preview}",
+                recipient_id=recipient_tg_id,
+                import_id=import_id,
+                message_preview=cleaned_text[:120],
+            )
+            self._events.append(event)
+        except Exception as exc:
+            logger.exception(
+                "Failed to log attendance notification | recipient_id={recipient_id} import_id={import_id}",
+                recipient_id=recipient_tg_id,
+                import_id=import_id,
+            )
+            raise NotificationPermanentError(message="Failed to log attendance notification") from exc
+
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        """Логирует обновление сообщения о запросе роли."""
+        event = NotificationLogEvent(
+            event_type="role_request_updated",
+            recipient_id=self._settings.role_request_admin_tg_id,
+            message_text=status_text,
+            request_id=request_id,
+        )
+        try:
+            logger.info(
+                "Role request message updated | request_id={request_id} status_text={status_text}",
+                request_id=request_id,
+                status_text=status_text,
+            )
+            self._events.append(event)
+        except Exception as exc:
+            logger.exception("Failed to log role request message update")
+            raise NotificationPermanentError(message="Failed to log role request message update") from exc

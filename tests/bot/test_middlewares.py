@@ -8,7 +8,7 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
-from aiogram.types import Chat, Message, User
+from aiogram.types import CallbackQuery, Chat, Message, User
 from dishka import AsyncContainer
 from dishka.integrations.aiogram import CONTAINER_NAME
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from pybot.presentation.bot import (
     UserActivityMiddleware,
     logger_middleware_module,
 )
+from pybot.presentation.texts import ROLE_ACCESS_DENIED, ROLE_AUTH_ERROR
 from tests.factories import UserSpec, attach_user_role, create_role, create_user
 
 
@@ -35,6 +36,16 @@ def _build_message(*, text: str = "/command", from_user_id: int = 700_001) -> Me
         chat=Chat(id=from_user_id, type="private"),
         from_user=sender,
         text=text,
+    )
+
+
+def _build_callback_query(*, from_user_id: int = 700_001) -> CallbackQuery:
+    return CallbackQuery(
+        id="role-callback",
+        from_user=User(id=from_user_id, is_bot=False, first_name="Tester"),
+        chat_instance="role-middleware",
+        data="menu:broadcast",
+        message=_build_message(from_user_id=from_user_id),
     )
 
 
@@ -296,6 +307,93 @@ async def test_role_middleware_blocks_user_without_required_role(
     await_args = answer_mock.await_args
     assert await_args is not None
     assert "/start" not in str(await_args.args[0])
+
+
+@pytest.mark.asyncio
+async def test_role_middleware_answers_button_press_with_alert_when_user_id_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    middleware = RoleMiddleware()
+    callback_query = _build_callback_query()
+    handler = AsyncMock()
+    callback_answer_mock = AsyncMock()
+    message_answer_mock = AsyncMock()
+    monkeypatch.setattr(CallbackQuery, "answer", callback_answer_mock)
+    monkeypatch.setattr(Message, "answer", message_answer_mock)
+    data = _build_handler_data(role_policy="broadcast_allowed_roles")
+    data["event_from_user"] = callback_query.from_user
+
+    # When
+    result = await middleware(handler, callback_query, data)
+
+    # Then
+    assert result is None
+    handler.assert_not_awaited()
+    callback_answer_mock.assert_awaited_once_with(ROLE_AUTH_ERROR, show_alert=True)
+    message_answer_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_role_middleware_blocks_button_press_of_user_without_required_role(
+    db_session: AsyncSession,
+    dishka_test_container: AsyncContainer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    user = await create_user(db_session, spec=UserSpec(telegram_id=700_333))
+    student_role = await create_role(db_session, name="Student")
+    await attach_user_role(db_session, user=user, role=student_role)
+    await db_session.commit()
+
+    middleware = RoleMiddleware()
+    callback_query = _build_callback_query(from_user_id=user.telegram_id)
+    handler = AsyncMock()
+    callback_answer_mock = AsyncMock()
+    monkeypatch.setattr(CallbackQuery, "answer", callback_answer_mock)
+    data = _build_handler_data(role="Admin")
+    data["event_from_user"] = callback_query.from_user
+    data["user_id"] = user.id
+    data[CONTAINER_NAME] = dishka_test_container
+
+    # When
+    result = await middleware(handler, callback_query, data)
+
+    # Then
+    assert result is None
+    handler.assert_not_awaited()
+    callback_answer_mock.assert_awaited_once_with(ROLE_ACCESS_DENIED, show_alert=True)
+
+
+@pytest.mark.asyncio
+async def test_role_middleware_allows_button_press_of_user_with_required_role(
+    db_session: AsyncSession,
+    dishka_test_container: AsyncContainer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given
+    user = await create_user(db_session, spec=UserSpec(telegram_id=700_444))
+    admin_role = await create_role(db_session, name="Admin")
+    await attach_user_role(db_session, user=user, role=admin_role)
+    await db_session.commit()
+
+    middleware = RoleMiddleware()
+    callback_query = _build_callback_query(from_user_id=user.telegram_id)
+    handler = AsyncMock(return_value="access-granted")
+    callback_answer_mock = AsyncMock()
+    monkeypatch.setattr(CallbackQuery, "answer", callback_answer_mock)
+    data = _build_handler_data(role="Admin")
+    data["event_from_user"] = callback_query.from_user
+    data["user_id"] = user.id
+    data[CONTAINER_NAME] = dishka_test_container
+
+    # When
+    result = await middleware(handler, callback_query, data)
+
+    # Then
+    assert result == "access-granted"
+    handler.assert_awaited_once_with(callback_query, data)
+    callback_answer_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

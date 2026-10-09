@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import AppSettings
-from ..core.constants import RequestStatus
+from ..core.constants import RequestStatus, RoleEnum
 from ..db.models.role_module import RoleRequest
 from ..domain.exceptions import (
     RoleAlreadyAssignedError,
@@ -11,13 +11,14 @@ from ..domain.exceptions import (
     RoleRequestAlreadyExistsError,
     RoleRequestAlreadyProcessedError,
     RoleRequestCooldownError,
+    RoleRequestNotAllowedError,
     RoleRequestNotFoundError,
     UserNotFoundError,
 )
 from ..dto import NotifyDTO
 from ..dto.role_dto import CreateRoleRequestDTO
 from ..infrastructure import RoleRepository, RoleRequestRepository, UserRepository
-from ..presentation.texts import role_request_user_status
+from ..presentation.texts import ROLE_REQUEST_NO_ROLES_AVAILABLE, role_request_user_status
 from ..services.ports import NotificationPort
 
 
@@ -98,12 +99,20 @@ class RoleRequestService:
         except UserNotFoundError as err:
             raise UserNotFoundError(user_id) from err
 
+        user_roles = set(await self.user_repository.find_user_roles(self.db, user.id))
+
+        # Rule 10.1: Only Student can request Mentor. Mentor and Admin cannot request any role.
+        # Role Admin can never be requested.
+        if "Mentor" in user_roles and user_role == "Mentor":
+            raise RoleAlreadyAssignedError(user_id=user.id, role_name=user_role)
+
+        has_student = await self.user_repository.has_role(self.db, user.id, RoleEnum.STUDENT.value)
+        if not has_student or "Admin" in user_roles or "Mentor" in user_roles or user_role != RoleEnum.MENTOR.value:
+            raise RoleRequestNotAllowedError(ROLE_REQUEST_NO_ROLES_AVAILABLE)
+
         role_check = await self.role_repository.find_role_by_name(self.db, user_role)
         if role_check is None:
             raise RoleNotFoundError(role_name=user_role)
-
-        if await self.user_repository.has_role(self.db, user.id, user_role):
-            raise RoleAlreadyAssignedError(role_name=user_role, user_id=user.id)
 
         if await self.role_request_repository.find_recent_active_request(self.db, user_id):
             raise RoleRequestAlreadyExistsError(role_name=user_role, user_id=user.id)
@@ -118,6 +127,30 @@ class RoleRequestService:
             raise RoleRequestCooldownError(user_id=user.id, role_name=user_role, available_at=available_at)
 
         return True
+
+    async def auto_close_pending_request_on_role_assignment(
+        self,
+        user_id: int,
+        role_name: str,
+    ) -> RoleRequest | None:
+        """Automatically close pending role request if role was assigned via command."""
+        pending_request = await self.role_request_repository.find_recent_active_request(self.db, user_id)
+        if pending_request is None:
+            return None
+
+        role = await self.role_repository.find_role_by_name(self.db, role_name)
+        if role is None or pending_request.role_id != role.id:
+            return None
+
+        pending_request.change_status(RequestStatus.APPROVED)
+        self.db.add(pending_request)
+        await self.db.commit()
+
+        await self.notification_service.update_role_request_message(
+            request_id=pending_request.id,
+            status_text="Запрос закрыт: роль выдана командой /addrole.",
+        )
+        return pending_request
 
     async def create_role_request(self, user_id: int, role: str) -> CreateRoleRequestDTO:
         """Создает новый запрос на получение роли.
@@ -139,7 +172,7 @@ class RoleRequestService:
         if not role_object:
             raise RoleNotFoundError(role_name=role)
 
-        request = RoleRequest(user_id=user_id, role_id=role_object.id)
+        request = RoleRequest(user_id=user_id, role_id=role_object.id, status=RequestStatus.PENDING)
         self.db.add(request)
 
         try:

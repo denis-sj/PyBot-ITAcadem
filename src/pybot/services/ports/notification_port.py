@@ -42,4 +42,37 @@ class NotificationPort(ABC):
             NotificationTemporaryError: Временная ошибка доставки, возможен повтор.
             NotificationPermanentError: Неустранимая ошибка доставки.
         """
+
+    @abstractmethod
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        """Отправляет участнику уведомление о посещениях с опциональной кнопкой фото импорта.
+
+        Args:
+            recipient_tg_id: Telegram ID получателя.
+            text: Текст уведомления в HTML.
+            import_id: Опциональный идентификатор импорта для кнопки фото.
+
+        Raises:
+            NotificationTemporaryError: Временная ошибка доставки, возможен повтор.
+            NotificationPermanentError: Неустранимая ошибка доставки.
+        """
+        pass
+
+    @abstractmethod
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        """Обновляет сообщение администратора о запросе роли и убирает кнопки.
+
+        Args:
+            request_id: Идентификатор запроса роли.
+            status_text: Текст обновлённого статуса.
+        """
         pass

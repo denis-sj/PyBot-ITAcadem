@@ -31,6 +31,21 @@ class NotificationPortSpy(NotificationPort):
     async def send_message(self, message_data: NotifyDTO) -> None:
         self.message_calls.append(message_data)
 
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        return None
+
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        return None
+
 
 @pytest.mark.asyncio
 async def test_runtime_alerts_service_skips_when_alerts_are_disabled(

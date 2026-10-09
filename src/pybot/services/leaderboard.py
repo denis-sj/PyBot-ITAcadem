@@ -1,11 +1,10 @@
 from collections.abc import Sequence
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import pendulum
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.constants import PointsTypeEnum
+from ..core.constants import YEKATERINBURG_TZ, PointsTypeEnum
 from ..dto import WeeklyLeaderboardRowDTO
 from ..dto.leaderboard_dto import LeaderboardPeriod
 from ..infrastructure import PointsTransactionRepository
@@ -44,14 +43,13 @@ class LeaderboardService:
         Returns:
             LeaderboardPeriod: Объект с начальной и конечной датами периода.
         """
-        now = pendulum.now(business_tz)
+        now = pendulum.now(str(YEKATERINBURG_TZ))
         start_local = now.start_of("week").subtract(weeks=1)
         end_local = start_local.add(weeks=1)
 
-        business_timezone = ZoneInfo(business_tz)
         return LeaderboardPeriod(
-            start=datetime.fromtimestamp(start_local.timestamp(), tz=business_timezone),
-            end=datetime.fromtimestamp(end_local.timestamp(), tz=business_timezone),
+            start=datetime.fromtimestamp(start_local.timestamp(), tz=YEKATERINBURG_TZ),
+            end=datetime.fromtimestamp(end_local.timestamp(), tz=YEKATERINBURG_TZ),
         )
 
     async def get_previous_calendar_week_leaderboard(

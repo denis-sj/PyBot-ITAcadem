@@ -8,6 +8,7 @@ from fakeredis import FakeAsyncRedis
 from pybot.infrastructure.adapters.agent_memory import RedisAgentMemory
 
 from pybot.presentation.bot.handlers.agent.routing import AgentMessageFilter
+from pybot.presentation.bot.handlers.broadcast.states import BroadcastMenuSG
 from pybot.services.ports.agent import AgentMemoryPort
 from tests.agent.conftest import build_message
 
@@ -55,7 +56,14 @@ async def test_routing_matrix(router_filter, bot, chat_type, chat_id, topic_id, 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "state,dialog", [("Broadcast:waiting_text", None), (None, Mock()), ("Registration:name", Mock())]
+    "state,dialog",
+    [
+        (BroadcastMenuSG.waiting_for_text.state, None),
+        (BroadcastMenuSG.waiting_for_confirmation.state, None),
+        (BroadcastMenuSG.sending.state, None),
+        (None, Mock()),
+        ("Registration:name", Mock()),
+    ],
 )
 async def test_active_fsm_and_dialog_take_priority(router_filter, bot, state, dialog):
     agent_filter, _ = router_filter

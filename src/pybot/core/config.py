@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 from typing import Annotated, Literal, Self
+from zoneinfo import ZoneInfo
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_extra_types.cron import CronStr
@@ -15,6 +16,8 @@ from pydantic_settings import (
 )
 
 from .constants import RoleEnum
+
+YEKATERINBURG_TZ = ZoneInfo("Asia/Yekaterinburg")
 
 
 class AppSettings(BaseSettings):

@@ -9,20 +9,30 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import AppSettings
-from ..db.models import AttendanceImport, AttendanceImportStatus, User
+from ..core import logger
+from ..core.config import YEKATERINBURG_TZ, AppSettings
+from ..db.models import (
+    AttendanceChangeHistory,
+    AttendanceImport,
+    AttendanceImportStatus,
+    AttendanceRecord,
+    User,
+)
 from ..domain.exceptions import (
     AttendanceDomainError,
     AttendanceDraftExpiredError,
+    AttendancePhotoAccessDeniedError,
     AttendancePhotoEmptyError,
+    AttendancePhotoNotFoundError,
     AttendanceRecognitionError,
     AttendanceUserNotFoundError,
 )
+from ..domain.services import AttendanceRankingCalculator, ParticipantAttendanceStat
 from ..dto import (
+    ATTENDANCE_TOP_LIMIT,
     AttendanceDraftDateBlockDTO,
     AttendanceDraftDTO,
     AttendanceDraftItemDTO,
@@ -31,33 +41,42 @@ from ..dto import (
     AttendanceRecognizedDateBlockDTO,
     AttendanceRecognizedRowDTO,
     AttendanceRecordReadDTO,
+    AttendanceTopDTO,
     AttendanceUserSummaryDTO,
     calculate_duration_minutes,
     parse_time_range,
 )
 from ..infrastructure import AttendanceRepository, UserRepository
-from .ports import AttendanceRecognitionPort
+from ..presentation.texts.attendance import MONTH_NAMES_RU, format_import_notification
+from .ports import AttendanceRecognitionPort, NotificationPort
 
 DRAFT_TTL_HOURS: int = 24
+CALENDAR_MONTHS_PER_YEAR: int = 12
+_SATURDAY_OFFSET_DAYS: int = 5
 _MIN_CONFIDENCE_THRESHOLD: float = 0.7
+_EMPTY_TIME_INDICATORS: frozenset[str] = frozenset({"", "-", "—", "–", "нет", "прочерк", "н", "n", "0"})
 
 
 class AttendanceService:
     """Service orchestrating the photo attendance lifecycle and reporting."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         db: AsyncSession,
         attendance_repo: AttendanceRepository,
         user_repo: UserRepository,
         recognition_port: AttendanceRecognitionPort,
         settings: AppSettings,
+        ranking_calculator: AttendanceRankingCalculator | None = None,
+        notification_service: NotificationPort | None = None,
     ) -> None:
         self._db = db
         self._attendance_repo = attendance_repo
         self._user_repo = user_repo
         self._recognition_port = recognition_port
         self._settings = settings
+        self._ranking_calculator = ranking_calculator or AttendanceRankingCalculator()
+        self._notification_service = notification_service
 
     # ============ PUBLIC API (NEWSPAPER RULE: HIGH-LEVEL INTENT) ============
 
@@ -106,15 +125,16 @@ class AttendanceService:
                 details={"problems": result.quality.problems},
             )
 
-        tz = ZoneInfo(str(self._settings.attendance_timezone))
-        now_tz = datetime.now(tz)
+        now_tz = datetime.now(YEKATERINBURG_TZ)
         current_year, current_month = now_tz.year, now_tz.month
 
+        today = now_tz.date()
         date_blocks = await self._build_draft_date_blocks(
             dates=result.dates,
             users=users,
             current_year=current_year,
             current_month=current_month,
+            today=today,
         )
         initial_draft = AttendanceDraftDTO(
             draft_id=0,
@@ -173,7 +193,7 @@ class AttendanceService:
         item_id: str,
         start_time: time | None,
         end_time: time | None,
-        is_empty_time: bool,
+        is_empty_time: bool = False,
     ) -> AttendanceDraftDTO:
         """Update time range for an item in the draft, recalculating duration.
 
@@ -194,13 +214,8 @@ class AttendanceService:
         draft = AttendanceDraftDTO.model_validate_json(draft_record.draft_state_json)
 
         duration_minutes = 0
-        if is_empty_time:
-            start_time = None
-            end_time = None
-            duration_minutes = 0
-        elif start_time and end_time:
+        if start_time and end_time:
             duration_minutes = calculate_duration_minutes(start_time, end_time)
-
         found = False
         new_blocks: list[AttendanceDraftDateBlockDTO] = []
         for block in draft.dates:
@@ -210,7 +225,7 @@ class AttendanceService:
                     found = True
                     new_status: Literal["recognized", "needs_manual_review"] = (
                         "recognized"
-                        if (item.matched_user_id is not None and (is_empty_time or duration_minutes > 0))
+                        if (item.matched_user_id is not None and duration_minutes > 0)
                         else "needs_manual_review"
                     )
                     updated_item = item.model_copy(
@@ -218,7 +233,7 @@ class AttendanceService:
                             "start_time": start_time,
                             "end_time": end_time,
                             "duration_minutes": duration_minutes,
-                            "is_empty_time": is_empty_time,
+                            "is_empty_time": False,
                             "status": new_status,
                         }
                     )
@@ -243,14 +258,14 @@ class AttendanceService:
         self,
         draft_id: int,
         item_id: str,
-        user_id: int,
+        user_id: int | None,
     ) -> AttendanceDraftDTO:
-        """Bind an item to a resolved participant user ID.
+        """Bind an item to a resolved participant user ID, or clear user assignment if user_id is None.
 
         Args:
             draft_id: Draft primary key.
             item_id: Unique item identifier.
-            user_id: User primary key to bind to.
+            user_id: User primary key to bind to, or None to clear.
 
         Returns:
             AttendanceDraftDTO: Updated draft.
@@ -260,11 +275,13 @@ class AttendanceService:
         if not draft_record.draft_state_json:
             raise AttendanceDomainError(f"Черновик с ID {draft_id} не содержит сохраненного состояния")
         draft = AttendanceDraftDTO.model_validate_json(draft_record.draft_state_json)
-        user = await self._user_repo.find_user_by_id(self._db, user_id)
-        if user is None:
-            raise AttendanceUserNotFoundError(f"Пользователь с ID {user_id} не найден")
 
-        matched_name = self._format_user_full_name(user)
+        matched_name: str | None = None
+        if user_id is not None:
+            user = await self._user_repo.find_user_by_id(self._db, user_id)
+            if user is None:
+                raise AttendanceUserNotFoundError(f"Пользователь с ID {user_id} не найден")
+            matched_name = self._format_user_full_name(user)
 
         found = False
         new_blocks: list[AttendanceDraftDateBlockDTO] = []
@@ -273,16 +290,47 @@ class AttendanceService:
             for item in block.items:
                 if item.item_id == item_id:
                     found = True
-                    new_status: Literal["recognized", "needs_manual_review"] = (
-                        "recognized" if (item.is_empty_time or item.duration_minutes > 0) else "needs_manual_review"
-                    )
-                    updated_item = item.model_copy(
-                        update={
-                            "matched_user_id": user_id,
-                            "matched_user_name": matched_name,
-                            "status": new_status,
-                        }
-                    )
+                    if user_id is None or matched_name is None:
+                        updated_item = item.model_copy(
+                            update={
+                                "matched_user_id": None,
+                                "matched_user_name": None,
+                                "status": "needs_manual_review",
+                                "is_excluded": False,
+                                "exclusion_reason": None,
+                            }
+                        )
+                    else:
+                        new_status: Literal["recognized", "needs_manual_review"] = (
+                            "recognized" if (item.duration_minutes > 0) else "needs_manual_review"
+                        )
+                        existing_record = await self._attendance_repo.find_user_record_on_date(
+                            self._db, user_id, block.date
+                        )
+                        if existing_record is not None:
+                            is_excluded = True
+                            source_suffix = (
+                                " (добавлено вручную)"
+                                if (existing_record.source == "manual" or existing_record.import_id is None)
+                                else (f" (импорт #{existing_record.import_id})" if existing_record.import_id else "")
+                            )
+                            exclusion_reason = (
+                                f"У участника {matched_name} уже есть посещение за "
+                                f"{block.date.strftime('%d.%m.%Y')}{source_suffix}."
+                            )
+                        else:
+                            is_excluded = False
+                            exclusion_reason = None
+
+                        updated_item = item.model_copy(
+                            update={
+                                "matched_user_id": user_id,
+                                "matched_user_name": matched_name,
+                                "status": new_status,
+                                "is_excluded": is_excluded,
+                                "exclusion_reason": exclusion_reason,
+                            }
+                        )
                     new_items.append(updated_item)
                 else:
                     new_items.append(item)
@@ -299,6 +347,15 @@ class AttendanceService:
         )
         await self._db.commit()
         return updated_draft
+
+    async def update_draft_item_user(
+        self,
+        draft_id: int,
+        item_id: str,
+        user_id: int | None,
+    ) -> AttendanceDraftDTO:
+        """Assign or reassign participant user on a draft item (alias for update_draft_item_participant)."""
+        return await self.update_draft_item_participant(draft_id, item_id, user_id)
 
     async def exclude_draft_item(self, draft_id: int, item_id: str) -> AttendanceDraftDTO:
         """Mark a draft item as excluded from the final import.
@@ -379,42 +436,41 @@ class AttendanceService:
 
         self._assert_no_unresolved_rows(draft)
 
-        added_dates_count = 0
-        added_records_count = 0
-        skipped_dates_count = 0
-
-        confirmed_dates: list[tuple[date, list[dict[str, Any]]]] = []
+        candidate_dates: list[tuple[date, list[dict[str, Any]]]] = []
         for block in draft.dates:
             if block.is_ignored:
-                skipped_dates_count += 1
                 continue
 
             if await self._attendance_repo.is_date_processed(self._db, block.date):
-                skipped_dates_count += 1
                 continue
 
             rows = self._collect_confirmed_user_rows(block.items)
             if not rows:
-                skipped_dates_count += 1
                 continue
 
-            confirmed_dates.append((block.date, rows))
-            added_dates_count += 1
-            added_records_count += len(rows)
+            candidate_dates.append((block.date, rows))
 
-        if not confirmed_dates:
+        if not candidate_dates:
             raise AttendanceDomainError(
                 "Не найдено записей для сохранения: все даты уже обработаны либо все строки исключены."
             )
 
-        await self._attendance_repo.save_confirmed_import(
+        saved_dates = await self._attendance_repo.save_confirmed_import(
             db=self._db,
             import_id=draft_id,
             confirmed_by_tg_id=admin_tg_id,
-            confirmed_dates=confirmed_dates,
+            confirmed_dates=candidate_dates,
         )
 
         await self._db.commit()
+
+        if self._notification_service is not None and saved_dates:
+            await self._send_import_notifications(draft_id, saved_dates)
+
+        added_dates_count = len(saved_dates)
+        added_records_count = sum(len(rows) for _, rows in saved_dates)
+        skipped_dates_count = len(draft.dates) - added_dates_count
+
         return added_dates_count, added_records_count, skipped_dates_count
 
     async def cleanup_stale_drafts(self) -> int:
@@ -427,6 +483,61 @@ class AttendanceService:
         count = await self._attendance_repo.expire_stale_drafts(self._db, older_than=cutoff)
         await self._db.commit()
         return count
+
+    async def get_monthly_rankings(
+        self,
+        year: int | None = None,
+        month: int | None = None,
+    ) -> list[AttendanceMonthlyRankingItemDTO]:
+        """Get monthly rankings of active participants using competition ranking (1, 2, 2, 4).
+
+        Args:
+            year: Optional calendar year. Defaults to current year in configured timezone.
+            month: Optional calendar month (1..12). Defaults to current month.
+
+        Returns:
+            list[AttendanceMonthlyRankingItemDTO]: Ordered monthly rankings for active participants.
+        """
+        _, _, start_date, end_date = self._get_month_bounds(year, month)
+        return await self.get_rankings_for_period(start_date, end_date)
+
+    async def get_rankings_for_period(
+        self,
+        start_date: date,
+        end_date: date,
+    ) -> list[AttendanceMonthlyRankingItemDTO]:
+        """Get competition rankings (1, 2, 2, 4) of active participants for an inclusive date range.
+
+        The metric is the sum of minutes of confirmed visits; attendance rankings never use points.
+
+        Args:
+            start_date: First included calendar date.
+            end_date: Last included calendar date.
+
+        Returns:
+            list[AttendanceMonthlyRankingItemDTO]: Ordered rankings for active participants.
+        """
+        raw_rankings = await self._attendance_repo.get_rankings_for_period(self._db, start_date, end_date)
+        stats = [
+            ParticipantAttendanceStat(
+                user_id=u.id,
+                user_full_name=self._format_user_full_name(u),
+                total_minutes=total_min,
+                visits_count=visits,
+            )
+            for u, total_min, visits in raw_rankings
+        ]
+        ranked = self._ranking_calculator.calculate_rankings(stats)
+        return [
+            AttendanceMonthlyRankingItemDTO(
+                rank=r.rank,
+                user_id=r.user_id,
+                user_full_name=r.user_full_name,
+                total_minutes=r.total_minutes,
+                visits_count=r.visits_count,
+            )
+            for r in ranked
+        ]
 
     async def get_user_monthly_summary(
         self,
@@ -444,27 +555,407 @@ class AttendanceService:
         Returns:
             AttendanceUserSummaryDTO: Aggregated user metrics.
         """
-        _, _, start_date, end_date = self._get_month_bounds(year, month)
         user = await self._user_repo.find_user_by_id(self._db, user_id)
         if user is None:
             raise AttendanceUserNotFoundError(f"Пользователь с ID {user_id} не найден")
 
         full_name = self._format_user_full_name(user)
-        total_min, rank, total_part, visits = await self._attendance_repo.get_user_monthly_summary(
-            db=self._db,
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date,
-        )
+        rankings = await self.get_monthly_rankings(year, month)
+        total_participants = len(rankings)
+
+        user_stat = next((item for item in rankings if item.user_id == user_id), None)
+        if user_stat is not None:
+            total_min = user_stat.total_minutes
+            rank = user_stat.rank
+            visits = user_stat.visits_count
+        else:
+            total_min = 0
+            rank = 0
+            visits = 0
 
         return AttendanceUserSummaryDTO(
             user_id=user_id,
             user_full_name=full_name,
             total_minutes=total_min,
             rank=rank,
-            total_participants=total_part,
+            total_participants=total_participants,
             visits_count=visits,
         )
+
+    async def get_week_top(self, user_id: int, limit: int = ATTENDANCE_TOP_LIMIT) -> AttendanceTopDTO:
+        """Get the attendance top for the current attendance week (Monday to Saturday).
+
+        Args:
+            user_id: User primary key of the viewer, used to find the viewer's own place.
+            limit: Highest rank included in the top.
+
+        Returns:
+            AttendanceTopDTO: Top rows, participants count and the viewer's entry.
+        """
+        start_date, end_date = self.get_attendance_week_bounds()
+        return await self._build_top(user_id, start_date, end_date, limit)
+
+    async def get_month_top(
+        self,
+        user_id: int,
+        year: int | None = None,
+        month: int | None = None,
+        limit: int = ATTENDANCE_TOP_LIMIT,
+    ) -> AttendanceTopDTO:
+        """Get the attendance top for a calendar month.
+
+        Args:
+            user_id: User primary key of the viewer, used to find the viewer's own place.
+            year: Optional calendar year. Defaults to the current year in the configured timezone.
+            month: Optional calendar month (1..12). Defaults to the current month.
+            limit: Highest rank included in the top.
+
+        Returns:
+            AttendanceTopDTO: Top rows, participants count and the viewer's entry.
+        """
+        _, _, start_date, end_date = self._get_month_bounds(year, month)
+        return await self._build_top(user_id, start_date, end_date, limit)
+
+    async def get_attendance_months(self) -> list[tuple[int, int]]:
+        """Return months in which any participant has a confirmed visit, newest first.
+
+        Returns:
+            list[tuple[int, int]]: Distinct (year, month) pairs.
+        """
+        return await self._attendance_repo.find_months_with_visits(self._db)
+
+    async def find_adjacent_attendance_months(
+        self,
+        year: int,
+        month: int,
+    ) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+        """Find the nearest months with confirmed visits before and after the given month.
+
+        The later neighbour is never beyond the current month, so the top cannot be paged into the future.
+
+        Args:
+            year: Calendar year of the month on screen.
+            month: Calendar month (1..12) on screen.
+
+        Returns:
+            tuple: (previous month, next month) as (year, month) pairs; None where there is no such month.
+        """
+        shown = (year, month)
+        now = datetime.now(YEKATERINBURG_TZ)
+        current = (now.year, now.month)
+        months = await self.get_attendance_months()
+        earlier = [item for item in months if item < shown]
+        later = [item for item in months if shown < item <= current]
+        return (max(earlier) if earlier else None, min(later) if later else None)
+
+    @staticmethod
+    def get_attendance_week_bounds(today: date | None = None) -> tuple[date, date]:
+        """Return Monday and Saturday of the attendance week that contains ``today``.
+
+        Visits happen from Monday to Saturday only. On Sunday the week that has just
+        ended stays on screen; the new week starts on Monday.
+
+        Args:
+            today: Business date. Defaults to today in the configured timezone.
+
+        Returns:
+            tuple[date, date]: (Monday, Saturday), both inclusive.
+        """
+        current_day = today or datetime.now(YEKATERINBURG_TZ).date()
+        # date.weekday() is 0 on Monday and 6 on Sunday, so Sunday maps back to the Monday of the week that just ended.
+        monday = current_day - timedelta(days=current_day.weekday())
+        return monday, monday + timedelta(days=_SATURDAY_OFFSET_DAYS)
+
+    async def get_user_visit_months(self, user_id: int) -> list[tuple[int, int]]:
+        """Return distinct (year, month) pairs where user has confirmed visits, newest first.
+
+        Args:
+            user_id: User primary key.
+
+        Returns:
+            list[tuple[int, int]]: Ordered list of (year, month) tuples.
+        """
+        return await self._attendance_repo.find_user_visit_months(self._db, user_id)
+
+    async def get_import_photo_months(self) -> list[tuple[int, int]]:
+        """Return months with confirmed attendance dates whose photos are available.
+
+        Returns:
+            list[tuple[int, int]]: Distinct (year, month) pairs, newest first.
+        """
+        return await self._attendance_repo.find_import_photo_months(self._db)
+
+    async def get_import_photo_dates_for_month(self, year: int, month: int) -> list[tuple[date, int]]:
+        """Return recorded attendance dates and photo numbers for one calendar month.
+
+        Args:
+            year: Calendar year.
+            month: Calendar month from 1 to 12.
+
+        Returns:
+            list[tuple[date, int]]: Recorded dates paired with photo numbers.
+        """
+        if not 1 <= month <= CALENDAR_MONTHS_PER_YEAR:
+            return []
+
+        start_date = date(year, month, 1)
+        end_date = date(year, month, calendar.monthrange(year, month)[1])
+        return await self._attendance_repo.find_import_photo_dates_for_month(
+            self._db,
+            start_date,
+            end_date,
+        )
+
+    async def get_sorted_participants(self) -> list[User]:
+        """Return all registered participants sorted alphabetically by last name, first name, patronymic."""
+        users = await self._user_repo.find_all_users(self._db)
+        return sorted(
+            users,
+            key=lambda u: (
+                (u.last_name or "").lower(),
+                (u.first_name or "").lower(),
+                (u.patronymic or "").lower(),
+                u.id,
+            ),
+        )
+
+    async def get_user_by_id(self, user_id: int) -> User | None:
+        """Find user by primary key."""
+        return await self._user_repo.find_user_by_id(self._db, user_id)
+
+    async def get_attendance_record(self, record_id: int) -> AttendanceRecord | None:
+        """Find single attendance record by primary key."""
+        return await self._attendance_repo.find_record_by_id(self._db, record_id)
+
+    async def get_record_change_history(
+        self,
+        user_id: int,
+        visit_date: date,
+        limit: int = 3,
+    ) -> list[AttendanceChangeHistory]:
+        """Get recent change history for a user visit date."""
+        return await self._attendance_repo.get_recent_change_history(
+            self._db,
+            user_id=user_id,
+            visit_date=visit_date,
+            limit=limit,
+        )
+
+    async def edit_visit_time(
+        self,
+        record_id: int,
+        new_start_time: time,
+        new_end_time: time,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> AttendanceRecord:
+        """Edit time range of an existing attendance record, recording audit history and notifying user."""
+        record = await self.get_attendance_record(record_id)
+        if record is None:
+            raise AttendanceDomainError("Запись посещения не найдена")
+
+        duration_minutes = calculate_duration_minutes(new_start_time, new_end_time)
+        if duration_minutes <= 0 or new_end_time <= new_start_time:
+            raise AttendanceDomainError("Время окончания должно быть позже начала.")
+
+        if record.start_time == new_start_time and record.end_time == new_end_time:
+            raise AttendanceDomainError("Новое время совпадает с текущим")
+
+        old_str = (
+            f"{record.start_time.strftime('%H:%M')}–{record.end_time.strftime('%H:%M')}"
+            if record.start_time and record.end_time
+            else "без времени"
+        )
+        new_str = f"{new_start_time.strftime('%H:%M')}–{new_end_time.strftime('%H:%M')}"
+
+        updated_record = await self._attendance_repo.update_record_time(
+            db=self._db,
+            record_id=record_id,
+            start_time=new_start_time,
+            end_time=new_end_time,
+            duration_minutes=duration_minutes,
+        )
+        if updated_record is None:
+            raise AttendanceDomainError("Не удалось обновить время посещения")
+
+        await self._attendance_repo.add_change_history(
+            db=self._db,
+            user_id=record.user_id,
+            record_id=record.id,
+            visit_date=record.date,
+            action="edit_time",
+            old_value=old_str,
+            new_value=new_str,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+
+        await self._db.commit()
+
+        # Notification (Section 3.2)
+        if self._notification_service:
+            try:
+                user = await self._user_repo.find_user_by_id(self._db, record.user_id)
+                if user and user.telegram_id:
+                    d_str = record.date.strftime("%d.%m.%Y")
+                    notify_text = f"✏️ Посещение {d_str} изменено: {old_str} → {new_str}"
+                    await self._notification_service.send_attendance_notification(
+                        recipient_tg_id=user.telegram_id,
+                        text=notify_text,
+                        import_id=record.import_id,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver edit_time notification | record_id={record_id} error={error}",
+                    record_id=record_id,
+                    error=str(exc),
+                )
+
+        return updated_record
+
+    async def delete_visit(
+        self,
+        record_id: int,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> tuple[int, date, str]:
+        """Delete an existing attendance record, recording audit history and notifying user.
+
+        Returns:
+            tuple[int, date, str]: (user_id, visit_date, old_time_str).
+        """
+        record = await self.get_attendance_record(record_id)
+        if record is None:
+            raise AttendanceDomainError("Запись посещения не найдена")
+
+        old_str = (
+            f"{record.start_time.strftime('%H:%M')}–{record.end_time.strftime('%H:%M')}"
+            if record.start_time and record.end_time
+            else "без времени"
+        )
+        user_id = record.user_id
+        visit_date = record.date
+
+        await self._attendance_repo.add_change_history(
+            db=self._db,
+            user_id=user_id,
+            record_id=record_id,
+            visit_date=visit_date,
+            action="delete",
+            old_value=old_str,
+            new_value=None,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+
+        await self._attendance_repo.delete_record(self._db, record_id)
+        await self._db.commit()
+
+        # Notification (Section 3.2)
+        if self._notification_service:
+            try:
+                user = await self._user_repo.find_user_by_id(self._db, user_id)
+                if user and user.telegram_id:
+                    d_str = visit_date.strftime("%d.%m.%Y")
+                    notify_text = f"🗑 Посещение {d_str} ({old_str}) удалено"
+                    await self._notification_service.send_attendance_notification(
+                        recipient_tg_id=user.telegram_id,
+                        text=notify_text,
+                        import_id=None,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver delete notification | record_id={record_id} error={error}",
+                    record_id=record_id,
+                    error=str(exc),
+                )
+
+        return user_id, visit_date, old_str
+
+    async def create_manual_visit(  # noqa: PLR0913
+        self,
+        user_id: int,
+        visit_date: date,
+        start_time: time,
+        end_time: time,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> AttendanceRecord:
+        """Create a manual attendance record with date/time validation, history logging, and user notification."""
+        user = await self._user_repo.find_user_by_id(self._db, user_id)
+        if user is None:
+            raise AttendanceDomainError("Участник не найден")
+
+        # Date validation: cannot be in the future
+        today = datetime.now(YEKATERINBURG_TZ).date()
+        if visit_date > today:
+            raise AttendanceDomainError("Нельзя добавить посещение в будущую дату.")
+
+        # Check user doesn't already have visit on that date
+        has_visit = await self.has_user_visit_on_date(user_id, visit_date)
+        if has_visit:
+            raise AttendanceDomainError(f"У участника уже есть посещение на дату {visit_date.strftime('%d.%m.%Y')}.")
+
+        duration_minutes = calculate_duration_minutes(start_time, end_time)
+        if duration_minutes <= 0 or end_time <= start_time:
+            raise AttendanceDomainError("Время окончания должно быть позже начала.")
+
+        time_str = f"{start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')}"
+
+        record = await self._attendance_repo.create_manual_record(
+            db=self._db,
+            user_id=user_id,
+            visit_date=visit_date,
+            start_time=start_time,
+            end_time=end_time,
+            duration_minutes=duration_minutes,
+        )
+
+        await self._attendance_repo.add_change_history(
+            db=self._db,
+            user_id=user_id,
+            record_id=record.id,
+            visit_date=visit_date,
+            action="manual_add",
+            old_value=None,
+            new_value=time_str,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+
+        await self._db.commit()
+
+        # Notification (Section 3.2)
+        if self._notification_service:
+            try:
+                if user.telegram_id:
+                    d_str = visit_date.strftime("%d.%m.%Y")
+                    notify_text = f"✅ Добавлено посещение {d_str}: {time_str}"
+                    await self._notification_service.send_attendance_notification(
+                        recipient_tg_id=user.telegram_id,
+                        text=notify_text,
+                        import_id=None,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver manual_add notification | user_id={user_id} error={error}",
+                    user_id=user_id,
+                    error=str(exc),
+                )
+
+        return record
+
+    async def has_user_visit_on_date(self, user_id: int, visit_date: date) -> bool:
+        """Check if user already has a visit recorded on the given date.
+
+        Args:
+            user_id: User primary key.
+            visit_date: Calendar date to check.
+
+        Returns:
+            bool: True if user already has visit on date.
+        """
+        return await self._attendance_repo.has_user_visit_on_date(self._db, user_id, visit_date)
 
     async def get_user_monthly_visits(
         self,
@@ -490,9 +981,13 @@ class AttendanceService:
             end_date=end_date,
         )
 
+        record_ids = [r.id for r in records]
+        modified_ids = await self._attendance_repo.find_modified_record_ids(self._db, record_ids)
+
         return [
             AttendanceRecordReadDTO(
                 id=r.id,
+                import_id=r.import_id,
                 user_id=r.user_id,
                 user_full_name=self._format_user_full_name(r.user),
                 date=r.date,
@@ -502,6 +997,7 @@ class AttendanceService:
                 is_empty_time=r.is_empty_time,
                 source=r.source,
                 confirmed_at=r.created_at,
+                is_time_modified=(r.id in modified_ids),
             )
             for r in records
         ]
@@ -523,29 +1019,18 @@ class AttendanceService:
             AttendanceMonthlyReportDTO: Aggregated report.
         """
         calc_year, calc_month, start_date, end_date = self._get_month_bounds(year, month)
-        rankings_raw = await self._attendance_repo.get_monthly_rankings(self._db, start_date, end_date)
+        rankings = await self.get_monthly_rankings(year, month)
 
-        total_club_minutes = sum(total_min for _, total_min, _ in rankings_raw)
-        active_participants_count = len(rankings_raw)
+        total_club_minutes = sum(r.total_minutes for r in rankings)
+        active_participants_count = len(rankings)
         avg_minutes = total_club_minutes // active_participants_count if active_participants_count > 0 else 0
-
-        rankings = [
-            AttendanceMonthlyRankingItemDTO(
-                rank=idx,
-                user_id=u.id,
-                user_full_name=self._format_user_full_name(u),
-                total_minutes=total_min,
-                visits_count=visits,
-            )
-            for idx, (u, total_min, visits) in enumerate(rankings_raw, start=1)
-        ]
-
         records: list[AttendanceRecordReadDTO] = []
         if detailed:
             records_raw = await self._attendance_repo.get_monthly_records(self._db, start_date, end_date)
             records = [
                 AttendanceRecordReadDTO(
                     id=r.id,
+                    import_id=r.import_id,
                     user_id=r.user_id,
                     user_full_name=self._format_user_full_name(r.user),
                     date=r.date,
@@ -569,6 +1054,39 @@ class AttendanceService:
             records=records,
         )
 
+    async def get_import_photo_with_access(
+        self,
+        import_id: int,
+        requester_tg_id: int,
+        is_admin: bool,
+    ) -> tuple[bytes, str, list[date]]:
+        """Retrieve original photo and confirmed dates with authorization check.
+
+        Rules:
+        - Admin has access to photos of all imports.
+        - Non-admin must be a registered user and have at least one confirmed visit in this import.
+        - If non-admin has no visits in this import: raises AttendancePhotoAccessDeniedError.
+        - If photo bytes are absent or cleared: raises AttendancePhotoNotFoundError.
+
+        Returns:
+            tuple[bytes, str, list[date]]: (photo_bytes, mime_type, sorted_dates).
+        """
+        user = await self._user_repo.find_user_by_telegram_id(self._db, requester_tg_id)
+        if not is_admin:
+            if user is None:
+                raise AttendancePhotoAccessDeniedError("Фото недоступно: посещение удалено.")
+            has_visit = await self._attendance_repo.has_user_visit_in_import(self._db, user.id, import_id)
+            if not has_visit:
+                raise AttendancePhotoAccessDeniedError("Фото недоступно: посещение удалено.")
+
+        photo_info = await self._attendance_repo.get_import_photo(self._db, import_id)
+        if photo_info is None:
+            raise AttendancePhotoNotFoundError("Фотография импорта не найдена.")
+
+        photo_bytes, mime_type = photo_info
+        dates = await self._attendance_repo.get_import_dates(self._db, import_id)
+        return photo_bytes, mime_type, dates
+
     async def get_photo_evidence(self, import_id: int) -> tuple[bytes, str]:
         """Retrieve original photo bytes and MIME type for an import.
 
@@ -581,13 +1099,52 @@ class AttendanceService:
         Raises:
             AttendanceDomainError: If photo evidence was cleared or not found.
         """
-        photo_info = await self._attendance_repo.find_import_photo(self._db, import_id)
+        photo_info = await self._attendance_repo.get_import_photo(self._db, import_id)
         if photo_info is None:
             raise AttendanceDomainError(
                 "Фото-доказательство не найдено",
                 details={"import_id": import_id},
             )
         return photo_info
+
+    async def _send_import_notifications(
+        self,
+        import_id: int,
+        confirmed_dates: list[tuple[date, list[dict[str, Any]]]],
+    ) -> None:
+        """Send private attendance notifications to participants with saved visits."""
+        if not self._notification_service:
+            return
+
+        user_visits_map: dict[int, list[tuple[date, time, time, int]]] = {}
+        for visit_date, rows in confirmed_dates:
+            for row in rows:
+                uid = row["user_id"]
+                start_t = row.get("start_time")
+                end_t = row.get("end_time")
+                dur = row.get("duration_minutes", 0)
+                if start_t and end_t and dur > 0:
+                    user_visits_map.setdefault(uid, []).append((visit_date, start_t, end_t, dur))
+
+        for uid, visits in user_visits_map.items():
+            try:
+                user = await self._user_repo.find_user_by_id(self._db, uid)
+                if not user or not user.telegram_id:
+                    continue
+
+                text = format_import_notification(import_id=import_id, user_visits=visits)
+                await self._notification_service.send_attendance_notification(
+                    recipient_tg_id=user.telegram_id,
+                    text=text,
+                    import_id=import_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to deliver attendance notification | user_id={user_id} import_id={import_id} error={error}",
+                    user_id=uid,
+                    import_id=import_id,
+                    error=str(exc),
+                )
 
     # ============ PRIVATE HELPERS (LOWER-LEVEL DETAILS) ============
 
@@ -622,7 +1179,15 @@ class AttendanceService:
         if not raw_name or not raw_name.strip():
             return None, None, "needs_manual_review"
 
-        normalized_target = self._normalize_name(raw_name)
+        # The attendance sheet prints the cohort after a comma. It is not part
+        # of the participant's name and should not prevent an exact match.
+        name_without_cohort = re.sub(
+            r",\s*[A-ZА-ЯЁ]{2,}-\d{2}/\d+(?:-\d+)?\s*$",
+            "",
+            raw_name,
+            flags=re.IGNORECASE,
+        )
+        normalized_target = self._normalize_name(name_without_cohort)
         if not normalized_target:
             return None, None, "needs_manual_review"
 
@@ -656,6 +1221,23 @@ class AttendanceService:
         cleaned = re.sub(r"[^\w\s-]", " ", cleaned)
         return re.sub(r"\s+", " ", cleaned).strip()
 
+    async def _build_top(
+        self,
+        user_id: int,
+        start_date: date,
+        end_date: date,
+        limit: int,
+    ) -> AttendanceTopDTO:
+        """Assemble the top rows and the viewer's entry for a period."""
+        rankings = await self.get_rankings_for_period(start_date, end_date)
+        return AttendanceTopDTO(
+            period_start=start_date,
+            period_end=end_date,
+            rows=[item for item in rankings if item.rank <= limit],
+            total_participants=len(rankings),
+            current_user=next((item for item in rankings if item.user_id == user_id), None),
+        )
+
     @staticmethod
     def _format_user_full_name(user: User) -> str:
         """Format full name as 'Фамилия Имя Отчество'."""
@@ -669,8 +1251,7 @@ class AttendanceService:
     ) -> tuple[int, int, date, date]:
         """Calculate year, month, and first/last date of the month."""
         if year is None or month is None:
-            tz = ZoneInfo(str(self._settings.attendance_timezone))
-            now_tz = datetime.now(tz)
+            now_tz = datetime.now(YEKATERINBURG_TZ)
             year = year or now_tz.year
             month = month or now_tz.month
 
@@ -679,51 +1260,98 @@ class AttendanceService:
         end_date = date(year, month, days_in_month)
         return year, month, start_date, end_date
 
+    @staticmethod
+    def _format_period_warning(past_dates: list[date], current_year: int, current_month: int) -> str | None:
+        """Format warning message for attendance dates in past calendar months."""
+        if not past_dates:
+            return None
+
+        cur_month_name = MONTH_NAMES_RU.get(current_month, "")
+        d1 = past_dates[0]
+        m_name = MONTH_NAMES_RU.get(d1.month, "")
+        d1_fmt = d1.strftime("%d.%m.%Y")
+
+        if len(past_dates) == 1:
+            return (
+                f"Дата на фото: {d1_fmt} — это {m_name} {d1.year}, не текущий месяц. "
+                f"Посещения попадут в отчёт за {m_name} {d1.year} "
+                f"и не изменят отчёт за {cur_month_name} {current_year}."
+            )
+
+        d2 = past_dates[1]
+        d2_fmt = d2.strftime("%d.%m.%Y")
+        return (
+            f"Даты на фото: {d1_fmt} и {d2_fmt} — это {m_name} {d1.year}, не текущий месяц. "
+            f"Посещения попадут в отчёт за {m_name} {d1.year} "
+            f"и не изменят отчёт за {cur_month_name} {current_year}."
+        )
+
     async def _build_draft_date_blocks(
         self,
         dates: list[AttendanceRecognizedDateBlockDTO],
         users: Sequence[User],
         current_year: int,
         current_month: int,
+        today: date,
     ) -> list[AttendanceDraftDateBlockDTO]:
-        """Convert recognized date blocks into draft date blocks with month & processed checks."""
+        """Convert recognized date blocks into draft date blocks with date validation and warnings."""
+        past_dates_to_warn: list[date] = []
+        for date_block in dates:
+            if date_block.date <= today:
+                processed = await self._attendance_repo.find_processed_date(self._db, date_block.date)
+                if processed is None and (date_block.date.year, date_block.date.month) != (current_year, current_month):
+                    past_dates_to_warn.append(date_block.date)
+
+        period_warning = self._format_period_warning(past_dates_to_warn, current_year, current_month)
+
         date_blocks: list[AttendanceDraftDateBlockDTO] = []
         for date_block in dates:
-            is_out_of_month = (date_block.date.year != current_year) or (date_block.date.month != current_month)
-            is_already_processed = await self._attendance_repo.is_date_processed(self._db, date_block.date)
+            is_future = date_block.date > today
+            is_past_month = (date_block.date.year, date_block.date.month) != (current_year, current_month)
+
+            processed_record = await self._attendance_repo.find_processed_date(self._db, date_block.date)
+            is_already_processed = processed_record is not None
+            processed_import_id = processed_record.import_id if processed_record else None
 
             is_ignored = False
             ignore_reason: str | None = None
-            if is_out_of_month:
+
+            if is_future:
                 is_ignored = True
-                ignore_reason = "прошлый месяц"
+                ignore_reason = "будущая дата"
+                items: list[AttendanceDraftItemDTO] = []
             elif is_already_processed:
                 is_ignored = True
                 ignore_reason = "дата уже обработана"
-
-            items = [
-                self._build_draft_item(
-                    row=row,
-                    date_val=date_block.date,
-                    row_idx=idx,
-                    is_already_processed=is_already_processed,
-                    is_out_of_month=is_out_of_month,
-                    users=users,
-                )
-                for idx, row in enumerate(date_block.rows)
-            ]
+                items = []
+            else:
+                items = []
+                for idx, row in enumerate(date_block.rows):
+                    draft_item = await self._build_draft_item(
+                        row=row,
+                        date_val=date_block.date,
+                        row_idx=idx,
+                        is_already_processed=False,
+                        is_out_of_month=is_past_month,
+                        users=users,
+                    )
+                    if draft_item is not None:
+                        items.append(draft_item)
 
             date_blocks.append(
                 AttendanceDraftDateBlockDTO(
                     date=date_block.date,
                     is_ignored=is_ignored,
                     ignore_reason=ignore_reason,
+                    processed_import_id=processed_import_id,
+                    period_warning=period_warning if is_past_month and not is_ignored else None,
                     items=items,
                 )
             )
+
         return date_blocks
 
-    def _build_draft_item(  # noqa: PLR0913
+    async def _build_draft_item(  # noqa: PLR0913
         self,
         row: AttendanceRecognizedRowDTO,
         date_val: date,
@@ -731,17 +1359,37 @@ class AttendanceService:
         is_already_processed: bool,
         is_out_of_month: bool,
         users: Sequence[User],
-    ) -> AttendanceDraftItemDTO:
-        """Process one recognized row and build a draft item DTO."""
-        is_empty_time = row.is_empty_time
-        if not row.time_raw or row.time_raw.strip() in ("-", "—", "–", "нет", "прочерк"):
-            is_empty_time = True
+    ) -> AttendanceDraftItemDTO | None:
+        """Process one recognized row and build a draft item DTO.
+
+        Returns an excluded N marker for an absent participant.
+        """
+        if row.is_empty_time or not row.time_raw or row.time_raw.strip().lower() in _EMPTY_TIME_INDICATORS:
+            matched_user_id, matched_user_name, _ = self._match_participant(row.raw_name, users)
+            item_id = f"{date_val.isoformat()}_{row_idx}_{uuid.uuid4().hex[:6]}"
+            requires_manual_review = row.status == "needs_manual_review"
+            return AttendanceDraftItemDTO(
+                item_id=item_id,
+                date=date_val,
+                raw_name=row.raw_name,
+                matched_user_id=matched_user_id,
+                matched_user_name=matched_user_name,
+                start_time=None,
+                end_time=None,
+                duration_minutes=0,
+                is_empty_time=True,
+                confidence=row.confidence,
+                status="needs_manual_review" if requires_manual_review else "recognized",
+                is_duplicate_date=is_already_processed,
+                is_out_of_month=is_out_of_month,
+                is_excluded=not requires_manual_review,
+            )
 
         start_time, end_time, duration_minutes = self._resolve_row_time(
             time_raw=row.time_raw,
             start_time=row.start_time,
             end_time=row.end_time,
-            is_empty_time=is_empty_time,
+            is_empty_time=False,
         )
 
         matched_user_id, matched_user_name, match_status = self._match_participant(row.raw_name, users)
@@ -749,11 +1397,27 @@ class AttendanceService:
             row.status == "needs_manual_review"
             or row.confidence < _MIN_CONFIDENCE_THRESHOLD
             or match_status != "recognized"
-            or (not is_empty_time and duration_minutes <= 0)
+            or duration_minutes <= 0
         ):
             status: Literal["recognized", "needs_manual_review"] = "needs_manual_review"
         else:
             status = "recognized"
+
+        is_excluded = False
+        exclusion_reason: str | None = None
+        if matched_user_id is not None:
+            existing_record = await self._attendance_repo.find_user_record_on_date(self._db, matched_user_id, date_val)
+            if existing_record is not None:
+                is_excluded = True
+                source_suffix = (
+                    " (добавлено вручную)"
+                    if (existing_record.source == "manual" or existing_record.import_id is None)
+                    else (f" (импорт #{existing_record.import_id})" if existing_record.import_id else "")
+                )
+                exclusion_reason = (
+                    f"У участника {matched_user_name} уже есть посещение за "
+                    f"{date_val.strftime('%d.%m.%Y')}{source_suffix}."
+                )
 
         item_id = f"{date_val.isoformat()}_{row_idx}_{uuid.uuid4().hex[:6]}"
         return AttendanceDraftItemDTO(
@@ -765,12 +1429,14 @@ class AttendanceService:
             start_time=start_time,
             end_time=end_time,
             duration_minutes=duration_minutes,
-            is_empty_time=is_empty_time,
+            is_empty_time=False,
             confidence=row.confidence,
             status=status,
+            time_raw=row.time_raw,
             is_duplicate_date=is_already_processed,
             is_out_of_month=is_out_of_month,
-            is_excluded=False,
+            is_excluded=is_excluded,
+            exclusion_reason=exclusion_reason,
         )
 
     @staticmethod
@@ -800,7 +1466,7 @@ class AttendanceService:
         """Collect deduplicated confirmed rows for a single date block, retaining max duration."""
         user_records: dict[int, dict[str, Any]] = {}
         for item in items:
-            if item.is_excluded or item.matched_user_id is None:
+            if item.is_excluded or item.matched_user_id is None or item.duration_minutes <= 0:
                 continue
             uid = item.matched_user_id
             if uid not in user_records:
@@ -809,14 +1475,14 @@ class AttendanceService:
                     "start_time": item.start_time,
                     "end_time": item.end_time,
                     "duration_minutes": item.duration_minutes,
-                    "is_empty_time": item.is_empty_time,
+                    "is_empty_time": False,
                     "source": "photo_ai",
                 }
             elif item.duration_minutes > user_records[uid]["duration_minutes"]:
                 user_records[uid]["duration_minutes"] = item.duration_minutes
                 user_records[uid]["start_time"] = item.start_time
                 user_records[uid]["end_time"] = item.end_time
-                user_records[uid]["is_empty_time"] = item.is_empty_time
+                user_records[uid]["is_empty_time"] = False
         return list(user_records.values())
 
     @staticmethod

@@ -21,6 +21,8 @@ from pybot.services.agent.runtime import AgentRuntime
 from pybot.services.agent.service import AgentService
 from pybot.presentation.texts.agent import AGENT_EXPIRED
 from pybot.services.ports.agent import AgentMemoryPort
+from pybot.presentation.bot.handlers.broadcast.states import BroadcastMenuSG
+
 from tests.agent.conftest import build_message, build_service
 
 
@@ -158,11 +160,17 @@ async def test_real_dispatcher_command_priority_and_fsm(agent_settings, monkeypa
         handled_command.assert_awaited_once()
         answer_service.assert_not_awaited()
         state = dispatcher.fsm.get_context(bot, chat_id=11, user_id=11)
-        await state.set_state("Broadcast:waiting_text")
-        await dispatcher.feed_update(bot, Update(update_id=2, message=private.model_copy(update={"text": "Справка"})))
-        answer_service.assert_not_awaited()
+        for update_id, broadcast_state in enumerate(
+            (BroadcastMenuSG.waiting_for_text, BroadcastMenuSG.waiting_for_confirmation, BroadcastMenuSG.sending),
+            start=2,
+        ):
+            await state.set_state(broadcast_state)
+            await dispatcher.feed_update(
+                bot, Update(update_id=update_id, message=private.model_copy(update={"text": "Справка"}))
+            )
+            answer_service.assert_not_awaited()
         await state.clear()
-        await dispatcher.feed_update(bot, Update(update_id=3, message=private.model_copy(update={"text": "Справка"})))
+        await dispatcher.feed_update(bot, Update(update_id=5, message=private.model_copy(update={"text": "Справка"})))
         answer_service.assert_awaited_once()
         assert dispatcher.sub_routers[-1].message.handlers[0].flags["rate_limit"] == "expensive"
     finally:

@@ -32,6 +32,7 @@ from ....texts import (
     render_profile_message,
 )
 from ...keyboards.auth import request_contact_kb
+from ...keyboards.main_menu import get_main_menu_keyboard
 from .getters import RegistrationCompetenceOption
 
 
@@ -261,7 +262,11 @@ async def _on_competence_submit_impl(
     if callback.message is not None:
         await callback.message.answer(registration_profile_created(user.first_name))
         user_profile_dto = await user_profile_service.build_profile_view(user)
-        await callback.message.answer(render_profile_message(user_profile_dto), parse_mode="HTML")
+        await callback.message.answer(
+            render_profile_message(user_profile_dto),
+            parse_mode="HTML",
+            reply_markup=get_main_menu_keyboard(),
+        )
     await callback.answer()
     await manager.done()
 

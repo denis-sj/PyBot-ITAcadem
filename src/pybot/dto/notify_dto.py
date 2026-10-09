@@ -63,12 +63,13 @@ class NotifyDTO(BaseDTO):
 class NotificationLogEvent:
     """Structured log event for outbound notifications."""
 
-    event_type: Literal["role_request_to_admin", "direct_message"]
+    event_type: Literal["role_request_to_admin", "direct_message", "attendance_confirmed", "role_request_updated"]
     recipient_id: int
     message_text: str
     request_id: int | None = None
     requester_user_id: int | None = None
     role_name: str | None = None
+    import_id: int | None = None
 
 
 class NotifyUserDTO(BaseDTO):

@@ -6,9 +6,13 @@ from unittest.mock import AsyncMock
 import pytest
 from aiogram.types import Chat, Message, User
 
+from pybot.domain.exceptions import (
+    RoleAlreadyAssignedError,
+    RoleRequestCooldownError,
+    RoleRequestNotAllowedError,
+)
 from pybot.presentation.bot import cmd_role_request
-from pybot.presentation.texts import ROLE_REQUEST_USAGE, role_request_cooldown_until
-from pybot.domain.exceptions import RoleRequestCooldownError
+from pybot.presentation.texts import ROLE_REQUEST_ALREADY_ASSIGNED, ROLE_REQUEST_USAGE
 
 
 def _build_message(
@@ -28,10 +32,9 @@ def _build_message(
 
 
 @pytest.mark.asyncio
-async def test_cmd_role_request_replies_with_relative_cooldown_for_next_day(
+async def test_cmd_role_request_replies_with_cooldown_date(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request_time = datetime(2026, 3, 22, 14, 30, 0, tzinfo=UTC)
     available_at = datetime(2026, 3, 23, 14, 30, 0)
     role_request_service = AsyncMock()
     role_request_service.create_role_request.side_effect = RoleRequestCooldownError(
@@ -40,7 +43,7 @@ async def test_cmd_role_request_replies_with_relative_cooldown_for_next_day(
         available_at=available_at,
     )
 
-    message = _build_message(text="/role_request Mentor", date=request_time)
+    message = _build_message(text="/role_request Mentor")
     reply_mock = AsyncMock()
     monkeypatch.setattr(Message, "reply", reply_mock)
 
@@ -51,23 +54,15 @@ async def test_cmd_role_request_replies_with_relative_cooldown_for_next_day(
     )
 
     role_request_service.create_role_request.assert_awaited_once_with(1, "Mentor")
-    reply_mock.assert_awaited_once_with(role_request_cooldown_until("завтра в 14:30 (через 1 день)"))
+    reply_mock.assert_awaited_once_with("Повторный запрос можно отправить после 23.03.2026.")
 
 
 @pytest.mark.asyncio
-async def test_cmd_role_request_replies_with_absolute_cooldown_for_longer_wait(
+async def test_cmd_role_request_student_requests_mentor_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    request_time = datetime(2026, 3, 22, 12, 0, 0, tzinfo=UTC)
-    available_at = datetime(2026, 3, 24, 14, 30, 0)
     role_request_service = AsyncMock()
-    role_request_service.create_role_request.side_effect = RoleRequestCooldownError(
-        user_id=1,
-        role_name="Mentor",
-        available_at=available_at,
-    )
-
-    message = _build_message(text="/role_request Mentor", date=request_time)
+    message = _build_message(text="/role_request Mentor")
     reply_mock = AsyncMock()
     monkeypatch.setattr(Message, "reply", reply_mock)
 
@@ -78,9 +73,48 @@ async def test_cmd_role_request_replies_with_absolute_cooldown_for_longer_wait(
     )
 
     role_request_service.create_role_request.assert_awaited_once_with(1, "Mentor")
-    reply_mock.assert_awaited_once_with(
-        role_request_cooldown_until("24 марта 2026 в 14:30 (через 2 дня 2 часа 30 минут)")
+    assert "отправлен администратору" in reply_mock.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_cmd_role_request_rejects_disallowed_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    role_request_service = AsyncMock()
+    role_request_service.create_role_request.side_effect = RoleRequestNotAllowedError()
+
+    message = _build_message(text="/role_request Admin")
+    reply_mock = AsyncMock()
+    monkeypatch.setattr(Message, "reply", reply_mock)
+
+    await cmd_role_request(
+        message=message,
+        role_request_service=role_request_service,
+        user_id=1,
     )
+
+    reply_mock.assert_awaited_once_with("Нет ролей, которые вы можете запросить.")
+
+
+@pytest.mark.asyncio
+async def test_cmd_role_request_already_has_mentor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    role_request_service = AsyncMock()
+    role_request_service.create_role_request.side_effect = RoleAlreadyAssignedError(user_id=1, role_name="Mentor")
+
+    message = _build_message(text="/role_request Mentor")
+    reply_mock = AsyncMock()
+    monkeypatch.setattr(Message, "reply", reply_mock)
+
+    await cmd_role_request(
+        message=message,
+        role_request_service=role_request_service,
+        user_id=1,
+    )
+
+    reply_mock.assert_awaited_once_with(ROLE_REQUEST_ALREADY_ASSIGNED)
+    assert "У вас уже есть роль Mentor." in reply_mock.call_args[0][0]
 
 
 @pytest.mark.asyncio

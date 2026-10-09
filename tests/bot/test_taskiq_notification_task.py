@@ -28,6 +28,17 @@ class NotificationPortSpy(NotificationPort):
     async def send_message(self, message_data: NotifyDTO) -> None:
         await self.send_message_mock(message_data)
 
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        return None
+
+    async def update_role_request_message(self, request_id: int, status_text: str) -> None:
+        return None
+
 
 class DishkaContainer(Protocol):
     async def get(

@@ -4,6 +4,7 @@ from ..base_class import Base
 from .achievement import Achievement
 
 from .attendance import (
+    AttendanceChangeHistory,
     AttendanceDate,
     AttendanceImport,
     AttendanceImportStatus,
@@ -59,6 +60,7 @@ __all__ = [
     "TaskSolution",
     "TaskSolutionStatus",
     # attendance
+    "AttendanceChangeHistory",
     "AttendanceDate",
     "AttendanceImport",
     "AttendanceImportStatus",

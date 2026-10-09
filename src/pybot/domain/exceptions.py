@@ -92,6 +92,19 @@ class ZeroPointsAdjustmentError(DomainError):
         super().__init__("Нельзя изменить баллы на 0")
 
 
+class InsufficientPointsBalanceError(DomainError):
+    """Попытка списать больше баллов, чем есть на балансе."""
+
+    def __init__(self, requested: int, current: int) -> None:
+        self.requested = requested
+        self.current = current
+        super().__init__(
+            f"Нельзя списать {requested} баллов: у участника {current}.",
+            code="INSUFFICIENT_POINTS_BALANCE",
+            details={"requested": requested, "current": current},
+        )
+
+
 class IncompatiblePointsTypeError(DomainError):
     """Несовместимые типы баллов при операции."""
 
@@ -164,6 +177,13 @@ class RoleRequestAlreadyExistsError(DomainError):
             f"Запрос на роль '{role_name}' уже существует для пользователя {user_id}",
             details={"user_id": user_id, "role": role_name},
         )
+
+
+class RoleRequestNotAllowedError(DomainError):
+    """Пользователь не может запросить указанную роль."""
+
+    def __init__(self, message: str = "Нет ролей, которые вы можете запросить.") -> None:
+        super().__init__(message, code="ROLE_REQUEST_NOT_ALLOWED")
 
 
 class RoleRequestAlreadyProcessedError(DomainError):
@@ -530,3 +550,27 @@ class AttendanceUnauthorizedError(AttendanceDomainError):
         if user_tg_id is not None:
             merged_details["user_tg_id"] = user_tg_id
         super().__init__(message, code="ATTENDANCE_UNAUTHORIZED", details=merged_details)
+
+
+class AttendancePhotoAccessDeniedError(AttendanceDomainError):
+    """Пользователь не имеет прав доступа к фотографии импорта."""
+
+    def __init__(
+        self,
+        message: str = "Фото недоступно: посещение удалено.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code="ATTENDANCE_PHOTO_ACCESS_DENIED", details=details)
+
+
+class AttendancePhotoNotFoundError(AttendanceDomainError):
+    """Фотография импорта не найдена или была удалена."""
+
+    def __init__(
+        self,
+        message: str = "Фотография импорта не найдена.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, code="ATTENDANCE_PHOTO_NOT_FOUND", details=details)

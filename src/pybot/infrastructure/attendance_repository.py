@@ -6,11 +6,14 @@ import datetime as dt
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Integer, cast, extract, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..core import logger
 from ..db.models import (
+    AttendanceChangeHistory,
     AttendanceDate,
     AttendanceImport,
     AttendanceImportStatus,
@@ -18,6 +21,36 @@ from ..db.models import (
     User,
 )
 from ..domain.exceptions import AttendanceDraftNotFoundError
+
+
+def _is_attendance_record_duplicate_error(exc: IntegrityError) -> bool:
+    """Check if IntegrityError was caused by uq_attendance_records_user_date violation.
+
+    Matches PostgreSQL (constraint name uq_attendance_records_user_date) and
+    SQLite (unique constraint failed on attendance_records.user_id, attendance_records.date).
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        constraint_name = getattr(orig, "constraint_name", None)
+        if constraint_name == "uq_attendance_records_user_date":
+            return True
+
+    text_parts = [str(exc)]
+    if orig is not None:
+        text_parts.append(str(orig))
+    error_text = " ".join(text_parts).lower()
+
+    if "uq_attendance_records_user_date" in error_text:
+        return True
+
+    return bool(
+        "unique" in error_text
+        and (
+            "unique constraint failed: attendance_records.user_id, attendance_records.date" in error_text
+            or ("attendance_records.user_id" in error_text and "attendance_records.date" in error_text)
+            or ("unique constraint failed" in error_text and "user_id" in error_text and "date" in error_text)
+        )
+    )
 
 
 class AttendanceRepository:
@@ -148,6 +181,107 @@ class AttendanceRepository:
         await db.execute(stmt)
         await db.flush()
 
+    async def has_user_visit_in_import(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        import_id: int,
+    ) -> bool:
+        """Check if user has at least one confirmed attendance record in the import.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+            import_id: Import primary key.
+
+        Returns:
+            bool: True if record exists, False otherwise.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(AttendanceRecord)
+            .where(
+                AttendanceRecord.user_id == user_id,
+                AttendanceRecord.import_id == import_id,
+            )
+        )
+        count = await db.scalar(stmt)
+        return bool(count and count > 0)
+
+    async def get_import_dates(
+        self,
+        db: AsyncSession,
+        import_id: int,
+    ) -> list[dt.date]:
+        """Get all dates associated with the given import ordered chronologically.
+
+        Args:
+            db: Database session.
+            import_id: Import primary key.
+
+        Returns:
+            list[dt.date]: Sorted list of unique calendar dates.
+        """
+        stmt = (
+            select(AttendanceDate.date).where(AttendanceDate.import_id == import_id).order_by(AttendanceDate.date.asc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def find_import_photo_months(self, db: AsyncSession) -> list[tuple[int, int]]:
+        """Find months with confirmed attendance dates whose original photos remain available.
+
+        Args:
+            db: Database session.
+
+        Returns:
+            list[tuple[int, int]]: Distinct (year, month) pairs, newest first.
+        """
+        year_expr = cast(extract("year", AttendanceDate.date), Integer)
+        month_expr = cast(extract("month", AttendanceDate.date), Integer)
+        stmt = (
+            select(year_expr, month_expr)
+            .join(AttendanceImport, AttendanceDate.import_id == AttendanceImport.id)
+            .where(
+                AttendanceImport.status == AttendanceImportStatus.CONFIRMED.value,
+                AttendanceImport.photo_data.isnot(None),
+            )
+            .distinct()
+            .order_by(year_expr.desc(), month_expr.desc())
+        )
+        result = await db.execute(stmt)
+        return [(int(year), int(month)) for year, month in result.all()]
+
+    async def find_import_photo_dates_for_month(
+        self,
+        db: AsyncSession,
+        start_date: dt.date,
+        end_date: dt.date,
+    ) -> list[tuple[dt.date, int]]:
+        """Find confirmed dates with available photos in a date range, oldest first.
+
+        Args:
+            db: Database session.
+            start_date: First included calendar date.
+            end_date: Last included calendar date.
+
+        Returns:
+            list[tuple[dt.date, int]]: Recorded dates paired with photo numbers.
+        """
+        stmt = (
+            select(AttendanceDate.date, AttendanceDate.import_id)
+            .join(AttendanceImport, AttendanceDate.import_id == AttendanceImport.id)
+            .where(
+                AttendanceDate.date >= start_date,
+                AttendanceDate.date <= end_date,
+                AttendanceImport.status == AttendanceImportStatus.CONFIRMED.value,
+                AttendanceImport.photo_data.isnot(None),
+            )
+            .order_by(AttendanceDate.date.asc())
+        )
+        result = await db.execute(stmt)
+        return [(visit_date, int(import_id)) for visit_date, import_id in result.all()]
+
     async def expire_stale_drafts(
         self,
         db: AsyncSession,
@@ -178,6 +312,24 @@ class AttendanceRepository:
         rowcount = getattr(result, "rowcount", 0)
         return int(rowcount) if rowcount is not None else 0
 
+    async def find_processed_date(
+        self,
+        db: AsyncSession,
+        visit_date: dt.date,
+    ) -> AttendanceDate | None:
+        """Find persisted AttendanceDate record for the given calendar date if already processed.
+
+        Args:
+            db: Database session.
+            visit_date: Calendar date to lookup.
+
+        Returns:
+            AttendanceDate | None: Persisted AttendanceDate model if found, None otherwise.
+        """
+        stmt = select(AttendanceDate).where(AttendanceDate.date == visit_date)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def is_date_processed(
         self,
         db: AsyncSession,
@@ -202,12 +354,12 @@ class AttendanceRepository:
         import_id: int,
         confirmed_by_tg_id: int,
         confirmed_dates: list[tuple[dt.date, list[dict[str, Any]]]],
-    ) -> None:
+    ) -> list[tuple[dt.date, list[dict[str, Any]]]]:
         """Persist confirmed import with its dates and records.
 
         - Updates AttendanceImport: status=CONFIRMED, confirmed_at=func.now(), confirmed_by_tg_id.
           Retains photo_data.
-        - Inserts AttendanceDate for each non-duplicate date.
+        - Inserts AttendanceDate ONLY for dates where at least one AttendanceRecord was saved.
         - Inserts AttendanceRecord for each row under the date.
 
         Args:
@@ -215,6 +367,9 @@ class AttendanceRepository:
             import_id: Primary key of the import record.
             confirmed_by_tg_id: Telegram ID of confirming user.
             confirmed_dates: List of (date, rows_dict_list).
+
+        Returns:
+            list[tuple[dt.date, list[dict[str, Any]]]]: Dates and records that were actually saved.
         """
         stmt = (
             update(AttendanceImport)
@@ -227,10 +382,16 @@ class AttendanceRepository:
         )
         await db.execute(stmt)
 
+        actually_saved_dates: list[tuple[dt.date, list[dict[str, Any]]]] = []
+
         for visit_date, rows in confirmed_dates:
+            if not rows:
+                continue
+
             date_stmt = select(AttendanceDate).where(AttendanceDate.date == visit_date)
             date_res = await db.execute(date_stmt)
             attendance_date = date_res.scalar_one_or_none()
+            created_new_date = False
             if attendance_date is None:
                 attendance_date = AttendanceDate(
                     import_id=import_id,
@@ -238,22 +399,44 @@ class AttendanceRepository:
                 )
                 db.add(attendance_date)
                 await db.flush()
+                created_new_date = True
 
+            actually_saved_rows: list[dict[str, Any]] = []
             for row in rows:
-                record = AttendanceRecord(
-                    import_id=import_id,
-                    attendance_date_id=attendance_date.id,
-                    user_id=row["user_id"],
-                    date=visit_date,
-                    start_time=row.get("start_time"),
-                    end_time=row.get("end_time"),
-                    duration_minutes=row.get("duration_minutes", 0),
-                    is_empty_time=row.get("is_empty_time", False),
-                    source=row.get("source", "photo_ai"),
-                )
-                db.add(record)
+                try:
+                    async with db.begin_nested():
+                        record = AttendanceRecord(
+                            import_id=import_id,
+                            attendance_date_id=attendance_date.id,
+                            user_id=row["user_id"],
+                            date=visit_date,
+                            start_time=row.get("start_time"),
+                            end_time=row.get("end_time"),
+                            duration_minutes=row.get("duration_minutes", 0),
+                            is_empty_time=row.get("is_empty_time", False),
+                            source=row.get("source", "photo_ai"),
+                        )
+                        db.add(record)
+                        await db.flush()
+                        actually_saved_rows.append(row)
+                except IntegrityError as exc:
+                    if not _is_attendance_record_duplicate_error(exc):
+                        raise
+                    logger.warning(
+                        "Duplicate record detected on insert | user_id={user_id} date={date}",
+                        user_id=row["user_id"],
+                        date=visit_date,
+                    )
 
+            if not actually_saved_rows:
+                if created_new_date:
+                    await db.delete(attendance_date)
+                    await db.flush()
+                continue
+
+            actually_saved_dates.append((visit_date, actually_saved_rows))
         await db.flush()
+        return actually_saved_dates
 
     async def find_user_attendance_in_month(
         self,
@@ -278,6 +461,7 @@ class AttendanceRepository:
             .options(selectinload(AttendanceRecord.user))
             .where(
                 AttendanceRecord.user_id == user_id,
+                AttendanceRecord.duration_minutes > 0,
                 AttendanceRecord.date >= start_date,
                 AttendanceRecord.date <= end_date,
             )
@@ -285,6 +469,56 @@ class AttendanceRepository:
         )
         result = await db.execute(stmt)
         return result.scalars().all()
+
+    async def find_months_with_visits(self, db: AsyncSession) -> list[tuple[int, int]]:
+        """Return distinct (year, month) pairs in which anyone has a confirmed visit, newest first.
+
+        Only records with a positive duration are counted, as in the rankings.
+
+        Args:
+            db: Database session.
+
+        Returns:
+            list[tuple[int, int]]: List of (year, month) tuples ordered by year desc, month desc.
+        """
+        year_expr = cast(extract("year", AttendanceRecord.date), Integer)
+        month_expr = cast(extract("month", AttendanceRecord.date), Integer)
+        stmt = (
+            select(year_expr, month_expr)
+            .where(AttendanceRecord.duration_minutes > 0)
+            .distinct()
+            .order_by(year_expr.desc(), month_expr.desc())
+        )
+        result = await db.execute(stmt)
+        return [(int(y), int(m)) for y, m in result.all()]
+
+    async def find_user_visit_months(
+        self,
+        db: AsyncSession,
+        user_id: int,
+    ) -> list[tuple[int, int]]:
+        """Return distinct (year, month) pairs where user has confirmed visits with duration > 0, newest first.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+
+        Returns:
+            list[tuple[int, int]]: List of (year, month) tuples ordered by year desc, month desc.
+        """
+        year_expr = cast(extract("year", AttendanceRecord.date), Integer)
+        month_expr = cast(extract("month", AttendanceRecord.date), Integer)
+        stmt = (
+            select(year_expr, month_expr)
+            .where(
+                AttendanceRecord.user_id == user_id,
+                AttendanceRecord.duration_minutes > 0,
+            )
+            .distinct()
+            .order_by(year_expr.desc(), month_expr.desc())
+        )
+        result = await db.execute(stmt)
+        return [(int(y), int(m)) for y, m in result.all()]
 
     async def get_user_monthly_summary(
         self,
@@ -337,18 +571,18 @@ class AttendanceRepository:
 
         return (total_minutes, rank, total_participants, visits_count)
 
-    async def get_monthly_rankings(
+    async def get_rankings_for_period(
         self,
         db: AsyncSession,
         start_date: dt.date,
         end_date: dt.date,
     ) -> Sequence[tuple[User, int, int]]:
-        """Get monthly rankings of participants ordered by total_minutes desc, user_id asc.
+        """Get participant totals for an inclusive date range ordered by total_minutes desc, user_id asc.
 
         Args:
             db: Database session.
-            start_date: Start date of period.
-            end_date: End date of period.
+            start_date: First included calendar date.
+            end_date: Last included calendar date.
 
         Returns:
             Sequence of (User, total_minutes, visits_count).
@@ -402,6 +636,28 @@ class AttendanceRepository:
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    async def find_record_by_id(
+        self,
+        db: AsyncSession,
+        record_id: int,
+    ) -> AttendanceRecord | None:
+        """Find an AttendanceRecord by primary key with user loaded.
+
+        Args:
+            db: Database session.
+            record_id: Primary key of AttendanceRecord.
+
+        Returns:
+            AttendanceRecord | None: Loaded model or None.
+        """
+        stmt = (
+            select(AttendanceRecord)
+            .options(selectinload(AttendanceRecord.user))
+            .where(AttendanceRecord.id == record_id)
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def find_import_photo(
         self,
         db: AsyncSession,
@@ -425,3 +681,187 @@ class AttendanceRepository:
         if row is None or row[0] is None or row[1] is None:
             return None
         return (row[0], row[1])
+
+    get_import_photo = find_import_photo
+
+    async def find_user_record_on_date(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+    ) -> AttendanceRecord | None:
+        """Find existing attendance record for a user on a given date.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+            visit_date: Calendar date to check.
+
+        Returns:
+            AttendanceRecord | None: Found record or None.
+        """
+        stmt = select(AttendanceRecord).where(
+            AttendanceRecord.user_id == user_id,
+            AttendanceRecord.date == visit_date,
+        )
+        res = await db.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def has_user_visit_on_date(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+    ) -> bool:
+        """Check if user already has a visit recorded on the given date.
+
+        Args:
+            db: Database session.
+            user_id: User primary key.
+            visit_date: Calendar date to check.
+
+        Returns:
+            bool: True if user has visit on date with duration > 0.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(AttendanceRecord)
+            .where(
+                AttendanceRecord.user_id == user_id,
+                AttendanceRecord.date == visit_date,
+                AttendanceRecord.duration_minutes > 0,
+            )
+        )
+        count = await db.scalar(stmt)
+        return bool(count and count > 0)
+
+    async def create_manual_record(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+        start_time: dt.time,
+        end_time: dt.time,
+        duration_minutes: int,
+    ) -> AttendanceRecord:
+        """Create and persist a manual attendance record."""
+        record = AttendanceRecord(
+            import_id=None,
+            attendance_date_id=None,
+            user_id=user_id,
+            date=visit_date,
+            start_time=start_time,
+            end_time=end_time,
+            duration_minutes=duration_minutes,
+            is_empty_time=False,
+            source="manual",
+        )
+        db.add(record)
+        await db.flush()
+        return record
+
+    async def update_record_time(
+        self,
+        db: AsyncSession,
+        record_id: int,
+        start_time: dt.time,
+        end_time: dt.time,
+        duration_minutes: int,
+    ) -> AttendanceRecord | None:
+        """Update start_time, end_time, duration of an AttendanceRecord."""
+        record = await self.find_record_by_id(db, record_id)
+        if record is None:
+            return None
+        record.start_time = start_time
+        record.end_time = end_time
+        record.duration_minutes = duration_minutes
+        record.is_empty_time = False
+        await db.flush()
+        return record
+
+    async def delete_record(
+        self,
+        db: AsyncSession,
+        record_id: int,
+    ) -> AttendanceRecord | None:
+        """Delete an AttendanceRecord by primary key."""
+        record = await self.find_record_by_id(db, record_id)
+        if record is None:
+            return None
+        await db.delete(record)
+        await db.flush()
+        return record
+
+    async def add_change_history(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        user_id: int,
+        record_id: int | None,
+        visit_date: dt.date,
+        action: str,
+        old_value: str | None,
+        new_value: str | None,
+        admin_tg_id: int,
+        admin_name: str,
+    ) -> AttendanceChangeHistory:
+        """Record an entry in the attendance change history audit log."""
+        history = AttendanceChangeHistory(
+            user_id=user_id,
+            record_id=record_id,
+            visit_date=visit_date,
+            action=action,
+            old_value=old_value,
+            new_value=new_value,
+            admin_tg_id=admin_tg_id,
+            admin_name=admin_name,
+        )
+        db.add(history)
+        await db.flush()
+        return history
+
+    async def get_recent_change_history(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        visit_date: dt.date,
+        limit: int = 3,
+    ) -> list[AttendanceChangeHistory]:
+        """Get most recent change history records for a user on a given date."""
+        stmt = (
+            select(AttendanceChangeHistory)
+            .where(
+                AttendanceChangeHistory.user_id == user_id,
+                AttendanceChangeHistory.visit_date == visit_date,
+            )
+            .order_by(AttendanceChangeHistory.created_at.desc(), AttendanceChangeHistory.id.desc())
+            .limit(limit)
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def find_modified_record_ids(
+        self,
+        db: AsyncSession,
+        record_ids: Sequence[int],
+    ) -> set[int]:
+        """Find record IDs that have had their time edited by an administrator.
+
+        Args:
+            db: Database session.
+            record_ids: Sequence of AttendanceRecord primary keys.
+
+        Returns:
+            set[int]: Set of record IDs with 'edit_time' action in change history.
+        """
+        if not record_ids:
+            return set()
+        stmt = (
+            select(AttendanceChangeHistory.record_id)
+            .where(
+                AttendanceChangeHistory.record_id.in_(record_ids),
+                AttendanceChangeHistory.action == "edit_time",
+            )
+            .distinct()
+        )
+        result = await db.scalars(stmt)
+        return {rid for rid in result if rid is not None}

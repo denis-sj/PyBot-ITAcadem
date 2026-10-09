@@ -113,15 +113,15 @@ class AttendanceRecord(Base):
     __table_args__ = (UniqueConstraint("user_id", "date", name="uq_attendance_records_user_date"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    import_id: Mapped[int] = mapped_column(
+    import_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("attendance_imports.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
-    attendance_date_id: Mapped[int] = mapped_column(
+    attendance_date_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("attendance_dates.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -141,12 +141,40 @@ class AttendanceRecord(Base):
         server_default=func.now(),
     )
 
-    import_record: Mapped[AttendanceImport] = relationship(
+    import_record: Mapped[AttendanceImport | None] = relationship(
         "AttendanceImport",
         back_populates="records",
     )
-    attendance_date: Mapped[AttendanceDate] = relationship(
+    attendance_date: Mapped[AttendanceDate | None] = relationship(
         "AttendanceDate",
         back_populates="records",
     )
+    user: Mapped[User] = relationship("User")
+
+
+class AttendanceChangeHistory(Base):
+    """Audit log record for manual attendance modifications."""
+
+    __tablename__ = "attendance_change_history"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    record_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    visit_date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(30), nullable=False)
+    old_value: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    new_value: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    admin_tg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    admin_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
     user: Mapped[User] = relationship("User")

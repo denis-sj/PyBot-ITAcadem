@@ -9,7 +9,13 @@ import pytest
 from aiogram.types import Chat, Message, User
 
 from pybot.core.constants import PointsTypeEnum, TaskScheduleKind
-from pybot.domain.exceptions import DomainError, InvalidPointsValueError, UserNotFoundError, ZeroPointsAdjustmentError
+from pybot.domain.exceptions import (
+    DomainError,
+    InsufficientPointsBalanceError,
+    InvalidPointsValueError,
+    UserNotFoundError,
+    ZeroPointsAdjustmentError,
+)
 from pybot.dto import UserReadDTO
 from pybot.dto.value_objects import Points
 from pybot.presentation.bot import grand_points_handlers as grand_points
@@ -445,6 +451,35 @@ async def test_handle_points_command_reports_points_service_failure(
     notification_facade.notify_user.assert_not_awaited()
     reply_mock.assert_awaited_once()
     assert POINTS_OPERATION_FAILED in _last_reply_text(reply_mock)
+
+
+@pytest.mark.asyncio
+async def test_handle_points_command_when_insufficient_balance_replies_error_without_notification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipient = _build_user_read_dto(db_id=30, telegram_id=720_004, first_name="Student")
+    giver = _build_user_read_dto(db_id=31, telegram_id=720_001, first_name="Admin")
+    user_service = StubUserService(users_by_tg={recipient.telegram_id: recipient, giver.telegram_id: giver})
+    points_service = StubPointsService(
+        change_points=AsyncMock(side_effect=InsufficientPointsBalanceError(requested=10, current=5))
+    )
+    notification_facade = StubNotificationFacade()
+    message = _build_message(text='/academic_points 720004 -10 "Penalty"', from_user_id=giver.telegram_id)
+    reply_mock = AsyncMock()
+    monkeypatch.setattr(Message, "reply", reply_mock)
+
+    await grand_points._handle_points_command(
+        message=message,
+        points_type=PointsTypeEnum.ACADEMIC,
+        points_service=cast(PointsService, points_service),
+        user_service=cast(UserService, user_service),
+        notification_facade=cast(NotificationFacade, notification_facade),
+    )
+
+    points_service.change_points.assert_awaited_once()
+    notification_facade.notify_user.assert_not_awaited()
+    reply_mock.assert_awaited_once()
+    assert "Нельзя списать 10 баллов: у участника 5." in _last_reply_text(reply_mock)
 
 
 @pytest.mark.asyncio

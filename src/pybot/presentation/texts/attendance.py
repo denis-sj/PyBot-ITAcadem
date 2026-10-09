@@ -3,21 +3,39 @@
 from __future__ import annotations
 
 import html
+from collections.abc import Sequence
+from datetime import date, time
+from typing import Any
 
 from ...dto import (
+    AttendanceDraftDateBlockDTO,
     AttendanceDraftDTO,
     AttendanceDraftItemDTO,
     AttendanceMonthlyReportDTO,
     AttendanceRecordReadDTO,
+    AttendanceTopDTO,
     AttendanceUserSummaryDTO,
 )
+from ...dto.attendance import ATTENDANCE_TOP_LIMIT
 
 BTN_CONFIRM = "✅ Подтвердить"
 BTN_EDIT_TIME = "✏️ Изменить время"
 BTN_EDIT_USER = "👤 Назначить участника"
 BTN_EXCLUDE = "🗑 Исключить строку"
 BTN_CANCEL = "❌ Отменить импорт"
-
+BTN_CLOSE = "✖ Закрыть"
+BTN_TO_MONTHS = "← К месяцам"
+BTN_BACK = "← Назад"
+BTN_VISITS_WEEK_TOP = "🏆 Топ недели"
+BTN_VISITS_MONTH_TOP = "🏆 Топ месяца"
+BTN_VISITS_MY = "📅 Мои посещения"
+BTN_TO_USERS = "← К списку участников"
+BTN_ADD_VISIT = "➕ Добавить посещение"
+BTN_TO_DATES = "← К датам"
+BTN_EDIT_VISIT_TIME = "🕒 Изменить время"
+BTN_DELETE_VISIT = "🗑 Удалить"
+MY_VISITS_CHOOSE_MONTH = "📅 <b>Ваши посещения</b>\n\nВыберите месяц:"
+MY_VISITS_NO_VISITS = "У вас пока нет подтверждённых посещений."
 MONTH_NAMES_RU: dict[int, str] = {
     1: "январь",
     2: "февраль",
@@ -31,6 +49,36 @@ MONTH_NAMES_RU: dict[int, str] = {
     10: "октябрь",
     11: "ноябрь",
     12: "декабрь",
+}
+
+MONTH_NAMES_RU_GENITIVE: dict[int, str] = {
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
+}
+
+MONTH_NAMES_RU_PREPOSITIONAL: dict[int, str] = {
+    1: "январе",
+    2: "феврале",
+    3: "марте",
+    4: "апреле",
+    5: "мае",
+    6: "июне",
+    7: "июле",
+    8: "августе",
+    9: "сентябре",
+    10: "октябре",
+    11: "ноябре",
+    12: "декабре",
 }
 
 MONTH_NAMES_RU_CAPITALIZED: dict[int, str] = {
@@ -47,6 +95,15 @@ MONTH_NAMES_RU_CAPITALIZED: dict[int, str] = {
     11: "Ноябрь",
     12: "Декабрь",
 }
+
+_LAST_FIRST_NAME_PARTS = 2
+_TOP_MAX_VISIBLE_ROWS = 10
+_PLURAL_HUNDRED = 100
+_PLURAL_TEN = 10
+_PLURAL_TEEN_START = 11
+_PLURAL_TEEN_END = 14
+_PLURAL_FEW_MIN = 2
+_PLURAL_FEW_MAX = 4
 
 _MEDALS: dict[int, str] = {
     1: "🥇 ",
@@ -68,9 +125,67 @@ def format_duration(minutes: int) -> str:
     return f"{rem_minutes} мин"
 
 
+def _format_ignored_date_block(block: AttendanceDraftDateBlockDTO) -> str:
+    """Format ignored date block reason."""
+    date_str = block.date.strftime("%d.%m.%Y")
+    if block.ignore_reason == "дата уже обработана":
+        import_part = f" (Номер фото #{block.processed_import_id})" if block.processed_import_id else ""
+        return f"  ⚠️ {date_str} уже учтена{import_part}. Строки за эту дату не будут сохранены.\n"
+    if block.ignore_reason == "будущая дата":
+        return "  ⚠️ <i>Дата пропущена (будущая дата)</i>\n"
+    reason = block.ignore_reason or "не учитывается"
+    return f"  ⚠️ <i>Дата пропущена ({html.escape(reason)})</i>\n"
+
+
+def _format_active_date_block(
+    block: AttendanceDraftDateBlockDTO,
+    start_counter: int,
+) -> tuple[list[str], int, int, int, int]:
+    """Format active date block rows and return counts (total, recognized, needs_review, minutes)."""
+    if not block.items:
+        return ["  <i>Нет распознанных строк</i>\n"], 0, 0, 0, 0
+
+    lines: list[str] = []
+    total = 0
+    recognized = 0
+    needs_review = 0
+    minutes = 0
+
+    for idx, item in enumerate(block.items, start=start_counter):
+        total += 1
+        if item.status == "recognized":
+            recognized += 1
+        else:
+            needs_review += 1
+
+        if not item.is_excluded:
+            minutes += item.duration_minutes
+
+        lines.append(_format_draft_item(item, idx))
+
+    lines.append("")
+    return lines, total, recognized, needs_review, minutes
+
+
 def format_draft_preview(draft: AttendanceDraftDTO) -> str:
     """Render structured preview of recognized attendance sheet draft."""
+    all_processed = bool(draft.dates) and all(
+        b.is_ignored and b.ignore_reason == "дата уже обработана" for b in draft.dates
+    )
+    if all_processed:
+        imports = [f"#{b.processed_import_id}" for b in draft.dates if b.processed_import_id]
+        import_part = f" (Номер фото {', '.join(dict.fromkeys(imports))})" if imports else ""
+        return (
+            f"📸 <b>Предпросмотр листа посещаемости</b> (черновик #{draft.draft_id})\n\n"
+            f"Все даты на фото уже учтены{import_part}. Сохранять нечего."
+        )
+
     lines: list[str] = [f"📸 <b>Предпросмотр листа посещаемости</b> (черновик #{draft.draft_id})\n"]
+
+    # Period warning if present
+    period_warnings = [b.period_warning for b in draft.dates if not b.is_ignored and b.period_warning]
+    for w in dict.fromkeys(period_warnings):
+        lines.append(f"⚠️ <i>{html.escape(w)}</i>\n")
 
     total_items = 0
     recognized_items = 0
@@ -83,35 +198,36 @@ def format_draft_preview(draft: AttendanceDraftDTO) -> str:
         lines.append(f"📅 <b>Дата: {date_str}</b>")
 
         if block.is_ignored:
-            reason = block.ignore_reason or "не учитывается"
-            lines.append(f"  ⚠️ <i>Дата пропущена ({html.escape(reason)})</i>\n")
+            lines.append(_format_ignored_date_block(block))
             continue
 
-        if not block.items:
-            lines.append("  <i>Нет распознанных строк</i>\n")
-            continue
-
-        for item in block.items:
-            total_items += 1
-            if item.status == "recognized":
-                recognized_items += 1
-            else:
-                needs_review_items += 1
-
-            if not item.is_excluded:
-                total_minutes += item.duration_minutes
-
-            lines.append(_format_draft_item(item, item_counter))
-            item_counter += 1
-
-        lines.append("")
+        block_lines, b_total, b_rec, b_review, b_min = _format_active_date_block(block, item_counter)
+        lines.extend(block_lines)
+        total_items += b_total
+        recognized_items += b_rec
+        needs_review_items += b_review
+        total_minutes += b_min
+        item_counter += len(block.items)
 
     lines.extend(_format_draft_summary(total_items, recognized_items, needs_review_items, total_minutes))
     return "\n".join(lines)
 
 
+def _format_draft_item_name(item: AttendanceDraftItemDTO) -> str:
+    """Format a participant name or its recognition placeholder."""
+    if item.matched_user_name:
+        return html.escape(item.matched_user_name)
+    if item.raw_name:
+        return f"❓ <i>«{html.escape(item.raw_name)}»</i>"
+    return "❓ <i>[Имя не распознано]</i>"
+
+
 def _format_draft_item(item: AttendanceDraftItemDTO, counter: int) -> str:
     """Format a single item row in draft preview."""
+    name_display = _format_draft_item_name(item)
+    if item.is_empty_time:
+        return f"  {counter}. ➖ {name_display}: N"
+
     if item.is_excluded:
         status_icon = "🚫"
     elif item.status == "recognized":
@@ -119,22 +235,19 @@ def _format_draft_item(item: AttendanceDraftItemDTO, counter: int) -> str:
     else:
         status_icon = "⚠️"
 
-    if item.matched_user_name:
-        name_display = html.escape(item.matched_user_name)
-    elif item.raw_name:
-        name_display = f"❓ <i>«{html.escape(item.raw_name)}»</i>"
-    else:
-        name_display = "❓ <i>[Имя не распознано]</i>"
-
-    if item.is_empty_time:
-        time_display = "время не указано"
-    elif item.start_time and item.end_time:
+    if item.start_time and item.end_time:
         time_display = f"{item.start_time.strftime('%H:%M')}–{item.end_time.strftime('%H:%M')}"
+    elif item.time_raw:
+        time_display = f"на листе «{html.escape(item.time_raw)}»"
     else:
         time_display = "время не указано"
-
-    dur_str = format_duration(item.duration_minutes)
-    excluded_suffix = " <i>[исключено]</i>" if item.is_excluded else ""
+    dur_str = format_duration(item.duration_minutes) if item.duration_minutes > 0 else "требует ввода времени"
+    if item.exclusion_reason:
+        excluded_suffix = f" <i>[исключено]</i>\n     ↳ <i>{html.escape(item.exclusion_reason)}</i>"
+    elif item.is_excluded:
+        excluded_suffix = " <i>[исключено]</i>"
+    else:
+        excluded_suffix = ""
     return f"  {counter}. {status_icon} {name_display}: {time_display} ({dur_str}){excluded_suffix}"
 
 
@@ -158,50 +271,104 @@ def _format_draft_summary(
     return lines
 
 
-def format_user_summary(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
-    """Format personal hours and club ranking for /my_hours command."""
+def format_visits_home(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
+    """Format the main /visits card: personal hours, visits and place in the monthly ranking."""
     month_name = MONTH_NAMES_RU.get(month, "")
-    rank_display = f"#{summary.rank}" if summary.rank > 0 else "—"
+    person = html.escape(format_last_first_name(summary.user_full_name))
+    header = f"📊 <b>Посещаемость · {month_name} {year}</b>\n👤 {person}\n"
+    if summary.visits_count == 0 or summary.total_minutes == 0 or summary.rank <= 0:
+        month_in = MONTH_NAMES_RU_PREPOSITIONAL.get(month, "этом месяце")
+        return f"{header}\nВ {month_in} у вас пока нет подтверждённых посещений."
     return (
-        f"⏱ <b>Ваши часы посещаемости за {month_name} {year}:</b>\n\n"
-        f"👤 Участник: <b>{html.escape(summary.user_full_name)}</b>\n"
-        f"⏳ Налетанное время: <b>{format_duration(summary.total_minutes)}</b>\n"
-        f"🏢 Количество визитов: <b>{summary.visits_count}</b>\n"
-        f"🏆 Место в рейтинге: <b>{rank_display}</b> из {summary.total_participants}\n"
+        f"{header}\n"
+        f"⏱ Время: <b>{format_duration(summary.total_minutes)}</b>\n"
+        f"🗓 Посещений: <b>{summary.visits_count}</b>\n"
+        f"🏆 Место в рейтинге месяца: <b>{summary.rank}</b> из {summary.total_participants}"
     )
 
 
-def format_user_visits(visits: list[AttendanceRecordReadDTO], month: int, year: int) -> str:
-    """Format list of personal visits for /my_visits command."""
-    month_name = MONTH_NAMES_RU.get(month, "")
-    lines = [f"📋 <b>Ваши посещения за {month_name} {year}:</b>\n"]
-    if not visits:
-        lines.append("<i>В этом месяце подтвержденных посещений пока нет.</i>")
+def format_week_top(top: AttendanceTopDTO, viewer_user_id: int) -> str:
+    """Format the top of the current attendance week (Monday to Saturday)."""
+    title = f"🏆 <b>Топ недели · {format_period_range(top.period_start, top.period_end)}</b>"
+    return _format_top(title, "За эту неделю пока нет подтверждённых посещений.", top, viewer_user_id)
+
+
+def format_month_top(top: AttendanceTopDTO, viewer_user_id: int) -> str:
+    """Format the top of one calendar month; the month is taken from the period start."""
+    month = top.period_start.month
+    title = f"🏆 <b>Топ месяца · {MONTH_NAMES_RU.get(month, '')} {top.period_start.year}</b>"
+    month_in = MONTH_NAMES_RU_PREPOSITIONAL.get(month, "этом месяце")
+    return _format_top(title, f"В {month_in} пока нет подтверждённых посещений.", top, viewer_user_id)
+
+
+def format_period_range(start: date, end: date) -> str:
+    """Format an inclusive date range like '21–26 сентября' or '28 сентября – 3 октября'."""
+    end_month = MONTH_NAMES_RU_GENITIVE.get(end.month, "")
+    if (start.year, start.month) == (end.year, end.month):
+        return f"{start.day}–{end.day} {end_month}"
+    start_month = MONTH_NAMES_RU_GENITIVE.get(start.month, "")
+    return f"{start.day} {start_month} – {end.day} {end_month}"
+
+
+def format_last_first_name(full_name: str) -> str:
+    """Reduce 'Фамилия Имя Отчество' to 'Фамилия Имя'."""
+    return " ".join(full_name.split()[:_LAST_FIRST_NAME_PARTS])
+
+
+def _format_top(title: str, empty_text: str, top: AttendanceTopDTO, viewer_user_id: int) -> str:
+    """Format top rows, the tie overflow note and the viewer's own place."""
+    lines = [title, ""]
+    if not top.rows:
+        lines.append(empty_text)
         return "\n".join(lines)
 
-    total_min = sum(v.duration_minutes for v in visits)
-    for idx, v in enumerate(visits, 1):
-        date_str = v.date.strftime("%d.%m.%Y")
-        time_span = (
-            f"{v.start_time.strftime('%H:%M')}–{v.end_time.strftime('%H:%M')}"
-            if v.start_time and v.end_time
-            else "без фиксации времени"
+    shown_rows = top.rows[:_TOP_MAX_VISIBLE_ROWS]
+    for row in shown_rows:
+        row_text = (
+            f"{row.rank}. {html.escape(format_last_first_name(row.user_full_name))} — "
+            f"{format_duration(row.total_minutes)} · {_format_visits_count(row.visits_count)}"
         )
-        lines.append(f"{idx}. 📅 <b>{date_str}</b>: {time_span} — <b>{format_duration(v.duration_minutes)}</b>")
+        lines.append(f"<b>{row_text}</b>" if row.user_id == viewer_user_id else row_text)
 
-    lines.append(f"\nВсего: <b>{len(visits)}</b> визитов, <b>{format_duration(total_min)}</b>")
+    hidden_count = len(top.rows) - len(shown_rows)
+    if hidden_count > 0:
+        participants = _plural_ru(hidden_count, "участник", "участника", "участников")
+        lines.append(f"…и ещё {hidden_count} {participants} на {shown_rows[-1].rank}-м месте")
+
+    if top.total_participants < ATTENDANCE_TOP_LIMIT:
+        participants_total = _plural_ru(top.total_participants, "участник", "участника", "участников")
+        lines.append(f"\nВ рейтинге пока {top.total_participants} {participants_total}")
+
+    viewer_is_visible = any(row.user_id == viewer_user_id for row in shown_rows)
+    if not viewer_is_visible:
+        lines.append("")
+        if top.current_user is None:
+            lines.append("Вас пока нет в рейтинге этого периода.")
+        else:
+            me = top.current_user
+            lines.append(
+                f"Вы: {me.rank}-е место из {top.total_participants} · "
+                f"{format_duration(me.total_minutes)} · {_format_visits_count(me.visits_count)}"
+            )
     return "\n".join(lines)
 
 
-def format_user_rank(summary: AttendanceUserSummaryDTO, month: int, year: int) -> str:
-    """Format user ranking for /my_rank command."""
-    month_name = MONTH_NAMES_RU.get(month, "")
-    rank_str = f"<b>#{summary.rank}</b>" if summary.rank > 0 else "<i>нет в рейтинге</i>"
-    return (
-        f"🏆 <b>Ваша позиция в клубе за {month_name} {year}:</b>\n\n"
-        f"Место: {rank_str} (всего участников: {summary.total_participants})\n"
-        f"Часов налета: <b>{format_duration(summary.total_minutes)}</b> ({summary.visits_count} посещ.)"
-    )
+def _format_visits_count(count: int) -> str:
+    """Format a visits counter with the correct Russian plural form."""
+    return f"{count} {_plural_ru(count, 'посещение', 'посещения', 'посещений')}"
+
+
+def _plural_ru(count: int, one: str, few: str, many: str) -> str:
+    """Choose the Russian plural form for a count (1 участник, 2 участника, 5 участников)."""
+    remainder_100 = abs(count) % _PLURAL_HUNDRED
+    if _PLURAL_TEEN_START <= remainder_100 <= _PLURAL_TEEN_END:
+        return many
+    remainder_10 = remainder_100 % _PLURAL_TEN
+    if remainder_10 == 1:
+        return one
+    if _PLURAL_FEW_MIN <= remainder_10 <= _PLURAL_FEW_MAX:
+        return few
+    return many
 
 
 def format_monthly_report(report: AttendanceMonthlyReportDTO, detailed: bool = False) -> str:
@@ -238,4 +405,142 @@ def format_monthly_report(report: AttendanceMonthlyReportDTO, detailed: bool = F
             rec_name = html.escape(rec.user_full_name)
             rec_dur = format_duration(rec.duration_minutes)
             lines.append(f"{idx}. {d_str} {rec_name} ({time_part}) — {rec_dur}")
+    return "\n".join(lines)
+
+
+def format_import_notification(
+    import_id: int,
+    user_visits: Sequence[tuple[date, time, time, int]],
+) -> str:
+    """Format personal notification message for a participant after attendance import confirmation."""
+    sorted_visits = sorted(user_visits, key=lambda v: v[0])
+    lines: list[str] = []
+    if len(sorted_visits) == 1:
+        lines.append("✅ <b>Добавлено посещение:</b>\n")
+    else:
+        lines.append("✅ <b>Добавлены посещения:</b>\n")
+
+    for v_date, start_t, end_t, dur in sorted_visits:
+        d_str = v_date.strftime("%d.%m.%Y")
+        t_str = f"{start_t.strftime('%H:%M')}–{end_t.strftime('%H:%M')}"
+        dur_str = format_duration(dur)
+        lines.append(f"{d_str} — {t_str} ({dur_str})")
+
+    lines.append(f"\nНомер фото #{import_id}. Нажмите кнопку ниже, чтобы открыть фото. Все посещения: /visits")
+    return "\n".join(lines)
+
+
+def format_my_visits_month_report(
+    year: int,
+    month: int,
+    summary: AttendanceUserSummaryDTO,
+    visits: list[AttendanceRecordReadDTO],
+) -> str:
+    """Format the personal month report shown under /visits → «Мои посещения»."""
+    month_title = MONTH_NAMES_RU_CAPITALIZED.get(month, f"Месяц {month}")
+    rank_display = str(summary.rank) if summary.rank > 0 else "—"
+    total_dur_str = format_duration(summary.total_minutes)
+
+    header_stats = (
+        f"Посещений: {summary.visits_count} · Всего: {total_dur_str} "
+        f"· Место: {rank_display} из {summary.total_participants}\n"
+    )
+    lines = [
+        f"📅 <b>{month_title} {year}</b>",
+        header_stats,
+    ]
+
+    sorted_visits = sorted(visits, key=lambda v: v.date)
+    for v in sorted_visits:
+        d_str = v.date.strftime("%d.%m")
+        time_part = (
+            f"{v.start_time.strftime('%H:%M')}–{v.end_time.strftime('%H:%M')}"
+            if v.start_time and v.end_time
+            else "без фиксации времени"
+        )
+        dur_part = format_duration(v.duration_minutes)
+        source_part = f"Номер фото #{v.import_id}" if v.import_id else "добавлено вручную"
+        mod_part = " · время изменено администратором" if getattr(v, "is_time_modified", False) else ""
+        lines.append(f"{d_str} — {time_part} ({dur_part}) · {source_part}{mod_part}")
+
+    return "\n".join(lines)
+
+
+def format_user_full_name(user: Any) -> str:
+    """Format full name as 'Фамилия Имя Отчество'."""
+    parts = [getattr(user, "last_name", None), getattr(user, "first_name", None), getattr(user, "patronymic", None)]
+    return " ".join(p.strip() for p in parts if p and p.strip())
+
+
+def format_user_short_name(user: Any) -> str:
+    """Format user name as 'Фамилия И. О.' or 'Фамилия И.' if no patronymic."""
+    last = getattr(user, "last_name", None) or ""
+    first = getattr(user, "first_name", None) or ""
+    patr = getattr(user, "patronymic", None) or ""
+    f_init = f"{first[0]}." if first else ""
+    p_init = f" {patr[0]}." if patr else ""
+    full_init = f"{f_init}{p_init}".strip()
+    return f"{last} {full_init}".strip() if full_init else last
+
+
+def format_edit_visits_users_list(users: Sequence[Any], page: int = 0, page_size: int = 40) -> str:
+    """Format Screen 1: quote-wrapped list of all registered participants with 1-based indexing."""
+    start = page * page_size
+    page_users = users[start : start + page_size]
+
+    lines = ["<blockquote>"]
+    for idx, u in enumerate(page_users, start=start + 1):
+        name = format_user_full_name(u)
+        lines.append(f"{idx}. {html.escape(name)}")
+    lines.append("</blockquote>")
+    lines.append("\nВведите номер участника.")
+    return "\n".join(lines)
+
+
+def format_edit_visits_user_screen(user: Any, has_visits: bool) -> str:
+    """Format Screen 2: participant card with month selection or no-visits notice."""
+    full_name = html.escape(format_user_full_name(user))
+    if not has_visits:
+        return f"👤 <b>{full_name}</b>\n\nУ участника пока нет посещений."
+    return f"👤 <b>{full_name}</b>\n\nВыберите месяц или добавьте посещение:"
+
+
+def format_edit_visits_dates_screen(user: Any, year: int, month: int) -> str:
+    """Format Screen 3: header for choosing a visit date in the selected month."""
+    short_name = html.escape(format_user_short_name(user))
+    month_name = MONTH_NAMES_RU_CAPITALIZED.get(month, f"Месяц {month}")
+    return f"👤 <b>{short_name} · {month_name} {year}</b>\n\nВыберите дату посещения:"
+
+
+def format_edit_visits_record_card(user: Any, record: Any, history: Sequence[Any] = ()) -> str:
+    """Format Screen 4: single visit details card."""
+    short_name = html.escape(format_user_short_name(user))
+    date_str = record.date.strftime("%d.%m.%Y")
+    time_part = (
+        f"{record.start_time.strftime('%H:%M')}–{record.end_time.strftime('%H:%M')}"
+        if record.start_time and record.end_time
+        else "без фиксации времени"
+    )
+    dur_str = format_duration(record.duration_minutes)
+    source_part = f"Номер фото #{record.import_id}" if getattr(record, "import_id", None) else "добавлено вручную"
+
+    lines = [
+        f"👤 <b>{short_name} · {date_str}</b>",
+        f"Время: <b>{time_part}</b> ({dur_str})",
+        f"Источник: {source_part}",
+    ]
+
+    if history:
+        lines.append("\n<b>История изменений:</b>")
+        for h in history:
+            created_str = h.created_at.strftime("%d.%m.%Y %H:%M")
+            admin_name = html.escape(h.admin_name)
+            if h.action == "edit_time":
+                old_val = f" (было {html.escape(h.old_value)})" if h.old_value else ""
+                lines.append(f"• Изменено {created_str}, админ {admin_name}{old_val}")
+            elif h.action == "manual_add":
+                lines.append(f"• Добавлено вручную {created_str}, админ {admin_name}")
+            elif h.action == "delete":
+                lines.append(f"• Удалено {created_str}, админ {admin_name}")
+
     return "\n".join(lines)

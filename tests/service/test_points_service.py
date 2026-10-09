@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pybot.core.constants import PointsTypeEnum
 from pybot.db.models import PointsTransaction, User, UserLevel, Valuation
-from pybot.domain.exceptions import UserNotFoundError, ZeroPointsAdjustmentError
+from pybot.domain.exceptions import (
+    InsufficientPointsBalanceError,
+    UserNotFoundError,
+    ZeroPointsAdjustmentError,
+)
 from pybot.dto import AdjustUserPointsDTO
 from pybot.dto.value_objects import Points
 from pybot.services.points import PointsService
@@ -86,16 +90,47 @@ async def test_change_points_does_not_allow_negative_total_score(
         reason="Penalty",
     )
 
-    # When
-    result = await service.change_points(dto)
-
-    # Then
-    assert result.academic_points.value == 0
+    # When & Then
+    with pytest.raises(InsufficientPointsBalanceError, match="Нельзя списать 10 баллов: у участника 5."):
+        await service.change_points(dto)
 
     transactions_stmt = select(PointsTransaction).where(PointsTransaction.recipient_id == recipient.id)
     transactions = (await db.execute(transactions_stmt)).scalars().all()
-    assert len(transactions) == 1
-    assert transactions[0].amount == -5
+    assert len(transactions) == 0
+
+
+@pytest.mark.asyncio
+async def test_change_points_deduction_does_not_decrease_level(
+    dishka_request_container,
+) -> None:
+    # Given
+    db = await dishka_request_container.get(AsyncSession)
+    service = await dishka_request_container.get(PointsService)
+    level_a0 = await create_level(db, name="A0", level_type=PointsTypeEnum.ACADEMIC, required_points=0)
+    level_a1 = await create_level(db, name="A1", level_type=PointsTypeEnum.ACADEMIC, required_points=50)
+
+    recipient = await create_user(db, spec=UserSpec(telegram_id=800_010, academic_points=60))
+    giver = await create_user(db, spec=UserSpec(telegram_id=800_011))
+    await attach_user_level(db, user=recipient, level=level_a1)
+    await db.commit()
+
+    # Deduct 20 points: balance becomes 40 (< 50 threshold for A1)
+    dto = AdjustUserPointsDTO(
+        recipient_id=recipient.id,
+        giver_id=giver.id,
+        points=Points(value=-20, point_type=PointsTypeEnum.ACADEMIC),
+        reason="Partial deduction",
+    )
+
+    # When
+    result = await service.change_points(dto)
+
+    # Then: points decreased, but level remains A1
+    assert result.academic_points.value == 40
+    user_levels_stmt = select(UserLevel).where(UserLevel.user_id == recipient.id)
+    user_levels = (await db.execute(user_levels_stmt)).scalars().all()
+    assert len(user_levels) == 1
+    assert user_levels[0].level_id == level_a1.id
 
 
 @pytest.mark.asyncio

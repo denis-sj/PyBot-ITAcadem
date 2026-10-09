@@ -74,3 +74,11 @@ def test_polza_timeout_validation_upper_bound() -> None:
             DATABASE_URL="postgresql+asyncpg://test:test@127.0.0.1:5432/pybot_unit_test",
             POLZA_TIMEOUT_S=301,
         )
+
+
+def test_yekaterinburg_tz_constant() -> None:
+    from pybot.core.config import YEKATERINBURG_TZ
+    from pybot.core.constants import YEKATERINBURG_TZ as CONST_YEKATERINBURG_TZ
+
+    assert YEKATERINBURG_TZ.key == "Asia/Yekaterinburg"
+    assert CONST_YEKATERINBURG_TZ.key == "Asia/Yekaterinburg"

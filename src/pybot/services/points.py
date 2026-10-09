@@ -1,8 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import logger
+from ..core.constants import PointsTypeEnum
 from ..db.models import PointsTransaction, Valuation
-from ..domain.exceptions import UserNotFoundError
+from ..domain.exceptions import InsufficientPointsBalanceError, UserNotFoundError
 from ..domain.services.level_calculator import LevelCalculator
 from ..dto import AdjustUserPointsDTO, UserReadDTO
 from ..infrastructure.level_repository import LevelRepository
@@ -61,15 +62,30 @@ class PointsService:
         except UserNotFoundError as err:
             raise UserNotFoundError(user_id=dto.recipient_id) from err
 
-        all_levels = await self.level_repository.find_all_by_type(self.db, dto.points.point_type)
+        current_balance = (
+            user.academic_points if dto.points.point_type == PointsTypeEnum.ACADEMIC else user.reputation_points
+        )
+        if dto.points.value < 0 and abs(dto.points.value) > current_balance:
+            raise InsufficientPointsBalanceError(
+                requested=abs(dto.points.value),
+                current=current_balance,
+            )
+
         actual_delta, new_score = user.change_user_points(dto.points.value, dto.points.point_type)
-        new_level = self.level_calculator.calculate_level(new_score, all_levels)
 
-        if new_level:
-            user.change_user_level(new_level.id, dto.points.point_type)
-        else:
-            logger.info("Пользователь достиг максимального уровня")
-
+        if dto.points.value > 0:
+            all_levels = await self.level_repository.find_all_by_type(self.db, dto.points.point_type)
+            new_level = self.level_calculator.calculate_level(new_score, all_levels)
+            if new_level is not None:
+                current_user_level = next(
+                    (ul for ul in user.user_levels if ul.level and ul.level.level_type == dto.points.point_type),
+                    None,
+                )
+                current_level = current_user_level.level if current_user_level else None
+                if current_level is None or new_level.required_points > current_level.required_points:
+                    user.change_user_level(new_level.id, dto.points.point_type)
+            else:
+                logger.info("Пользователь достиг максимального уровня")
         try:
             giver_orm = await self.user_repository.get_by_id(self.db, dto.giver_id)
         except UserNotFoundError as err:

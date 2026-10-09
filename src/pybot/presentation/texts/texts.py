@@ -37,11 +37,20 @@ BUTTON_FINISH_REGISTRATION = "Завершить регистрацию"
 BUTTON_SEND_CONTACT = "Поделиться номером"
 BUTTON_APPROVE = "Одобрить"
 BUTTON_REJECT = "Отклонить"
+BUTTON_CLOSE = "✖ Закрыть"
+CARD_NOT_OWNER_ALERT = "Это карточка другого участника. Отправьте /visits, чтобы открыть свою."
 
+MAIN_MENU_BUTTON_PROFILE = "👤 Профиль"
+MAIN_MENU_BUTTON_VISITS = "📊 Посещаемость"
+MAIN_MENU_BUTTON_LEADERBOARD = "🏆 Лидерборд"
+MAIN_MENU_BUTTON_HELP = "❓ Помощь"
+MAIN_MENU_BUTTON_BROADCAST = "📢 Рассылка всем"
+BUTTON_START_REGISTRATION = "🚀 Начать регистрацию"
+BUTTON_BROADCAST_SEND = "✅ Отправить всем"
 HELP_PRIVATE = textwrap.dedent(
     f"""
     Доступные команды в личном чате:
-    /start - открыть приветствие и регистрацию
+    /start - открыть профиль и главное меню или пройти регистрацию
     /profile - показать ваш профиль
     /role_request <Student|Mentor|Admin> - отправить запрос на роль
     /help - показать эту подсказку
@@ -52,9 +61,7 @@ HELP_PRIVATE = textwrap.dedent(
     /roles - показать все роли в системе
     /showroles [@user|id|reply] - показать роли пользователя
     /showcompetences [@user|id|reply] - показать компетенции пользователя
-    /my_hours - посмотреть свои часы посещаемости за текущий месяц
-    /my_visits - посмотреть историю посещений за текущий месяц
-    /my_rank - посмотреть свою позицию в рейтинге посещаемости
+    /visits - моя посещаемость: часы, рейтинг и история
     Подробная инструкция по использованию бота:
     {HELP_PAGE_URL}
 
@@ -78,17 +85,17 @@ HELP_PRIVATE = textwrap.dedent(
     /removecompetence @user Геймдев,Веб-разработка - удалить компетенции
 
     Учёт посещаемости:
-    Отправьте фото листа посещаемости для распознавания и импорта
-    /current_month - показать текущий расчётный месяц учёта
-    /report - сформировать отчёт по посещаемости клуба
-    /attendance_photo <import_id> - получить исходное фото импорта
+    /report - отчёты и добавление часов по фото
+    /current_month - текущий расчётный месяц
+    /attendance_photo - выбрать фото по месяцу и дате
+    /edit_visits - управление посещениями участников
     """
 )
 
 HELP_PRIVATE_PUBLIC = textwrap.dedent(
     f"""
     Доступные команды в личном чате:
-    /start - открыть приветствие и регистрацию
+    /start - открыть профиль и главное меню или пройти регистрацию
     /profile - показать ваш профиль
     /role_request <Student|Mentor|Admin> - отправить запрос на роль
     /help - показать эту подсказку
@@ -99,9 +106,7 @@ HELP_PRIVATE_PUBLIC = textwrap.dedent(
     /roles - показать все роли в системе
     /showroles [@user|id|reply] - показать роли пользователя
     /showcompetences [@user|id|reply] - показать компетенции пользователя
-    /my_hours - посмотреть свои часы посещаемости за текущий месяц
-    /my_visits - посмотреть историю посещений за текущий месяц
-    /my_rank - посмотреть свою позицию в рейтинге посещаемости
+    /visits - моя посещаемость: часы, рейтинг и история
     Подробная инструкция по использованию бота:
     {HELP_PAGE_URL}
     """
@@ -120,6 +125,7 @@ HELP_GROUP = textwrap.dedent(
     /roles - показать все роли в системе
     /showroles [@user|id|reply] - показать роли пользователя
     /showcompetences [@user|id|reply] - показать компетенции пользователя
+    /visits - моя посещаемость: часы, рейтинг и история
 
     Подробная инструкция по использованию бота:
     {HELP_PAGE_URL}
@@ -190,7 +196,11 @@ START_GROUP_GREETING = "👋 Бот на связи. Напишите мне в 
 STALE_DIALOG_MESSAGE = "Это действие уже неактуально.\nНажмите /start и начните сценарий заново."
 
 PROFILE_GROUP_REGISTRATION_REQUIRED = (
-    "Профиль доступен после регистрации. Напишите боту в личные сообщения и отправьте /start."
+    "Профиль доступен после регистрации. Нажмите кнопку ниже: откроется чат с ботом, "
+    "там запустите бота и пройдите регистрацию."
+)
+REGISTRATION_REQUIRED_MESSAGE = (
+    "ℹ️ <b>Вы ещё не зарегистрированы в системе клуба.</b>\n\nНажмите кнопку ниже, чтобы пройти короткую регистрацию."
 )
 
 PING_ANONYMOUS = "Не удалось определить ваш профиль.\nНажмите /start, чтобы бот заново нашёл или создал ваш профиль."
@@ -209,6 +219,28 @@ BROADCAST_USAGE = (
 BROADCAST_MESSAGE_REQUIRED = (
     "Не удалось отправить рассылку без текста.\n"
     "Добавьте сообщение после получателя: /broadcast @all|Role|Competence <сообщение>"
+)
+BROADCAST_NO_RECIPIENTS = "По этой аудитории не найдено ни одного пользователя для рассылки."
+BROADCAST_ALREADY_RUNNING = "Сейчас уже выполняется другая рассылка. Дождитесь её завершения и попробуйте снова."
+BROADCAST_MENU_PROMPT = (
+    "📢 <b>Рассылка всем</b>\n\n"
+    "Пришлите одним сообщением текст рассылки — его получат все участники бота.\n"
+    "Чтобы передумать, нажмите «Отмена»."
+)
+BROADCAST_MENU_CONFIRM = "Отправить это сообщение всем участникам бота? Отменить рассылку после отправки нельзя."
+BROADCAST_MENU_CANCELLED = "Рассылка отменена. Ничего не отправлено."
+BROADCAST_MENU_DRAFT_OUTDATED = (
+    "Этот черновик рассылки уже неактуален: он отправлен, отменён или заменён новым.\n"
+    "Чтобы начать заново, откройте меню через /start."
+)
+BROADCAST_MENU_IN_PROGRESS = "Рассылка уже отправляется, подождите."
+# Also shown as a Telegram alert, which is limited to 200 characters.
+BROADCAST_MENU_INTERRUPTED = (
+    "⚠️ Отправка рассылки была прервана: часть пользователей могла уже получить сообщение. "
+    "Повторно оно не отправлялось. Чтобы начать заново, нажмите «Рассылка всем»."
+)
+BROADCAST_MENU_ALREADY_RUNNING = (
+    "Сейчас уже выполняется другая рассылка. Текст сохранён: нажмите «Отправить всем», когда она завершится."
 )
 BROADCAST_UNKNOWN_TARGET = (
     "Не удалось распознать получателя рассылки.\n"
@@ -259,9 +291,8 @@ ROLE_REQUEST_REJECTED_RECENTLY = (
 ROLE_REQUEST_ALREADY_EXISTS = (
     "Не удалось создать новый запрос: у вас уже есть активная заявка на эту роль.\nДождитесь решения администратора."
 )
-ROLE_REQUEST_ALREADY_ASSIGNED = (
-    "Не удалось создать запрос: эта роль у вас уже есть.\nВыберите другую роль, если это нужно."
-)
+ROLE_REQUEST_NO_ROLES_AVAILABLE = "Нет ролей, которые вы можете запросить."
+ROLE_REQUEST_ALREADY_ASSIGNED = "У вас уже есть роль Mentor."
 ROLE_REQUEST_UNEXPECTED_ERROR = "Не удалось обработать запрос на роль.\nПопробуйте ещё раз позже."
 ROLE_REQUEST_CREATED = "⏳ Запрос на роль {role} отправлен администратору."
 ROLE_REQUEST_ADMIN_APPROVED = "✅ Запрос одобрен"
@@ -297,7 +328,7 @@ ROLE_REQUEST_NOTIFY_ALREADY_ASSIGNED = (
     "У пользователя уже есть эта роль.\nОбновите список заявок, чтобы увидеть актуальный статус."
 )
 ROLE_REQUEST_NOTIFY_UNEXPECTED = "Не удалось обработать запрос.\nПопробуйте ещё раз позже."
-ROLE_REQUEST_COOLDOWN_UNTIL = "Ваш предыдущий запрос недавно отклонили. Повторно отправить запрос можно {available_at}."
+ROLE_REQUEST_COOLDOWN_UNTIL = "Повторный запрос можно отправить после {available_at}."
 
 COMPETENCE_TARGET_REQUIRED = (
     "Не удалось определить пользователя для команды.\n"
@@ -373,6 +404,11 @@ def button_back() -> str:
 def button_skip() -> str:
     """Возвращает текст кнопки."""
     return BUTTON_SKIP
+
+
+def button_close() -> str:
+    """Возвращает текст кнопки закрытия."""
+    return BUTTON_CLOSE
 
 
 def registration_existing_profile(_user_id: int) -> str:

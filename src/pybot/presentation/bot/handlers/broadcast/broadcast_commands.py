@@ -13,7 +13,14 @@ from .....dto import BroadcastDTO, BroadcastResult, CompetenceBroadcastDTO, Comp
 from .....services.broadcast import BroadcastService
 from .....services.competence import CompetenceService
 from .....services.notification_facade import NotificationFacade, NotifyUserDTO
-from ....texts import BROADCAST_MESSAGE_REQUIRED, BROADCAST_USAGE, broadcast_result_summary, broadcast_unknown_target
+from ....texts import (
+    BROADCAST_ALREADY_RUNNING,
+    BROADCAST_MESSAGE_REQUIRED,
+    BROADCAST_NO_RECIPIENTS,
+    BROADCAST_USAGE,
+    broadcast_result_summary,
+    broadcast_unknown_target,
+)
 from ...filters import check_text_message_correction, create_chat_type_routers
 
 (broadcast_command_private_router, _, _) = create_chat_type_routers("broadcast")
@@ -77,13 +84,17 @@ async def _extract_message_for_broadcast(message: Message, target_token: str) ->
     return broadcast_message
 
 
-async def _notify_broadcast_result(
+async def notify_broadcast_result(
     message: Message,
     notification_facade: NotificationFacade,
     result: BroadcastResult,
+    recipient_id: int | None = None,
 ) -> None:
+    """Send the broadcast summary to the initiator; ``recipient_id`` overrides the message author."""
     summary = broadcast_result_summary(result)
-    if message.from_user is None:
+    if recipient_id is None and message.from_user is not None:
+        recipient_id = message.from_user.id
+    if recipient_id is None:
         logger.warning("Broadcast summary fallback: message.from_user is missing")
         await message.reply(summary)
         return
@@ -91,7 +102,7 @@ async def _notify_broadcast_result(
     try:
         await notification_facade.notify_user(
             NotifyUserDTO(
-                recipient_id=message.from_user.id,
+                recipient_id=recipient_id,
                 message=summary,
                 kind=TaskScheduleKind.IMMEDIATE,
             )
@@ -99,7 +110,7 @@ async def _notify_broadcast_result(
     except Exception:
         logger.exception(
             "Failed to enqueue broadcast summary notification for telegram_id={telegram_id}",
-            telegram_id=message.from_user.id,
+            telegram_id=recipient_id,
         )
         await message.reply(summary)
 
@@ -128,7 +139,7 @@ async def broadcast_command(
     try:
         if _extract_all_ping(target_token):
             result = await broadcast_service.broadcast_for_all(BroadcastDTO(broadcast_message=broadcast_message))
-            await _notify_broadcast_result(message, notification_facade, result)
+            await notify_broadcast_result(message, notification_facade, result)
             return
 
         role = _extract_role(target_token)
@@ -136,7 +147,7 @@ async def broadcast_command(
             result = await broadcast_service.broadcast_for_users_with_role(
                 RoleBroadcastDTO(broadcast_message=broadcast_message, role_name=role.value)
             )
-            await _notify_broadcast_result(message, notification_facade, result)
+            await notify_broadcast_result(message, notification_facade, result)
             return
 
         competencies = await competence_service.find_all_competencies()
@@ -145,11 +156,11 @@ async def broadcast_command(
             result = await broadcast_service.broadcast_for_users_with_competence(
                 CompetenceBroadcastDTO(broadcast_message=broadcast_message, competence_id=competence.id)
             )
-            await _notify_broadcast_result(message, notification_facade, result)
+            await notify_broadcast_result(message, notification_facade, result)
             return
 
         await message.reply(broadcast_unknown_target(competencies))
     except UsersNotFoundError:
-        await message.reply("По этой аудитории не найдено ни одного пользователя для рассылки.")
+        await message.reply(BROADCAST_NO_RECIPIENTS)
     except BroadcastAlreadyRunningError:
-        await message.reply("Сейчас уже выполняется другая рассылка. Дождитесь её завершения и попробуйте снова.")
+        await message.reply(BROADCAST_ALREADY_RUNNING)

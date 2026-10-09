@@ -10,7 +10,13 @@ from pydantic import ValidationError
 
 from .....core import logger
 from .....core.constants import PointsTypeEnum, TaskScheduleKind
-from .....domain.exceptions import DomainError, InvalidPointsValueError, UserNotFoundError, ZeroPointsAdjustmentError
+from .....domain.exceptions import (
+    DomainError,
+    InsufficientPointsBalanceError,
+    InvalidPointsValueError,
+    UserNotFoundError,
+    ZeroPointsAdjustmentError,
+)
 from .....dto import AdjustUserPointsDTO, UserReadDTO
 from .....dto.value_objects import Points
 from .....services.notification_facade import NotificationFacade, NotifyUserDTO
@@ -162,7 +168,7 @@ async def _prepare_points_command_context(
         if raw_points is not None:
             try:
                 points = Points(value=raw_points, point_type=points_type)
-            except ValidationError, ValueError:
+            except (ValidationError, ValueError):
                 await message.reply(points_invalid_value(raw_points))
             else:
                 recipient_user = await user_service.find_user_by_telegram_id(target_user_id)
@@ -201,6 +207,9 @@ async def _handle_points_command(
                 reason=reason,
             ),
         )
+    except InsufficientPointsBalanceError as exc:
+        await message.reply(exc.message)
+        return
     except Exception:
         logger.exception("Error while changing points")
         await message.reply(POINTS_OPERATION_FAILED)

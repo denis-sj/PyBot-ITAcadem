@@ -118,3 +118,23 @@ async def test_send_message_logs_parse_mode_value(mocker, settings_obj: AppSetti
 
     info_mock.assert_called_once()
     assert info_mock.call_args.kwargs["parse_mode"] == "HTML"
+
+
+@pytest.mark.asyncio
+async def test_send_attendance_notification_logs_and_buffers_event(mocker, settings_obj: AppSettings) -> None:
+    service = LoggingNotificationService(settings_obj)
+    info_mock = mocker.patch.object(logging_module.logger, "info")
+
+    await service.send_attendance_notification(
+        recipient_tg_id=555,
+        text="  ✅ Добавлено посещение  ",
+        import_id=12,
+    )
+
+    info_mock.assert_called_once()
+    assert len(service.events) == 1
+    event = service.events[0]
+    assert event.event_type == "attendance_confirmed"
+    assert event.recipient_id == 555
+    assert event.message_text == "✅ Добавлено посещение"
+    assert event.import_id == 12

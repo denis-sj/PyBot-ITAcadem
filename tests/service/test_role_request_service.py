@@ -52,6 +52,8 @@ async def test_create_role_request_success_creates_pending_request(
     db = await dishka_request_container.get(AsyncSession)
     service = await dishka_request_container.get(RoleRequestService)
     user = await create_user(db, spec=UserSpec(telegram_id=900_001))
+    student_role = await create_role(db, name="Student")
+    await attach_user_role(db, user=user, role=student_role)
     role = await create_role(db, name="Mentor")
     await db.commit()
 
@@ -87,6 +89,8 @@ async def test_create_role_request_raises_when_role_not_found(
     db = await dishka_request_container.get(AsyncSession)
     service = await dishka_request_container.get(RoleRequestService)
     user = await create_user(db, spec=UserSpec(telegram_id=900_002))
+    student_role = await create_role(db, name="Student")
+    await attach_user_role(db, user=user, role=student_role)
     await db.commit()
 
     # When / Then
@@ -119,6 +123,8 @@ async def test_create_role_request_raises_when_pending_request_already_exists(
     db = await dishka_request_container.get(AsyncSession)
     service = await dishka_request_container.get(RoleRequestService)
     user = await create_user(db, spec=UserSpec(telegram_id=900_004))
+    student_role = await create_role(db, name="Student")
+    await attach_user_role(db, user=user, role=student_role)
     role = await create_role(db, name="Mentor")
     await create_role_request(db, spec=RoleRequestSpec(user=user, role=role, status=RequestStatus.PENDING))
     await db.commit()
@@ -137,6 +143,8 @@ async def test_check_requesting_user_raises_cooldown_error_with_available_at(
     db = await dishka_request_container.get(AsyncSession)
     service = await dishka_request_container.get(RoleRequestService)
     user = await create_user(db, spec=UserSpec(telegram_id=900_005))
+    student_role = await create_role(db, name="Student")
+    await attach_user_role(db, user=user, role=student_role)
     role = await create_role(db, name="Mentor")
     rejected_at = datetime.now() - timedelta(seconds=1)
     await create_role_request(

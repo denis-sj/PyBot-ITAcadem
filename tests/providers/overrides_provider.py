@@ -48,6 +48,21 @@ class FakeNotificationPort(NotificationPort):
             )
         )
 
+    async def send_attendance_notification(
+        self,
+        recipient_tg_id: int,
+        text: str,
+        import_id: int | None = None,
+    ) -> None:
+        return None
+
+    async def update_role_request_message(
+        self,
+        request_id: int,
+        status_text: str,
+    ) -> None:
+        return None
+
 
 @dataclass(frozen=True, slots=True)
 class RoleRequestNotificationRecord:
@@ -101,10 +116,7 @@ class TestOverridesProvider(Provider):
         super().__init__()
         self._fake_bot = FakeBot()
         self._notification_port = FakeNotificationPort()
-
-    @provide(scope=Scope.APP)
-    def provide_attendance_recognition_port(self) -> AttendanceRecognitionPort:
-        return FakeAttendanceRecognitionPort()
+        self._attendance_recognition_port = FakeAttendanceRecognitionPort()
 
     @provide(scope=Scope.APP)
     def provide_bot(self) -> FakeBot:
@@ -113,6 +125,10 @@ class TestOverridesProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_notification_port(self) -> NotificationPort:
         return self._notification_port
+
+    @provide(scope=Scope.APP)
+    def provide_attendance_recognition_port(self) -> AttendanceRecognitionPort:
+        return self._attendance_recognition_port
 
     @provide(scope=Scope.APP)
     def provide_fake_notification_port(self) -> FakeNotificationPort:
