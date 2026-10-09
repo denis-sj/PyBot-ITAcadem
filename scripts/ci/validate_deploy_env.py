@@ -19,7 +19,7 @@ _WORKER_KEY = "TASKIQ_WORKERS"
 _SUPPORTED_WORKER_VALUE = "1"
 _DATABASE_SCHEME = "postgresql+asyncpg"
 _DATABASE_HOSTNAME = "postgres"
-_ORCHESTRATION_BOOLEAN_KEYS = ("HEALTH_API_ENABLED",)
+_ORCHESTRATION_BOOLEAN_KEYS = ("HEALTH_API_ENABLED", "AGENT_ENABLED")
 _SUPPORTED_BOOLEAN_VALUES = frozenset({"0", "1", "false", "true", "no", "yes", "off", "on"})
 _QUOTED_VALUE_MIN_LENGTH = 2
 
@@ -53,7 +53,44 @@ def validate_deploy_env(env_values: dict[str, str]) -> list[str]:
         errors.append("TASKIQ_WORKERS must be set to 1 until multi-instance runtime is supported")
 
     errors.extend(_validate_orchestration_switches(env_values))
+    errors.extend(_validate_agent_env(env_values))
 
+    return errors
+
+
+def _validate_agent_env(env_values: dict[str, str]) -> list[str]:
+    """Validate agent settings without materializing runtime secrets or clients."""
+    errors: list[str] = []
+    if (
+        env_values.get("AGENT_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+        and not env_values.get("POLZA_API_KEY", "").strip()
+    ):
+        errors.append("POLZA_API_KEY must be set when AGENT_ENABLED=true")
+    group_id = env_values.get("AGENT_GROUP_CHAT_ID", "").strip()
+    topic_id = env_values.get("AGENT_TOPIC_ID", "").strip()
+    if bool(group_id) != bool(topic_id):
+        errors.append("AGENT_GROUP_CHAT_ID and AGENT_TOPIC_ID must be configured together")
+    ranges = {
+        "AGENT_GROUP_CHAT_ID": (None, -1),
+        "AGENT_TOPIC_ID": (1, None),
+        "AGENT_MEMORY_MAX_MESSAGES": (2, 10),
+        "AGENT_MEMORY_TTL_S": (1, 1800),
+        "AGENT_MAX_STEPS": (1, 20),
+        "AGENT_TIMEOUT_S": (5, 300),
+    }
+    for key, (minimum, maximum) in ranges.items():
+        value = env_values.get(key)
+        if value is None or (key in {"AGENT_GROUP_CHAT_ID", "AGENT_TOPIC_ID"} and not value.strip()):
+            continue
+        try:
+            number = int(value)
+        except ValueError:
+            errors.append(f"{key} must be an integer")
+            continue
+        if (minimum is not None and number < minimum) or (maximum is not None and number > maximum):
+            errors.append(f"{key} is outside its supported range")
+    if "AGENT_MODEL" in env_values and not env_values["AGENT_MODEL"].strip():
+        errors.append("AGENT_MODEL must be non-empty")
     return errors
 
 

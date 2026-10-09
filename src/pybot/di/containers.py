@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 
+import httpx2
 from aiogram import Bot
 from aiogram.client.session.aiohttp import AiohttpSession
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
@@ -23,6 +24,8 @@ from ..infrastructure import (
     ValuationRepository,
 )
 from ..infrastructure.adapters import PolzaVisionAdapter
+from ..infrastructure.adapters.agent_memory import RedisAgentMemory
+from ..infrastructure.adapters.polza_agent import PolzaAgentModel
 from ..infrastructure.health import RedisPingProbe, SessionExecutor
 from ..infrastructure.ports import LoggingNotificationService, TelegramNotificationService
 from ..infrastructure.taskiq.taskiq_notification_dispatcher import TaskIQNotificationDispatcher
@@ -37,6 +40,9 @@ from ..services import (
     UserService,
     WeeklyLeaderboardPublisherService,
 )
+from ..services.agent.runtime import AgentRuntime
+from ..services.agent.service import AgentService
+from ..services.agent.tools import AgentToolRegistry
 from ..services.broadcast import BroadcastService
 from ..services.competence import CompetenceService
 from ..services.health import HealthService
@@ -44,6 +50,7 @@ from ..services.levels import LevelService
 from ..services.notification_facade import NotificationFacade
 from ..services.points import PointsService
 from ..services.ports import AttendanceRecognitionPort, NotificationDispatchPort, NotificationPort
+from ..services.ports.agent import AgentMemoryPort, AgentModelPort
 from ..services.role_request import RoleRequestService
 
 global_engine: AsyncEngine | None = None
@@ -247,6 +254,37 @@ class ServiceProvider(Provider):
         )
 
 
+class AgentProvider(Provider):
+    """Agent dependencies exist only in the bot runtime; no network at construction."""
+
+    @provide(scope=Scope.APP)
+    async def model(self, settings: AppSettings) -> AsyncGenerator[AgentModelPort]:
+        async with httpx2.AsyncClient(timeout=settings.agent_timeout_s) as client:
+            yield PolzaAgentModel(settings, client)
+
+    @provide(scope=Scope.APP)
+    def memory(self, redis_client: Redis, settings: AppSettings) -> AgentMemoryPort:
+        return RedisAgentMemory(redis_client, settings)
+
+    runtime = provide(AgentRuntime, scope=Scope.APP)
+
+    @provide(scope=Scope.APP)
+    def registry(self) -> AgentToolRegistry:
+        return AgentToolRegistry()
+
+    @provide(scope=Scope.REQUEST)
+    def service(  # noqa: PLR0913
+        self,
+        users: UserService,
+        model: AgentModelPort,
+        memory: AgentMemoryPort,
+        runtime: AgentRuntime,
+        registry: AgentToolRegistry,
+        settings: AppSettings,
+    ) -> AgentService:
+        return AgentService(users, model, memory, runtime, registry, settings)
+
+
 class HealthProvider(Provider):
     """Health API services."""
 
@@ -354,6 +392,7 @@ async def setup_container() -> AsyncContainer:
         RepositoryProvider(),
         ServiceProvider(),
         AiogramProvider(),
+        AgentProvider(),
         DomainServiceProvider(),
         BotProvider(),
         PortsProvider(),

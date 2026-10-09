@@ -5,10 +5,22 @@ from dataclasses import dataclass
 from aiogram.types import InlineKeyboardMarkup
 from dishka import Provider, Scope, provide
 
-from pybot.dto import NotifyDTO
-from pybot.services.ports import NotificationPort
+from pybot.dto import AttendanceRecognitionResultDTO, NotifyDTO
+from pybot.services.ports import AttendanceRecognitionPort, NotificationPort
 
 __test__ = False
+
+
+class FakeAttendanceRecognitionPort:
+    """Fail loudly if an integration test unexpectedly tries external recognition."""
+
+    async def recognize_attendance_sheet(
+        self,
+        photo_bytes: bytes,
+        mime_type: str,
+        candidate_user_names: list[str],
+    ) -> AttendanceRecognitionResultDTO:
+        raise AssertionError("Photo recognition requires an explicit test result; network calls are forbidden")
 
 
 class FakeNotificationPort(NotificationPort):
@@ -89,6 +101,10 @@ class TestOverridesProvider(Provider):
         super().__init__()
         self._fake_bot = FakeBot()
         self._notification_port = FakeNotificationPort()
+
+    @provide(scope=Scope.APP)
+    def provide_attendance_recognition_port(self) -> AttendanceRecognitionPort:
+        return FakeAttendanceRecognitionPort()
 
     @provide(scope=Scope.APP)
     def provide_bot(self) -> FakeBot:

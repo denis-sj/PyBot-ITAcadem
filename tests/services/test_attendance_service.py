@@ -533,6 +533,7 @@ async def test_ingest_photo_marks_out_of_month_and_already_processed(
     mock_user_repo: AsyncMock,
     mock_recognition_port: AsyncMock,
 ) -> None:
+    current_month_date = datetime.now(ZoneInfo("Asia/Yekaterinburg")).date().replace(day=15)
     mock_user_repo.find_all_users.return_value = []
     mock_recognition_port.recognize_attendance_sheet.return_value = AttendanceRecognitionResultDTO(
         quality=AttendanceQualityDTO(is_good=True, comment="OK"),
@@ -542,12 +543,12 @@ async def test_ingest_photo_marks_out_of_month_and_already_processed(
                 rows=[],
             ),
             AttendanceRecognizedDateBlockDTO(
-                date=date(2026, 9, 15),
+                date=current_month_date,
                 rows=[],
             ),
         ],
     )
-    mock_attendance_repo.is_date_processed.side_effect = lambda _db, d: d == date(2026, 9, 15)
+    mock_attendance_repo.is_date_processed.side_effect = lambda _db, d: d == current_month_date
     mock_attendance_repo.create_draft.return_value = AttendanceImport(id=99)
 
     draft = await service.ingest_attendance_photo(

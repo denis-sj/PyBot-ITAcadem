@@ -680,3 +680,49 @@ Important:
 
 - Add external monitoring/log shipping
 - Add image vulnerability scanning before deploy
+
+## Agent harness (stage 0, opt-in)
+
+`AGENT_ENABLED=false` is the default: the agent router is not registered and ordinary
+bot behavior stays unchanged. To enable the agent in a test bot, set `AGENT_ENABLED=true`
+and the existing `POLZA_API_KEY`. The independent `AGENT_MODEL` defaults to
+`google/gemini-3.5-flash-lite` (verified in the [Polza catalog](https://polza.ai/models/google/gemini-3.5-flash-lite)).
+`POLZA_BASE_URL` is shared with vision; `POLZA_VISION_MODEL` remains unchanged.
+
+Optional agent settings:
+
+- `AGENT_GROUP_CHAT_ID` and `AGENT_TOPIC_ID`: configure together (negative group ID,
+  positive topic ID), or leave both blank. That topic accepts unaddressed text;
+  other group locations require `@bot` or a reply to an agent message.
+- `AGENT_MEMORY_MAX_MESSAGES=10`: between 2 and 10 text messages, including both
+  questions and answers. Each message is truncated to 2000 characters.
+- `AGENT_MEMORY_TTL_S=1800`: between 1 and 1800 seconds, renewed after a completed
+  turn; also the pending approval TTL.
+- `AGENT_MAX_STEPS=8`: model request limit, between 1 and 20; resumed approvals share
+  the original request budget. Each run also permits at most 8 tool calls.
+- `AGENT_TIMEOUT_S=60`: between 5 and 300 seconds for a run, excluding time in the
+  per-user queue and time waiting for approval. The HTTP client has the same timeout.
+
+Redis is required for agent memory even when `FSM_STORAGE_BACKEND=memory`.
+Text memory keys include chat, topic and author. Tool traces are not persisted.
+Agent reply provenance is persistent metadata (chat/topic/message IDs only),
+independent of text memory, so replying after the memory TTL starts a new question.
+These small marker keys accumulate over time and must be considered when sizing Redis.
+Confirmation continuations are process-local, bound to their author and exact
+keyboard message; restarting the bot invalidates them. The local FIFO queue holds
+through Telegram delivery and is cleaned when no waiter remains. This follows the
+current single-replica bot contract; multiple replicas require distributed sequencing
+and approval consumption before enabling the agent there.
+
+At stage 0 the only agent tool is `bot_capabilities`; it lists commands allowed for
+the actor's roles and makes no data changes. Actual reading and writing tools will
+be introduced in subsequent stages. Commands, active FSM scenarios, active
+`aiogram-dialog` contexts and non-text messages keep their existing handlers.
+
+Tests use Pydantic AI `TestModel`/`FunctionModel` and prohibit network model requests.
+Live evaluations are opt-in and billed by Polza: `just eval-agent`, or
+`uv run python evals/agent/run.py`. They use synthetic users without database or
+Telegram access; they print case status and tool names, not provider bodies or keys.
+They are not part of CI. During a test-bot smoke check, verify private questions,
+the configured topic, mentions, replies to agent versus ordinary bot messages,
+registration/broadcast text entry, and model timeout UX.

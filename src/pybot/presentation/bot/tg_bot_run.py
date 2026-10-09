@@ -16,6 +16,7 @@ from ...core import logger
 from ...core.config import AppSettings, get_settings
 from ...di.containers import setup_container
 from ...services import AttendanceService, SystemRuntimeAlertsService
+from ...services.ports.agent import AgentMemoryPort
 from .dialogs import user_router
 from .handlers import (
     attendance_router,
@@ -25,6 +26,7 @@ from .handlers import (
     profile_router,
     roles_router,
 )
+from .handlers.agent import create_agent_router
 from .handlers.common.dialog_errors import register_dialog_error_handlers
 from .middlewares import (
     LoggerMiddleware,
@@ -114,6 +116,13 @@ def setup_handlers(dp: Dispatcher) -> None:
     setup_dialogs(dp)
 
 
+async def setup_agent_handler(dp: Dispatcher, container: AsyncContainer, settings: AppSettings) -> None:
+    """Register agent last, only when explicitly enabled."""
+    if settings.agent_enabled:
+        memory = await container.get(AgentMemoryPort)
+        dp.include_router(create_agent_router(settings, memory))
+
+
 async def notify_startup_alert(runtime_alerts_service: SystemRuntimeAlertsService) -> None:
     """Send startup alert without breaking bot bootstrap on delivery failure."""
     try:
@@ -177,6 +186,7 @@ async def tg_bot_main() -> None:
         runtime_alerts_service = await setup_runtime_alerts_service(container)
         await setup_middlewares(dp, settings)
         setup_handlers(dp)
+        await setup_agent_handler(dp, container, settings)
         await bot.delete_webhook(drop_pending_updates=settings.bot_mode != "prod")
         await cleanup_stale_attendance_drafts_on_startup(container)
         logger.info("event=bot_runtime_init status=completed")
