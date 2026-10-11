@@ -12,9 +12,25 @@ from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.toolsets.abstract import ToolsetTool
 
 from ...domain.agent import AgentAccessDeniedError
+from .admin_action_tools import (
+    add_manual_attendance_visit,
+    adjust_user_points,
+    change_user_competence,
+    change_user_role,
+    confirmation_summary,
+    delete_attendance_visit,
+    update_attendance_visit_time,
+    validate_manual_visit,
+    validate_points_adjustment,
+    validate_user_competence_change,
+    validate_user_role_change,
+    validate_visit_delete,
+    validate_visit_update,
+)
 from .dependencies import AgentDependencies
 from .read_tools import (
     ADMIN_AGENT_ROLES,
+    find_user_candidates,
     get_attendance_month_top,
     get_attendance_week_top,
     get_bot_info,
@@ -74,7 +90,64 @@ class AgentToolRegistry:
                     get_user_profile,
                     get_user_attendance,
                     get_current_chat_id,
+                    find_user_candidates,
                 )
+            )
+            admin_action_tools = (
+                RegisteredAgentTool(
+                    Tool(
+                        adjust_user_points,
+                        args_validator=validate_points_adjustment,
+                        requires_approval=True,
+                    ),
+                    ADMIN_AGENT_ROLES,
+                    confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        change_user_role,
+                        args_validator=validate_user_role_change,
+                        requires_approval=True,
+                    ),
+                    ADMIN_AGENT_ROLES,
+                    confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        change_user_competence,
+                        args_validator=validate_user_competence_change,
+                        requires_approval=True,
+                    ),
+                    ADMIN_AGENT_ROLES,
+                    confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        update_attendance_visit_time,
+                        args_validator=validate_visit_update,
+                        requires_approval=True,
+                    ),
+                    ADMIN_AGENT_ROLES,
+                    confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        delete_attendance_visit,
+                        args_validator=validate_visit_delete,
+                        requires_approval=True,
+                    ),
+                    ADMIN_AGENT_ROLES,
+                    confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        add_manual_attendance_visit,
+                        args_validator=validate_manual_visit,
+                        requires_approval=True,
+                    ),
+                    ADMIN_AGENT_ROLES,
+                    confirmation_summary,
+                ),
             )
             role_request_tool = RegisteredAgentTool(
                 Tool(
@@ -85,7 +158,7 @@ class AgentToolRegistry:
                 frozenset({"Student"}),
                 _role_request_summary,
             )
-            self.entries = (*public_tools, role_request_tool, *admin_tools)
+            self.entries = (*public_tools, role_request_tool, *admin_tools, *admin_action_tools)
         else:
             self.entries = entries
         for entry in self.entries:
@@ -156,14 +229,15 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
             "/addrole, /removerole, /addcompetence, /removecompetence, /edit_visits. "
             "Для импорта посещаемости по фото используйте /report и кнопку добавления часов."
             " Через агента администратор также может читать отчёт, текущий расчётный месяц, ID текущего чата "
-            "и профиль или посещаемость пользователя по его Telegram ID."
+            "и профиль или посещаемость пользователя по его Telegram ID. Через агента можно подтвердить начисление "
+            "или списание баллов, изменение роли или компетенции, а также правку посещения."
         )
     if roles.intersection(ctx.deps.settings.broadcast_allowed_roles):
         commands += " Рассылка — /broadcast или кнопка рассылки в меню."
     introduction = (
         "Через агента доступны мой профиль и баллы, мои посещения, топ посещаемости недели и месяца, "
         "лидерборд баллов, каталоги ролей и компетенций, мои роли и компетенции, информация о боте. "
-        "Инструменты чтения для администратора доступны только его роли. "
+        "Инструменты чтения и изменения для администратора доступны только его роли. "
         "Подать заявку на роль Mentor можно через агента после подтверждения. "
     )
     return introduction + commands

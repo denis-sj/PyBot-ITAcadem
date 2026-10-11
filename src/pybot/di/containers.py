@@ -300,6 +300,29 @@ class AgentProvider(Provider):
         return AgentReadService(profiles, attendance, leaderboard, roles, user_competences, competences, users)
 
     @provide(scope=Scope.REQUEST)
+    def actions(  # noqa: PLR0913
+        self,
+        role_request_service: RoleRequestService,
+        users: UserService,
+        points: PointsService,
+        roles: UserRolesService,
+        user_competences: UserCompetenceService,
+        competences: CompetenceService,
+        attendance: AttendanceService,
+        notifications: NotificationFacade,
+    ) -> AgentActionService:
+        return AgentActionService(
+            role_request_service,
+            users,
+            points,
+            roles,
+            user_competences,
+            competences,
+            attendance,
+            notifications,
+        )
+
+    @provide(scope=Scope.REQUEST)
     def service(  # noqa: PLR0913
         self,
         users: UserService,
@@ -309,9 +332,8 @@ class AgentProvider(Provider):
         registry: AgentToolRegistry,
         settings: AppSettings,
         reads: AgentReadService,
-        role_request_service: RoleRequestService,
+        actions: AgentActionService,
     ) -> AgentService:
-        actions = AgentActionService(role_request_service)
         return AgentService(users, model, memory, runtime, registry, settings, reads, actions)
 
 

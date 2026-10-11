@@ -10,7 +10,6 @@ from pydantic_ai.models.test import TestModel
 
 from pybot.core.config import AppSettings
 from pybot.dto.agent import AgentConversation
-from pybot.services.agent.actions import AgentActionService
 from pybot.services.agent.reads import AgentReadService
 from pybot.services.agent.runtime import AgentRuntime
 from pybot.services.agent.service import AgentService
@@ -88,6 +87,6 @@ def build_service(
         registry or AgentToolRegistry(),
         settings,
         reads or Mock(spec=AgentReadService),
-        actions or Mock(spec=AgentActionService),
+        actions or Mock(spec=AgentActionsPort),
     )
     return service, users, memory

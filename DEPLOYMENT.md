@@ -746,6 +746,16 @@ the exact message, then calls `RoleRequestService` after approval. The service c
 rules again before persisting and notifying administrators. Cancelling or an expired
 confirmation creates no request.
 
+Stage 4 adds administrator-only points changes, role and competence assignment/removal,
+and attendance time edits, deletion, or manual entry. Every action preflights the exact
+Telegram ID and requested data before showing a code-built summary; approval is bound to
+the author and original message, then current roles and action validity are checked again.
+Points use `PointsService` and the existing notification flow; role and competence changes
+reuse their services; visit changes reuse attendance auditing and participant notifications.
+The admin-only name search shows up to five matching participants with their Telegram IDs;
+when a name is ambiguous, the agent asks which exact ID to use. No new database schema is
+required.
+
 Tests use Pydantic AI `TestModel`/`FunctionModel` and prohibit network model requests.
 Live evaluations are opt-in and billed by Polza: `just eval-agent`, or
 `uv run python evals/agent/run.py`. They use synthetic users without database or

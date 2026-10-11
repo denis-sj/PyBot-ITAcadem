@@ -4,9 +4,10 @@ import asyncio
 import sys
 from datetime import date
 from pathlib import Path
+from unittest.mock import Mock
 
 import httpx2
-from fixtures import EvalActions, EvalReads
+from fixtures import EvalReads
 from pydantic import BaseModel, TypeAdapter
 from pydantic_ai import Agent, DeferredToolRequests
 from pydantic_ai.messages import ModelResponse, ToolCallPart
@@ -20,6 +21,7 @@ from pybot.dto.value_objects import Points
 from pybot.infrastructure.adapters.polza_agent import PolzaAgentModel
 from pybot.services.agent.service import AgentService, build_agent_instructions
 from pybot.services.agent.tools import AgentDependencies, AgentToolRegistry
+from pybot.services.ports.agent import AgentActionsPort
 from pybot.services.user_services.users import UserService
 
 
@@ -68,12 +70,13 @@ async def run_evals() -> int:
         model = PolzaAgentModel(settings, client).get_model()
         for case in cases:
             registry = AgentToolRegistry()
+            actions = Mock(spec=AgentActionsPort)
             dependencies = AgentDependencies(
                 AgentConversation(chat_id=-100123, topic_id=7, telegram_id=1),
                 EvalUsers(case.roles),
                 settings,
                 EvalReads(),
-                EvalActions(),
+                actions,
             )
             agent = Agent(
                 model,

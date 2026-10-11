@@ -2,19 +2,7 @@
 
 from pybot.dto import UserReadDTO
 from pybot.dto.agent_read import AgentMonth
-from pybot.dto.role_dto import CreateRoleRequestDTO
 from pybot.services.agent.reads import AgentReadService
-from pybot.services.ports.agent import AgentActionsPort
-
-
-class EvalActions(AgentActionsPort):
-    """Allow safe preflight in evals while making accidental mutation fail closed."""
-
-    async def validate_role_request(self, user_id: int) -> None:
-        return None
-
-    async def request_mentor_role(self, user_id: int) -> CreateRoleRequestDTO:
-        raise RuntimeError("Live evaluations cannot mutate role requests")
 
 
 class EvalReads(AgentReadService):
@@ -28,6 +16,9 @@ class EvalReads(AgentReadService):
 
     async def get_profile_for_telegram_id(self, telegram_id: int) -> str:
         return "Профиль участника: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
+
+    async def find_user_candidates(self, name_query: str) -> str:
+        return f"Кандидаты по запросу «{name_query}»: Иванов Тест — Telegram ID 1."
 
     async def get_attendance_for_telegram_id(self, telegram_id: int, period: AgentMonth) -> str:
         return f"Посещаемость участника за {period.year}-{period.month:02}: 90 минут; посещений: 2; место: 3."

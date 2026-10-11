@@ -24,6 +24,15 @@ ADMIN_READ_TOOLS = {
     "get_user_profile",
     "get_user_attendance",
     "get_current_chat_id",
+    "find_user_candidates",
+}
+ADMIN_ACTION_TOOLS = {
+    "adjust_user_points",
+    "change_user_role",
+    "change_user_competence",
+    "update_attendance_visit_time",
+    "delete_attendance_visit",
+    "add_manual_attendance_visit",
 }
 
 
@@ -31,6 +40,7 @@ ADMIN_READ_TOOLS = {
 def reads():
     attendance = Mock()
     attendance.get_monthly_report = AsyncMock()
+    attendance.get_sorted_participants = AsyncMock(return_value=[])
     return AgentReadService(Mock(), attendance, Mock(), Mock(), Mock(), Mock(), Mock())
 
 
@@ -38,7 +48,9 @@ def test_stage_two_admin_read_tools_are_hidden_from_students(agent_settings):
     registry = AgentToolRegistry()
     assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
     assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
-    assert [entry.tool.name for entry in registry.entries if entry.tool.requires_approval] == ["request_mentor_role"]
+    assert {"request_mentor_role"} | ADMIN_ACTION_TOOLS <= {
+        entry.tool.name for entry in registry.entries if entry.tool.requires_approval
+    }
 
 
 def model_call(
@@ -63,6 +75,7 @@ def model_call(
     [
         ("get_current_month", {}, "get_current_accounting_month", ()),
         ("get_club_attendance_report", {"detailed": True}, "get_club_attendance_report", (True,)),
+        ("find_user_candidates", {"name_query": "Иванов"}, "find_user_candidates", ("Иванов",)),
         ("get_user_profile", {"telegram_id": 771234}, "get_profile_for_telegram_id", (771234,)),
         (
             "get_user_attendance",
@@ -80,6 +93,7 @@ async def test_admin_reads_dispatch_to_existing_service(
     reads.get_club_attendance_report.return_value = "Отчёт за 2026-10."
     reads.get_profile_for_telegram_id.return_value = "Баллы: 75."
     reads.get_attendance_for_telegram_id.return_value = "Посещения: 2."
+    reads.find_user_candidates.return_value = "Кандидаты: Иванов Иван — Telegram ID 771."
     service, users, _ = build_service(agent_settings, model=model_call(tool_name, arguments), reads=reads)
     users.find_all_user_roles.return_value = {"Admin"}
     result = await service.answer(conversation, "Выполни чтение")

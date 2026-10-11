@@ -89,6 +89,11 @@ async def get_user_profile(ctx: RunContext[AgentDependencies], telegram_id: int)
     return await ctx.deps.reads.get_profile_for_telegram_id(telegram_id)
 
 
+async def find_user_candidates(ctx: RunContext[AgentDependencies], name_query: str) -> str:
+    """Найти участников по имени, чтобы администратор уточнил точный Telegram ID."""
+    return await ctx.deps.reads.find_user_candidates(name_query)
+
+
 async def get_user_attendance(
     ctx: RunContext[AgentDependencies], telegram_id: int, period: AgentMonth | None = None
 ) -> str:

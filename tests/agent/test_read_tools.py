@@ -23,6 +23,7 @@ ADMIN_READ_TOOLS = {
     "get_user_profile",
     "get_user_attendance",
     "get_current_chat_id",
+    "find_user_candidates",
 }
 
 

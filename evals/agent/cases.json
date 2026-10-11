@@ -1,5 +1,37 @@
 [
   {
+    "name": "admin_points_change_confirmation",
+    "question": "Сними 8 репутационных баллов у участника с Telegram ID 771234 за возврат ошибки",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "adjust_user_points"
+    ],
+    "expected_confirmation": true,
+    "required_phrases": [
+      "771234",
+      "8",
+      "списать"
+    ],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "admin_name_search_disambiguates",
+    "question": "Найди кандидатов по имени Иванов, я уточню кому выдать роль",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "find_user_candidates"
+    ],
+    "required_phrases": [
+      "telegram id",
+      "иванов"
+    ],
+    "forbidden_phrases": []
+  },
+  {
     "name": "student_role_request_confirmation",
     "question": "Подай заявку на роль наставника",
     "roles": [

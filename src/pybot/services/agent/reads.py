@@ -17,6 +17,7 @@ from ..user_services.users import UserService
 
 _MAX_REPORT_RANKING_ROWS = 25
 _MAX_REPORT_DETAIL_ROWS = 30
+_MAX_USER_CANDIDATES = 5
 
 
 class AgentReadService:
@@ -81,6 +82,38 @@ class AgentReadService:
             f"{self._duration(summary.total_minutes)}; посещений: {summary.visits_count}; "
             f"место: {summary.rank}; участников: {summary.total_participants}"
         )
+
+    async def find_user_candidates(self, name_query: str) -> str:
+        """Find a small set of participants by name for an administrator to disambiguate."""
+        search_terms = tuple(term.casefold() for term in name_query.split() if term)
+        if not search_terms:
+            return "Укажите имя или фамилию участника."
+
+        participants = await self.attendance.get_sorted_participants()
+        matches = []
+        for participant in participants:
+            full_name = " ".join(
+                part for part in (participant.last_name, participant.first_name, participant.patronymic) if part
+            )
+            normalized_name = full_name.casefold()
+            if all(term in normalized_name for term in search_terms):
+                matches.append((full_name, participant.telegram_id))
+
+        if not matches:
+            return "Совпадений не нашёл. Уточните полное имя или точный Telegram ID."
+
+        lines = [f"Кандидаты по запросу «{name_query}»: "]
+        lines.extend(
+            f"{full_name} — Telegram ID {telegram_id}" for full_name, telegram_id in matches[:_MAX_USER_CANDIDATES]
+        )
+        if len(matches) > _MAX_USER_CANDIDATES:
+            lines.append(
+                f"Показаны первые {_MAX_USER_CANDIDATES} из {len(matches)} совпадений. "
+                "Уточните фамилию или Telegram ID."
+            )
+        elif len(matches) > 1:
+            lines.append("Уточните Telegram ID нужного участника; не выбирайте за пользователя.")
+        return "\n".join(lines)
 
     @staticmethod
     def get_current_accounting_month() -> str:

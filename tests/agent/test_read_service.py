@@ -1,4 +1,5 @@
 from datetime import UTC, date, datetime, time
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -88,6 +89,22 @@ async def test_only_available_month_is_selected_automatically(reads):
     reads.attendance.get_user_monthly_visits.return_value = []
     assert "2020-09" in await reads.get_visits(98765)
     reads.attendance.get_user_monthly_visits.assert_awaited_once_with(98765, year=2020, month=9)
+
+
+@pytest.mark.asyncio
+async def test_admin_name_search_lists_candidates_without_selecting_one(reads):
+    reads.attendance.get_sorted_participants.return_value = [
+        SimpleNamespace(last_name="Иванов", first_name="Иван", patronymic=None, telegram_id=771),
+        SimpleNamespace(last_name="Иванова", first_name="Анна", patronymic=None, telegram_id=772),
+        SimpleNamespace(last_name="Петров", first_name="Пётр", patronymic=None, telegram_id=773),
+    ]
+
+    result = await reads.find_user_candidates("иванов")
+
+    assert "Иванов Иван — Telegram ID 771" in result
+    assert "Иванова Анна — Telegram ID 772" in result
+    assert "Уточните Telegram ID" in result
+    assert "Пётр Петров" not in result
 
 
 @pytest.mark.asyncio
