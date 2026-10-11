@@ -82,7 +82,9 @@ async def test_max_steps_stops_tool_loop(agent_settings, conversation):
 
 @pytest.mark.asyncio
 async def test_fabricated_numbers_are_rejected(agent_settings, conversation):
-    service, _, memory = build_service(agent_settings, model=TestModel(custom_output_text="У вас 999 баллов"))
+    service, _, memory = build_service(
+        agent_settings, model=TestModel(call_tools=["bot_capabilities"], custom_output_text="У вас 999 баллов")
+    )
     assert (await service.answer(conversation, "сколько баллов")).status == AgentReplyStatus.UNAVAILABLE
     memory.append.assert_not_awaited()
 
@@ -178,7 +180,7 @@ async def test_internal_tool_dispatch_rejects_unknown_and_unauthorized(agent_set
     executions = []
     registry = action_registry(executions)
     service, users, _ = build_service(agent_settings)
-    deps = AgentDependencies(conversation, users, agent_settings)
+    deps = AgentDependencies(conversation, users, agent_settings, service.reads)
     from pybot.domain.agent import AgentAccessDeniedError
 
     ctx = Mock(deps=deps)
@@ -195,7 +197,7 @@ async def test_capabilities_admin_and_broadcast_policy(agent_settings, conversat
     from pybot.services.agent.tools import bot_capabilities
 
     service, users, _ = build_service(agent_settings)
-    deps = AgentDependencies(conversation, users, agent_settings)
+    deps = AgentDependencies(conversation, users, agent_settings, service.reads)
     ctx = Mock(deps=deps)
     student = await bot_capabilities(ctx)
     assert "/academic_points" not in student and "/broadcast" not in student
@@ -266,3 +268,25 @@ def test_approval_summary_mandatory_and_duplicate_tools_rejected():
         AgentToolRegistry((RegisteredAgentTool(Tool(action, requires_approval=True)),))
     with pytest.raises(ValueError, match="Duplicate"):
         AgentToolRegistry((RegisteredAgentTool(Tool(action)), RegisteredAgentTool(Tool(action))))
+
+
+@pytest.mark.parametrize(
+    ("answer", "evidence"),
+    [("9 минут; 1,50 балла", "09 минут; 1.5 балла"), ("-5 баллов", "−5 баллов"), ("2020-09-09", "2020-09-09")],
+)
+def test_number_validation_accepts_equivalent_formats(answer, evidence):
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+    from pybot.services.agent.service import AgentService
+
+    assert AgentService._validate_numbers(answer, [ModelRequest(parts=[ToolReturnPart("read", evidence)])]) == answer
+
+
+@pytest.mark.parametrize("answer", ["5 баллов", "999 баллов"])
+def test_number_validation_preserves_negative_sign_and_rejects_inventions(answer):
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+    from pybot.services.agent.service import AgentService
+
+    with pytest.raises(ValueError):
+        AgentService._validate_numbers(answer, [ModelRequest(parts=[ToolReturnPart("read", "-5 баллов")])])

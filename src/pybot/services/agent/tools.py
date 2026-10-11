@@ -11,32 +11,21 @@ from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.toolsets.abstract import ToolsetTool
 
-from ...core.config import AppSettings
 from ...domain.agent import AgentAccessDeniedError
-from ...dto.agent import AgentConversation
-from ..user_services.users import UserService
-
-
-@dataclass
-class AgentDependencies:
-    """Request-scoped services and authenticated transport context."""
-
-    conversation: AgentConversation
-    users: UserService
-    settings: AppSettings
-
-    async def get_roles(self) -> frozenset[str]:
-        """Read current roles from services rather than trusting model arguments."""
-        user = await self.users.find_user_by_telegram_id(self.conversation.telegram_id)
-        if user is None:
-            raise AgentAccessDeniedError
-        return frozenset(await self.users.find_all_user_roles(user.id) or ())
-
-    async def require_roles(self, allowed_roles: frozenset[str]) -> None:
-        """Re-check the actor at the moment a tool executes."""
-        roles = await self.get_roles()
-        if allowed_roles and not roles.intersection(allowed_roles):
-            raise AgentAccessDeniedError
+from .dependencies import AgentDependencies
+from .read_tools import (
+    get_attendance_month_top,
+    get_attendance_week_top,
+    get_bot_info,
+    get_competences_catalog,
+    get_my_attendance,
+    get_my_competences,
+    get_my_profile,
+    get_my_roles,
+    get_my_visits,
+    get_points_leaderboard,
+    get_roles_catalog,
+)
 
 
 @dataclass(frozen=True)
@@ -52,7 +41,27 @@ class AgentToolRegistry:
     """Keep tool policy next to its implementation without global registration."""
 
     def __init__(self, entries: tuple[RegisteredAgentTool, ...] | None = None) -> None:
-        self.entries = entries if entries is not None else (RegisteredAgentTool(Tool(bot_capabilities)),)
+        self.entries = (
+            entries
+            if entries is not None
+            else tuple(
+                RegisteredAgentTool(Tool(function))
+                for function in (
+                    bot_capabilities,
+                    get_my_profile,
+                    get_my_attendance,
+                    get_my_visits,
+                    get_attendance_week_top,
+                    get_attendance_month_top,
+                    get_points_leaderboard,
+                    get_roles_catalog,
+                    get_competences_catalog,
+                    get_my_roles,
+                    get_my_competences,
+                    get_bot_info,
+                )
+            )
+        )
         for entry in self.entries:
             if entry.tool.requires_approval and entry.confirmation_summary is None:
                 raise ValueError("Action tools must define a user-facing confirmation summary")
@@ -124,6 +133,8 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
     if roles.intersection(ctx.deps.settings.broadcast_allowed_roles):
         commands += " Рассылка — /broadcast или кнопка рассылки в меню."
     introduction = (
-        "Через агента сейчас доступна справка о функциях бота. Остальные функции открывайте командами или меню. "
+        "Через агента доступны мой профиль и баллы, мои посещения, топ посещаемости недели и месяца, "
+        "лидерборд баллов, каталоги ролей и компетенций, мои роли и компетенции, информация о боте. "
+        "Для изменения данных используйте команды или меню. "
     )
     return introduction + commands

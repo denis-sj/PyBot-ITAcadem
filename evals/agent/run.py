@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 import httpx2
+from fixtures import EvalReads
 from pydantic import BaseModel, TypeAdapter
 from pydantic_ai import Agent, DeferredToolRequests
 from pydantic_ai.messages import ModelResponse, ToolCallPart
@@ -17,7 +18,7 @@ from pybot.dto import UserReadDTO
 from pybot.dto.agent import AgentConversation
 from pybot.dto.value_objects import Points
 from pybot.infrastructure.adapters.polza_agent import PolzaAgentModel
-from pybot.services.agent.service import AGENT_INSTRUCTIONS, AgentService
+from pybot.services.agent.service import AgentService, build_agent_instructions
 from pybot.services.agent.tools import AgentDependencies, AgentToolRegistry
 from pybot.services.user_services.users import UserService
 
@@ -66,13 +67,13 @@ async def run_evals() -> int:
         model = PolzaAgentModel(settings, client).get_model()
         for case in cases:
             dependencies = AgentDependencies(
-                AgentConversation(chat_id=1, telegram_id=1), EvalUsers(case.roles), settings
+                AgentConversation(chat_id=1, telegram_id=1), EvalUsers(case.roles), settings, EvalReads()
             )
             agent = Agent(
                 model,
                 deps_type=AgentDependencies,
                 output_type=[str, DeferredToolRequests],
-                instructions=AGENT_INSTRUCTIONS,
+                instructions=build_agent_instructions(),
                 toolsets=[AgentToolRegistry().for_roles(case.roles)],
                 model_settings={"temperature": 0, "max_tokens": 1000, "parallel_tool_calls": False},
             )
@@ -81,7 +82,7 @@ async def run_evals() -> int:
                     result = await agent.run(
                         case.question,
                         deps=dependencies,
-                        usage_limits=UsageLimits(request_limit=settings.agent_max_steps),
+                        usage_limits=UsageLimits(request_limit=settings.agent_max_steps, tool_calls_limit=8),
                     )
                 if not isinstance(result.output, str):
                     print(f"{case.name}: FAIL unexpected_deferred_output")
@@ -96,7 +97,7 @@ async def run_evals() -> int:
                     if isinstance(part, ToolCallPart)
                 }
                 passed = (
-                    case.expected_tools.issubset(tools)
+                    case.expected_tools == tools
                     and all(phrase.lower() in text for phrase in case.required_phrases)
                     and not any(phrase.lower() in text for phrase in case.forbidden_phrases)
                 )

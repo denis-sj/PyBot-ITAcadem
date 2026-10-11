@@ -40,6 +40,7 @@ from ..services import (
     UserService,
     WeeklyLeaderboardPublisherService,
 )
+from ..services.agent.reads import AgentReadService
 from ..services.agent.runtime import AgentRuntime
 from ..services.agent.service import AgentService
 from ..services.agent.tools import AgentToolRegistry
@@ -285,6 +286,18 @@ class AgentProvider(Provider):
         return AgentToolRegistry()
 
     @provide(scope=Scope.REQUEST)
+    def reads(  # noqa: PLR0913
+        self,
+        profiles: UserProfileService,
+        attendance: AttendanceService,
+        leaderboard: LeaderboardService,
+        roles: UserRolesService,
+        user_competences: UserCompetenceService,
+        competences: CompetenceService,
+    ) -> AgentReadService:
+        return AgentReadService(profiles, attendance, leaderboard, roles, user_competences, competences)
+
+    @provide(scope=Scope.REQUEST)
     def service(  # noqa: PLR0913
         self,
         users: UserService,
@@ -293,8 +306,9 @@ class AgentProvider(Provider):
         runtime: AgentRuntime,
         registry: AgentToolRegistry,
         settings: AppSettings,
+        reads: AgentReadService,
     ) -> AgentService:
-        return AgentService(users, model, memory, runtime, registry, settings)
+        return AgentService(users, model, memory, runtime, registry, settings, reads)
 
 
 class HealthProvider(Provider):

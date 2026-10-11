@@ -719,9 +719,18 @@ through Telegram delivery and is cleaned when no waiter remains. This follows th
 current single-replica bot contract; multiple replicas require distributed sequencing
 and approval consumption before enabling the agent there.
 
-At stage 0 the only agent tool is `bot_capabilities`; it lists commands allowed for
-the actor's roles and makes no data changes. Actual reading and writing tools will
-be introduced in subsequent stages. Commands, active FSM scenarios, active
+Stage 1 adds read tools for the caller's profile and points, attendance summary and
+visits, attendance week/month tops, the points leaderboard, role/competence catalogs,
+the caller's roles/competences and bot information. They reuse existing command
+services and require current registration on every execution. Personal reads always
+use the Telegram actor; tools accept no recipient ID. Administrative reads and data
+changes remain unavailable through the agent at this stage.
+
+Attendance week top is the current week; `/leaderboard` is points for the previous
+calendar week. The month top defaults to the current Yekaterinburg month. Visit
+history asks for a month when several months exist, matching `/visits`; a single
+available month is selected automatically. Month arguments reject future periods.
+`bot_capabilities` lists commands according to the caller's current roles. Commands, active FSM scenarios, active
 `aiogram-dialog` contexts and non-text messages keep their existing handlers.
 
 Tests use Pydantic AI `TestModel`/`FunctionModel` and prohibit network model requests.
