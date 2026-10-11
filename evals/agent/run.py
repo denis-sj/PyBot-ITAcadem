@@ -69,7 +69,7 @@ async def run_evals() -> int:
     async with httpx2.AsyncClient(timeout=settings.agent_timeout_s) as client:
         model = PolzaAgentModel(settings, client).get_model()
         for case in cases:
-            registry = AgentToolRegistry()
+            registry = AgentToolRegistry(broadcast_allowed_roles=frozenset(settings.broadcast_allowed_roles))
             actions = Mock(spec=AgentActionsPort)
             dependencies = AgentDependencies(
                 AgentConversation(chat_id=-100123, topic_id=7, telegram_id=1),

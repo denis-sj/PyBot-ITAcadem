@@ -6,14 +6,21 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from pybot.core.constants import PointsTypeEnum, RoleEnum, TaskScheduleKind
-from pybot.domain.exceptions import AttendanceDomainError, InsufficientPointsBalanceError, RoleAlreadyAssignedError
-from pybot.dto import UserReadDTO
+from pybot.core.config import AppSettings
+from pybot.domain.exceptions import (
+    AttendanceDomainError,
+    DomainError,
+    InsufficientPointsBalanceError,
+    RoleAlreadyAssignedError,
+)
+from pybot.dto import BroadcastResult, UserReadDTO
 from pybot.dto.attendance import AttendanceRecordReadDTO
 from pybot.dto.competence_dto import CompetenceReadDTO
 from pybot.dto.role_dto import RoleReadDTO
 from pybot.dto.value_objects import Points
 from pybot.services.agent.actions import AgentActionService
 from pybot.services.attendance_service import AttendanceService
+from pybot.services.broadcast import BroadcastService
 from pybot.services.competence import CompetenceService
 from pybot.services.notification_facade import NotificationFacade
 from pybot.services.points import PointsService
@@ -37,7 +44,7 @@ def user(telegram_id: int, user_id: int = 10, *, academic: int = 30, reputation:
 
 
 @pytest.fixture
-def actions():
+def actions(settings_obj: AppSettings):
     return AgentActionService(
         Mock(spec=RoleRequestService),
         Mock(spec=UserService),
@@ -47,6 +54,8 @@ def actions():
         Mock(spec=CompetenceService),
         Mock(spec=AttendanceService),
         Mock(spec=NotificationFacade),
+        Mock(spec=BroadcastService),
+        settings_obj,
     )
 
 
@@ -156,3 +165,48 @@ async def test_manual_visit_preflight_rejects_future_and_duplicate_dates(actions
     with pytest.raises(AttendanceDomainError, match="уже есть посещение"):
         await actions.validate_manual_visit(22, date(2026, 8, 31), time(18), time(19))
     assert actions.attendance.create_manual_visit.await_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("audience", "target", "expected_method"),
+    [("all", None, "broadcast_for_all"), ("role", "Mentor", "broadcast_for_users_with_role")],
+)
+async def test_broadcast_dispatches_all_and_role_audiences(actions, audience, target, expected_method):
+    actions.broadcasts.broadcast_for_all = AsyncMock(return_value=BroadcastResult(attempted=4, sent=3))
+    actions.broadcasts.broadcast_for_users_with_role = AsyncMock(return_value=BroadcastResult(attempted=4, sent=3))
+
+    result = await actions.broadcast(audience, target, "Собрание клуба")
+
+    assert "попыток 4, доставлено 3" in result
+    getattr(actions.broadcasts, expected_method).assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_resolves_competence_and_preserves_exact_approved_text(actions):
+    competence = CompetenceReadDTO(id=7, name="Python", description="Программирование")
+    actions.competences.find_all_competencies = AsyncMock(return_value=[competence])
+    actions.broadcasts.broadcast_for_users_with_competence = AsyncMock(
+        return_value=BroadcastResult(attempted=2, sent=2)
+    )
+
+    await actions.validate_broadcast("competence", "python", "Собрание клуба")
+    result = await actions.broadcast("competence", "python", "Собрание клуба")
+
+    assert "доставлено 2" in result
+    actions.broadcasts.broadcast_for_users_with_competence.assert_awaited_once()
+    broadcast_call = actions.broadcasts.broadcast_for_users_with_competence.await_args
+    assert broadcast_call is not None
+    assert broadcast_call.args[0].competence_id == 7
+    assert broadcast_call.args[0].message == "Собрание клуба"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_rejects_empty_or_unknown_target_before_sending(actions):
+    with pytest.raises(DomainError):
+        await actions.validate_broadcast("all", None, "  \n ")
+    with pytest.raises(DomainError):
+        await actions.validate_broadcast("role", "Unknown", "Собрание клуба")
+
+    actions.broadcasts.broadcast_for_all.assert_not_called()
+    actions.broadcasts.broadcast_for_users_with_role.assert_not_called()

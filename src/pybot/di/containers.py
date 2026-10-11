@@ -283,8 +283,8 @@ class AgentProvider(Provider):
     runtime = provide(AgentRuntime, scope=Scope.APP)
 
     @provide(scope=Scope.APP)
-    def registry(self) -> AgentToolRegistry:
-        return AgentToolRegistry()
+    def registry(self, settings: AppSettings) -> AgentToolRegistry:
+        return AgentToolRegistry(broadcast_allowed_roles=frozenset(settings.broadcast_allowed_roles))
 
     @provide(scope=Scope.REQUEST)
     def reads(  # noqa: PLR0913
@@ -310,6 +310,8 @@ class AgentProvider(Provider):
         competences: CompetenceService,
         attendance: AttendanceService,
         notifications: NotificationFacade,
+        broadcasts: BroadcastService,
+        settings: AppSettings,
     ) -> AgentActionService:
         return AgentActionService(
             role_request_service,
@@ -320,6 +322,8 @@ class AgentProvider(Provider):
             competences,
             attendance,
             notifications,
+            broadcasts,
+            settings,
         )
 
     @provide(scope=Scope.REQUEST)

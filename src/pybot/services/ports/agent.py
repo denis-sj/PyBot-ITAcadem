@@ -1,7 +1,7 @@
 """Ports for agent model construction and text-only conversation storage."""
 
 from datetime import date, time
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic_ai.models import Model
 
@@ -9,6 +9,8 @@ from ...core.constants import PointsTypeEnum, RoleEnum
 from ...dto import UserReadDTO
 from ...dto.agent import AgentConversation, AgentMemoryMessage
 from ...dto.role_dto import CreateRoleRequestDTO
+
+AgentBroadcastAudience = Literal["all", "role", "competence"]
 
 
 class AgentModelPort(Protocol):
@@ -108,4 +110,12 @@ class AgentActionsPort(Protocol):
         self, telegram_id: int, visit_date: date, start_time: time, end_time: time, admin: UserReadDTO
     ) -> str:
         """Create a manual attendance entry after confirmation."""
+        ...
+
+    async def validate_broadcast(self, audience: AgentBroadcastAudience, target: str | None, message: str) -> None:
+        """Validate the selected audience and exact message before confirmation."""
+        ...
+
+    async def broadcast(self, audience: AgentBroadcastAudience, target: str | None, message: str) -> str:
+        """Send a confirmed broadcast through the existing broadcast service."""
         ...

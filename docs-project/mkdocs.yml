@@ -59,6 +59,7 @@ nav:
     - Установка: user-guide/installation.md
     - Конфигурация: user-guide/configuration.md
     - Примеры: user-guide/examples.md
+    - ИИ-агент: user-guide/ai-agent.md
   - Руководство разработчика:
     - Обзор: developer-guide/index.md
     - Архитектура: developer-guide/architecture.md

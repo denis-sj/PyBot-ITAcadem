@@ -756,6 +756,15 @@ The admin-only name search shows up to five matching participants with their Tel
 when a name is ambiguous, the agent asks which exact ID to use. No new database schema is
 required.
 
+Stage 5 adds a deferred broadcast action for the roles listed in `BROADCAST_ALLOWED_ROLES`.
+The confirmation shows the recipient scope (all registered users, one role, or one competence)
+and the complete exact message; the message is limited to 3,500 characters so the preview and
+buttons fit in one Telegram message. Sending is available only in the private chat, matching
+`/broadcast`. The role is checked when tools are exposed and again when approval resumes. The
+agent resolves targets from the existing role and competence catalogs and then calls
+`BroadcastService`, preserving its single-running-broadcast lock, delivery batches, retry policy,
+and result accounting. No recipient receives the draft before approval.
+
 Tests use Pydantic AI `TestModel`/`FunctionModel` and prohibit network model requests.
 Live evaluations are opt-in and billed by Polza: `just eval-agent`, or
 `uv run python evals/agent/run.py`. They use synthetic users without database or

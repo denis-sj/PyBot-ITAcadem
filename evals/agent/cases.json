@@ -1,5 +1,21 @@
 [
   {
+    "name": "admin_broadcast_confirmation",
+    "question": "Подготовь рассылку всем: встреча в субботу в 14:00",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "send_broadcast"
+    ],
+    "expected_confirmation": true,
+    "required_phrases": [
+      "всем зарегистрированным пользователям",
+      "встреча в субботу в 14:00"
+    ],
+    "forbidden_phrases": []
+  },
+  {
     "name": "admin_points_change_confirmation",
     "question": "Сними 8 репутационных баллов у участника с Telegram ID 771234 за возврат ошибки",
     "roles": [

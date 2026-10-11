@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from pydantic import JsonValue
 from pydantic_ai import RunContext, Tool
@@ -27,6 +27,7 @@ from .admin_action_tools import (
     validate_visit_delete,
     validate_visit_update,
 )
+from .broadcast_tools import broadcast_confirmation_summary, send_broadcast, validate_broadcast
 from .dependencies import AgentDependencies
 from .read_tools import (
     ADMIN_AGENT_ROLES,
@@ -58,12 +59,19 @@ class RegisteredAgentTool:
     tool: Tool[AgentDependencies]
     allowed_roles: frozenset[str] = frozenset()
     confirmation_summary: Callable[[ToolCallPart], str] | None = None
+    uses_broadcast_roles: bool = False
 
 
 class AgentToolRegistry:
     """Keep tool policy next to its implementation without global registration."""
 
-    def __init__(self, entries: tuple[RegisteredAgentTool, ...] | None = None) -> None:
+    def __init__(
+        self,
+        entries: tuple[RegisteredAgentTool, ...] | None = None,
+        *,
+        broadcast_allowed_roles: frozenset[str] = frozenset(),
+    ) -> None:
+        self.broadcast_allowed_roles = broadcast_allowed_roles
         if entries is None:
             public_tools = tuple(
                 RegisteredAgentTool(Tool(function))
@@ -158,7 +166,16 @@ class AgentToolRegistry:
                 frozenset({"Student"}),
                 _role_request_summary,
             )
-            self.entries = (*public_tools, role_request_tool, *admin_tools, *admin_action_tools)
+            broadcast_tool = RegisteredAgentTool(
+                Tool(
+                    send_broadcast,
+                    args_validator=validate_broadcast,
+                    requires_approval=True,
+                ),
+                confirmation_summary=broadcast_confirmation_summary,
+                uses_broadcast_roles=True,
+            )
+            self.entries = (*public_tools, role_request_tool, *admin_tools, *admin_action_tools, broadcast_tool)
         else:
             self.entries = entries
         for entry in self.entries:
@@ -179,15 +196,25 @@ class AgentToolRegistry:
         """Find a registered tool policy, rejecting unregistered names."""
         for entry in self.entries:
             if entry.tool.name == name:
+                if entry.uses_broadcast_roles:
+                    if not self.broadcast_allowed_roles:
+                        raise AgentAccessDeniedError
+                    return self.broadcast_allowed_roles
                 return entry.allowed_roles
         raise AgentAccessDeniedError
 
     def for_roles(self, roles: frozenset[str]) -> AuthorizedAgentToolset:
         """Expose only tools allowed for the current role."""
-        entries = tuple(
-            entry for entry in self.entries if not entry.allowed_roles or roles.intersection(entry.allowed_roles)
-        )
-        return AuthorizedAgentToolset(entries)
+        entries: list[RegisteredAgentTool] = []
+        for entry in self.entries:
+            resolved_entry = entry
+            if entry.uses_broadcast_roles:
+                if not self.broadcast_allowed_roles:
+                    continue
+                resolved_entry = replace(entry, allowed_roles=self.broadcast_allowed_roles, uses_broadcast_roles=False)
+            if not resolved_entry.allowed_roles or roles.intersection(resolved_entry.allowed_roles):
+                entries.append(resolved_entry)
+        return AuthorizedAgentToolset(tuple(entries))
 
 
 class AuthorizedAgentToolset(FunctionToolset[AgentDependencies]):

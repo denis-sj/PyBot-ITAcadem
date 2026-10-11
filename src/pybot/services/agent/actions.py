@@ -3,7 +3,7 @@
 from datetime import date, datetime, time
 
 from ...core import logger
-from ...core.config import YEKATERINBURG_TZ
+from ...core.config import YEKATERINBURG_TZ, AppSettings
 from ...core.constants import PointsTypeEnum, RoleEnum, TaskScheduleKind
 from ...domain.exceptions import (
     AttendanceDomainError,
@@ -14,14 +14,26 @@ from ...domain.exceptions import (
     UserNotFoundError,
     ZeroPointsAdjustmentError,
 )
-from ...dto import AdjustUserPointsDTO, NotifyUserDTO, UserReadDTO
+from ...dto import (
+    AdjustUserPointsDTO,
+    BroadcastDTO,
+    BroadcastResult,
+    CompetenceBroadcastDTO,
+    NotifyUserDTO,
+    RoleBroadcastDTO,
+    UserReadDTO,
+)
 from ...dto.attendance import AttendanceRecordReadDTO
+from ...dto.competence_dto import CompetenceReadDTO
 from ...dto.role_dto import CreateRoleRequestDTO
 from ...dto.value_objects import Points
+from ...utils import normalize_message
 from ..attendance_service import AttendanceService
+from ..broadcast import BroadcastService
 from ..competence import CompetenceService
 from ..notification_facade import NotificationFacade
 from ..points import PointsService
+from ..ports.agent import AgentBroadcastAudience
 from ..role_request import RoleRequestService
 from ..user_services.user_competence import UserCompetenceService
 from ..user_services.user_roles import UserRolesService
@@ -41,6 +53,8 @@ class AgentActionService:
         competences: CompetenceService,
         attendance: AttendanceService,
         notifications: NotificationFacade,
+        broadcasts: BroadcastService,
+        settings: AppSettings,
     ) -> None:
         self.role_requests = role_requests
         self.users = users
@@ -50,6 +64,8 @@ class AgentActionService:
         self.competences = competences
         self.attendance = attendance
         self.notifications = notifications
+        self.broadcasts = broadcasts
+        self.settings = settings
 
     async def validate_role_request(self, user_id: int) -> None:
         """Check current eligibility before asking the user to confirm a role request."""
@@ -254,6 +270,75 @@ class AgentActionService:
             admin_name=self._full_name(admin),
         )
         return f"Посещение {visit_date.isoformat()} добавлено: {start_time:%H:%M}–{end_time:%H:%M}."
+
+    async def validate_broadcast(self, audience: AgentBroadcastAudience, target: str | None, message: str) -> None:
+        """Validate the exact draft and target before any recipients can receive it."""
+        await self._prepare_broadcast(audience, target, message)
+
+    async def broadcast(self, audience: AgentBroadcastAudience, target: str | None, message: str) -> str:
+        """Send the confirmed draft through the same service as /broadcast."""
+        resolved_target, normalized_message = await self._prepare_broadcast(audience, target, message)
+
+        if audience == "all":
+            result = await self.broadcasts.broadcast_for_all(BroadcastDTO(broadcast_message=normalized_message))
+        elif isinstance(resolved_target, RoleEnum):
+            result = await self.broadcasts.broadcast_for_users_with_role(
+                RoleBroadcastDTO(broadcast_message=normalized_message, role_name=resolved_target.value)
+            )
+        elif isinstance(resolved_target, CompetenceReadDTO):
+            result = await self.broadcasts.broadcast_for_users_with_competence(
+                CompetenceBroadcastDTO(broadcast_message=normalized_message, competence_id=resolved_target.id)
+            )
+        else:
+            raise DomainError("Не удалось определить получателей рассылки.")
+
+        return self._format_broadcast_result(result)
+
+    async def _resolve_broadcast_target(
+        self, audience: AgentBroadcastAudience, target: str | None
+    ) -> RoleEnum | CompetenceReadDTO | None:
+        if audience == "all":
+            if target is not None:
+                raise DomainError("Для рассылки всем не указывайте фильтр получателей.")
+            return None
+        if target is None or not target.strip():
+            raise DomainError("Уточните роль или компетенцию получателей.")
+        if audience == "role":
+            try:
+                return RoleEnum(target)
+            except ValueError as error:
+                raise DomainError("Выберите роль Student, Mentor или Admin.") from error
+        if audience == "competence":
+            competences = await self.competences.find_all_competencies()
+            selected = next((item for item in competences if item.name.casefold() == target.casefold()), None)
+            if selected is None:
+                raise DomainError("Такой компетенции нет в каталоге.")
+            return selected
+        raise DomainError("Выберите получателей: все, роль или компетенцию.")
+
+    def _normalize_broadcast_message(self, message: str) -> str:
+        try:
+            normalized = normalize_message(message, max_length=self.settings.broadcast_max_text_length)
+        except ValueError as error:
+            raise DomainError("Текст рассылки не может быть пустым.") from error
+        if normalized != message:
+            raise DomainError("Текст рассылки изменится при отправке. Укоротите текст и уберите пробелы по краям.")
+        return normalized
+
+    async def _prepare_broadcast(
+        self, audience: AgentBroadcastAudience, target: str | None, message: str
+    ) -> tuple[RoleEnum | CompetenceReadDTO | None, str]:
+        resolved_target = await self._resolve_broadcast_target(audience, target)
+        normalized_message = self._normalize_broadcast_message(message)
+        return resolved_target, normalized_message
+
+    @staticmethod
+    def _format_broadcast_result(result: BroadcastResult) -> str:
+        return (
+            f"Рассылка завершена: попыток {result.attempted}, доставлено {result.sent}, "
+            f"временных ошибок {result.failed_temporary}, окончательных ошибок {result.failed_permanent}, "
+            f"пропущено недопустимых получателей {result.skipped_invalid_user}."
+        )
 
     async def _find_visit(self, telegram_id: int, visit_date: date) -> tuple[UserReadDTO, AttendanceRecordReadDTO]:
         user = await self.find_user(telegram_id)
