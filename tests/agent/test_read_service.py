@@ -26,6 +26,7 @@ from pybot.services.leaderboard import LeaderboardService
 from pybot.services.user_services.user_competence import UserCompetenceService
 from pybot.services.user_services.user_profile import UserProfileService
 from pybot.services.user_services.user_roles import UserRolesService
+from pybot.services.user_services.users import UserService
 
 
 @pytest.fixture
@@ -37,6 +38,7 @@ def reads():
         Mock(spec=UserRolesService),
         Mock(spec=UserCompetenceService),
         Mock(spec=CompetenceService),
+        Mock(spec=UserService),
     )
 
 
@@ -235,6 +237,48 @@ async def test_profile_reuses_calculated_progress_and_omits_private_identifiers(
     reads.profiles.build_profile_view.assert_awaited_once_with(user)
     assert "Иванов Иван" in result and "баллы: 75" in result and "25 из 75" in result
     assert "баллы: 12" in result and "98765" not in result and "77777" not in result
+    reads.users.find_user_by_telegram_id.return_value = user
+    target_profile = await reads.get_profile_for_telegram_id(77777)
+    assert target_profile.startswith("Профиль участника:")
+    assert "Мой профиль:" not in target_profile
+
+
+@pytest.mark.asyncio
+async def test_admin_target_lookup_uses_telegram_id_and_existing_internal_id(reads, monkeypatch):
+    user = UserReadDTO(
+        id=42,
+        telegram_id=771234,
+        first_name="Анна",
+        last_name="Иванова",
+        patronymic=None,
+        academic_points=Points(value=0, point_type=PointsTypeEnum.ACADEMIC),
+        reputation_points=Points(value=0, point_type=PointsTypeEnum.REPUTATION),
+        join_date=date(2020, 1, 1),
+    )
+    reads.users.find_user_by_telegram_id.return_value = user
+    formatted_profile = Mock(return_value="Профиль участника: Иванова Анна")
+    monkeypatch.setattr(reads, "_format_profile", formatted_profile)
+    target_profile = await reads.get_profile_for_telegram_id(771234)
+    reads.users.find_user_by_telegram_id.assert_awaited_once_with(771234)
+    reads.profiles.build_profile_view.assert_awaited_once_with(user)
+    formatted_profile.assert_called_once_with(user, reads.profiles.build_profile_view.return_value, "Профиль участника")
+    assert target_profile.startswith("Профиль участника: Иванова Анна")
+
+    reads.attendance.get_user_monthly_summary.return_value = summary()
+    text = await reads.get_attendance_for_telegram_id(771234, AgentMonth(year=2020, month=9))
+    reads.attendance.get_user_monthly_summary.assert_awaited_once_with(42, year=2020, month=9)
+    assert "Студент" in text and "98765" not in text and "771234" not in text
+
+
+@pytest.mark.asyncio
+async def test_admin_target_not_found_is_reported_without_leaking_identifier(reads):
+    reads.users.find_user_by_telegram_id.return_value = None
+    assert await reads.get_profile_for_telegram_id(771234) == "Пользователь не зарегистрирован."
+    assert (
+        await reads.get_attendance_for_telegram_id(771234, AgentMonth(year=2020, month=9))
+        == "Пользователь не зарегистрирован."
+    )
+    reads.attendance.get_user_monthly_summary.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

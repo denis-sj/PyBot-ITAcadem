@@ -726,6 +726,13 @@ services and require current registration on every execution. Personal reads alw
 use the Telegram actor; tools accept no recipient ID. Administrative reads and data
 changes remain unavailable through the agent at this stage.
 
+Stage 2 adds the current accounting month and current club attendance report, plus
+chat/topic IDs for administrators. Administrators can read a registered user's
+profile or monthly attendance by an explicitly supplied Telegram ID. These tools
+are role-filtered and re-check the current `Admin` role at execution. Report output
+is plain text and bounded to 25 ranking rows and 30 detailed visits; larger reports
+state how many rows were omitted. Other-user lookup does not infer an ID from a name.
+
 Attendance week top is the current week; `/leaderboard` is points for the previous
 calendar week. The month top defaults to the current Yekaterinburg month. Visit
 history asks for a month when several months exist, matching `/visits`; a single

@@ -14,6 +14,21 @@ class EvalReads(AgentReadService):
     async def get_profile(self, user: UserReadDTO) -> str:
         return "Мой профиль: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
 
+    async def get_profile_for_telegram_id(self, telegram_id: int) -> str:
+        return "Профиль участника: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
+
+    async def get_attendance_for_telegram_id(self, telegram_id: int, period: AgentMonth) -> str:
+        return f"Посещаемость участника за {period.year}-{period.month:02}: 90 минут; посещений: 2; место: 3."
+
+    @staticmethod
+    def get_current_accounting_month() -> str:
+        return "Текущий расчётный месяц учёта: октябрь 2026; номер месяца: 10."
+
+    async def get_club_attendance_report(self, detailed: bool = False) -> str:
+        if detailed:
+            return "Отчёт клуба за октябрь 2026: всего 90 минут; Тест — 90 минут; 2026-10-07, 18:00–19:30."
+        return "Отчёт клуба за октябрь 2026: всего 90 минут; активных участников: 1."
+
     async def get_attendance_summary(self, user_id: int) -> str:
         return "Мои посещения текущего месяца: 90 минут (1 ч 30 мин); посещений: 2; место: 3."
 

@@ -294,8 +294,9 @@ class AgentProvider(Provider):
         roles: UserRolesService,
         user_competences: UserCompetenceService,
         competences: CompetenceService,
+        users: UserService,
     ) -> AgentReadService:
-        return AgentReadService(profiles, attendance, leaderboard, roles, user_competences, competences)
+        return AgentReadService(profiles, attendance, leaderboard, roles, user_competences, competences, users)
 
     @provide(scope=Scope.REQUEST)
     def service(  # noqa: PLR0913

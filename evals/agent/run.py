@@ -67,7 +67,10 @@ async def run_evals() -> int:
         model = PolzaAgentModel(settings, client).get_model()
         for case in cases:
             dependencies = AgentDependencies(
-                AgentConversation(chat_id=1, telegram_id=1), EvalUsers(case.roles), settings, EvalReads()
+                AgentConversation(chat_id=-100123, topic_id=7, telegram_id=1),
+                EvalUsers(case.roles),
+                settings,
+                EvalReads(),
             )
             agent = Agent(
                 model,

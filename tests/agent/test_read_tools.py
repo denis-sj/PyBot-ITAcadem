@@ -17,11 +17,20 @@ READ_TOOLS = {
     "get_my_competences",
     "get_bot_info",
 }
+ADMIN_READ_TOOLS = {
+    "get_current_month",
+    "get_club_attendance_report",
+    "get_user_profile",
+    "get_user_attendance",
+    "get_current_chat_id",
+}
 
 
 def test_registered_user_sees_stage_one_read_tools_without_approval():
     registry = AgentToolRegistry()
     assert set(registry.for_roles(frozenset({"Student"})).policies) == READ_TOOLS | {"bot_capabilities"}
+    assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
+    assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
     assert all(not entry.tool.requires_approval for entry in registry.entries)
 
 

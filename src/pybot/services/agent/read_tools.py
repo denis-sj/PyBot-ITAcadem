@@ -6,6 +6,8 @@ from ...dto.agent_read import AgentMonth
 from ...presentation.texts.texts import INFO_GLOBAL
 from .dependencies import AgentDependencies
 
+ADMIN_AGENT_ROLES = frozenset({"Admin"})
+
 
 async def get_my_profile(ctx: RunContext[AgentDependencies]) -> str:
     """Мой профиль: баллы, уровни, роли и компетенции (/profile)."""
@@ -70,3 +72,34 @@ async def get_bot_info(ctx: RunContext[AgentDependencies]) -> str:
     """Информация о боте (/info)."""
     await ctx.deps.get_actor()
     return INFO_GLOBAL
+
+
+async def get_current_month(ctx: RunContext[AgentDependencies]) -> str:
+    """Расчётный месяц учёта посещаемости (/current_month, только Admin)."""
+    return ctx.deps.reads.get_current_accounting_month()
+
+
+async def get_club_attendance_report(ctx: RunContext[AgentDependencies], detailed: bool = False) -> str:
+    """Отчёт клуба за текущий месяц (/report, только Admin); detailed добавляет записи посещений."""
+    return await ctx.deps.reads.get_club_attendance_report(detailed)
+
+
+async def get_user_profile(ctx: RunContext[AgentDependencies], telegram_id: int) -> str:
+    """Профиль другого участника по точному Telegram ID (только Admin)."""
+    return await ctx.deps.reads.get_profile_for_telegram_id(telegram_id)
+
+
+async def get_user_attendance(
+    ctx: RunContext[AgentDependencies], telegram_id: int, period: AgentMonth | None = None
+) -> str:
+    """Посещаемость участника по Telegram ID и месяцу (только Admin); без месяца берётся текущий."""
+    return await ctx.deps.reads.get_attendance_for_telegram_id(telegram_id, period or AgentMonth.current())
+
+
+async def get_current_chat_id(ctx: RunContext[AgentDependencies]) -> str:
+    """ID текущего чата и топика (/chat_id, только Admin)."""
+    conversation = ctx.deps.conversation
+    text = f"ID чата: {conversation.chat_id}."
+    if conversation.topic_id is not None:
+        text += f" ID топика: {conversation.topic_id}."
+    return text

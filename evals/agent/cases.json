@@ -267,5 +267,94 @@
       "75",
       "12"
     ]
+  },
+  {
+    "name": "admin_current_month",
+    "question": "Какой сейчас расчётный месяц учёта посещаемости?",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "get_current_month"
+    ],
+    "required_phrases": [
+      "расчётный месяц"
+    ],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "admin_attendance_report",
+    "question": "Покажи сводный отчёт по посещаемости клуба за текущий месяц",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "get_club_attendance_report"
+    ],
+    "required_phrases": [
+      "отчёт",
+      "90"
+    ],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "admin_detailed_attendance_report",
+    "question": "Покажи подробный отчёт по посещаемости клуба за текущий месяц",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "get_club_attendance_report"
+    ],
+    "required_phrases": [
+      "2026-10-07",
+      "18:00–19:30"
+    ],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "admin_profile_for_explicit_telegram_id",
+    "question": "Покажи профиль пользователя с Telegram ID 1",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "get_user_profile"
+    ],
+    "required_phrases": [
+      "75",
+      "12"
+    ],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "admin_attendance_for_explicit_telegram_id",
+    "question": "Сколько посещений у пользователя с Telegram ID 1 за сентябрь 2020?",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "get_user_attendance"
+    ],
+    "required_phrases": [
+      "90",
+      "2"
+    ],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "admin_current_chat_id",
+    "question": "Назови ID текущего чата и топика",
+    "roles": [
+      "Admin"
+    ],
+    "expected_tools": [
+      "get_current_chat_id"
+    ],
+    "required_phrases": [
+      "ID чата",
+      "ID топика"
+    ],
+    "forbidden_phrases": []
   }
 ]

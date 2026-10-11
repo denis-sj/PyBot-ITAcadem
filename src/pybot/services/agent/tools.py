@@ -14,10 +14,14 @@ from pydantic_ai.toolsets.abstract import ToolsetTool
 from ...domain.agent import AgentAccessDeniedError
 from .dependencies import AgentDependencies
 from .read_tools import (
+    ADMIN_AGENT_ROLES,
     get_attendance_month_top,
     get_attendance_week_top,
     get_bot_info,
+    get_club_attendance_report,
     get_competences_catalog,
+    get_current_chat_id,
+    get_current_month,
     get_my_attendance,
     get_my_competences,
     get_my_profile,
@@ -25,6 +29,8 @@ from .read_tools import (
     get_my_visits,
     get_points_leaderboard,
     get_roles_catalog,
+    get_user_attendance,
+    get_user_profile,
 )
 
 
@@ -41,10 +47,8 @@ class AgentToolRegistry:
     """Keep tool policy next to its implementation without global registration."""
 
     def __init__(self, entries: tuple[RegisteredAgentTool, ...] | None = None) -> None:
-        self.entries = (
-            entries
-            if entries is not None
-            else tuple(
+        if entries is None:
+            public_tools = tuple(
                 RegisteredAgentTool(Tool(function))
                 for function in (
                     bot_capabilities,
@@ -61,7 +65,19 @@ class AgentToolRegistry:
                     get_bot_info,
                 )
             )
-        )
+            admin_tools = tuple(
+                RegisteredAgentTool(Tool(function), ADMIN_AGENT_ROLES)
+                for function in (
+                    get_current_month,
+                    get_club_attendance_report,
+                    get_user_profile,
+                    get_user_attendance,
+                    get_current_chat_id,
+                )
+            )
+            self.entries = public_tools + admin_tools
+        else:
+            self.entries = entries
         for entry in self.entries:
             if entry.tool.requires_approval and entry.confirmation_summary is None:
                 raise ValueError("Action tools must define a user-facing confirmation summary")
@@ -129,12 +145,15 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
             " Администратору: /current_month, /report, /chat_id, /academic_points, /reputation_points, "
             "/addrole, /removerole, /addcompetence, /removecompetence, /edit_visits. "
             "Для импорта посещаемости по фото используйте /report и кнопку добавления часов."
+            " Через агента администратор также может читать отчёт, текущий расчётный месяц, ID текущего чата "
+            "и профиль или посещаемость пользователя по его Telegram ID."
         )
     if roles.intersection(ctx.deps.settings.broadcast_allowed_roles):
         commands += " Рассылка — /broadcast или кнопка рассылки в меню."
     introduction = (
         "Через агента доступны мой профиль и баллы, мои посещения, топ посещаемости недели и месяца, "
         "лидерборд баллов, каталоги ролей и компетенций, мои роли и компетенции, информация о боте. "
+        "Инструменты чтения для администратора доступны только его роли. "
         "Для изменения данных используйте команды или меню. "
     )
     return introduction + commands
