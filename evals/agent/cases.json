@@ -1,5 +1,21 @@
 [
   {
+    "name": "student_role_request_confirmation",
+    "question": "Подай заявку на роль наставника",
+    "roles": [
+      "Student"
+    ],
+    "expected_tools": [
+      "request_mentor_role"
+    ],
+    "expected_confirmation": true,
+    "required_phrases": [
+      "заявку",
+      "mentor"
+    ],
+    "forbidden_phrases": []
+  },
+  {
     "name": "student_capabilities",
     "question": "Что умеет бот?",
     "roles": [

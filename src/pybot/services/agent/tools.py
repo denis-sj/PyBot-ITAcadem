@@ -32,6 +32,7 @@ from .read_tools import (
     get_user_attendance,
     get_user_profile,
 )
+from .role_tools import request_mentor_role, validate_mentor_request
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,16 @@ class AgentToolRegistry:
                     get_current_chat_id,
                 )
             )
-            self.entries = public_tools + admin_tools
+            role_request_tool = RegisteredAgentTool(
+                Tool(
+                    request_mentor_role,
+                    args_validator=validate_mentor_request,
+                    requires_approval=True,
+                ),
+                frozenset({"Student"}),
+                _role_request_summary,
+            )
+            self.entries = (*public_tools, role_request_tool, *admin_tools)
         else:
             self.entries = entries
         for entry in self.entries:
@@ -154,6 +164,12 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
         "Через агента доступны мой профиль и баллы, мои посещения, топ посещаемости недели и месяца, "
         "лидерборд баллов, каталоги ролей и компетенций, мои роли и компетенции, информация о боте. "
         "Инструменты чтения для администратора доступны только его роли. "
-        "Для изменения данных используйте команды или меню. "
+        "Подать заявку на роль Mentor можно через агента после подтверждения. "
     )
     return introduction + commands
+
+
+def _role_request_summary(call: ToolCallPart) -> str:
+    """Return code-owned approval text for the fixed Mentor request."""
+    del call
+    return "Подать от вашего имени заявку на роль Mentor. После отправки её рассмотрят администраторы."

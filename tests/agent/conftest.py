@@ -10,11 +10,12 @@ from pydantic_ai.models.test import TestModel
 
 from pybot.core.config import AppSettings
 from pybot.dto.agent import AgentConversation
+from pybot.services.agent.actions import AgentActionService
 from pybot.services.agent.reads import AgentReadService
 from pybot.services.agent.runtime import AgentRuntime
 from pybot.services.agent.service import AgentService
 from pybot.services.agent.tools import AgentToolRegistry
-from pybot.services.ports.agent import AgentMemoryPort, AgentModelPort
+from pybot.services.ports.agent import AgentActionsPort, AgentMemoryPort, AgentModelPort
 from pybot.services.user_services.users import UserService
 
 
@@ -66,6 +67,7 @@ def build_service(
     model: Model | None = None,
     registry: AgentToolRegistry | None = None,
     reads: AgentReadService | None = None,
+    actions: AgentActionsPort | None = None,
 ) -> tuple[AgentService, Mock, Mock]:
     users = Mock(spec=UserService)
     users.find_user_by_telegram_id = AsyncMock(return_value=Mock(id=42))
@@ -86,5 +88,6 @@ def build_service(
         registry or AgentToolRegistry(),
         settings,
         reads or Mock(spec=AgentReadService),
+        actions or Mock(spec=AgentActionService),
     )
     return service, users, memory

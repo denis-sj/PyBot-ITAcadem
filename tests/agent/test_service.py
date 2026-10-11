@@ -130,6 +130,66 @@ async def test_approval_author_and_double_click(agent_settings, conversation):
 
 
 @pytest.mark.asyncio
+async def test_role_request_is_preflighted_then_created_only_after_approval(agent_settings, conversation):
+    from pydantic_ai.models.test import TestModel
+    from pybot.services.ports.agent import AgentActionsPort
+
+    actions = Mock(spec=AgentActionsPort)
+
+    service, users, memory = build_service(
+        agent_settings,
+        model=TestModel(call_tools=["request_mentor_role"], custom_output_text="Заявка отправлена"),
+        actions=actions,
+    )
+    users.find_all_user_roles.return_value = {"Student"}
+
+    reply = await service.answer(conversation, "Подай заявку на роль наставника")
+
+    assert reply.confirmation_id is not None
+    assert reply.text.startswith("Подать от вашего имени заявку на роль Mentor")
+    actions.validate_role_request.assert_awaited_once_with(42)
+    actions.request_mentor_role.assert_not_awaited()
+    memory.append.assert_not_awaited()
+
+    service.runtime.bind_message(reply.confirmation_id, 55)
+    confirmed = await service.confirm(reply.confirmation_id, conversation, 55, approved=True)
+
+    assert confirmed.text == "Заявка отправлена"
+    actions.request_mentor_role.assert_awaited_once_with(42)
+    assert actions.validate_role_request.await_count >= 2
+    memory.append.assert_awaited_once_with(conversation, "Подай заявку на роль наставника", "Заявка отправлена")
+
+
+@pytest.mark.asyncio
+async def test_ineligible_role_request_does_not_reach_confirmation(agent_settings, conversation):
+    from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from pybot.domain.exceptions import RoleRequestNotAllowedError
+    from pybot.services.ports.agent import AgentActionsPort
+
+    actions = Mock(spec=AgentActionsPort)
+
+    def model(messages, info):
+        if any(
+            isinstance(message, ModelRequest) and any(isinstance(part, RetryPromptPart) for part in message.parts)
+            for message in messages
+        ):
+            return ModelResponse(parts=[TextPart("Заявку сейчас подать нельзя")])
+        return ModelResponse(parts=[ToolCallPart("request_mentor_role", {}, tool_call_id="request-role")])
+
+    service, users, _ = build_service(agent_settings, model=FunctionModel(model), actions=actions)
+    users.find_all_user_roles.return_value = {"Student"}
+    actions.validate_role_request.side_effect = RoleRequestNotAllowedError()
+
+    reply = await service.answer(conversation, "Подай заявку на роль наставника")
+
+    assert reply.confirmation_id is None
+    assert reply.text == "Заявку сейчас подать нельзя"
+    actions.request_mentor_role.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["cancel", "expired", "restart", "wrong_message", "wrong_topic"])
 async def test_cancel_stale_and_bound_context(agent_settings, conversation, mode):
     executions = []
@@ -180,7 +240,7 @@ async def test_internal_tool_dispatch_rejects_unknown_and_unauthorized(agent_set
     executions = []
     registry = action_registry(executions)
     service, users, _ = build_service(agent_settings)
-    deps = AgentDependencies(conversation, users, agent_settings, service.reads)
+    deps = AgentDependencies(conversation, users, agent_settings, service.reads, service.actions)
     from pybot.domain.agent import AgentAccessDeniedError
 
     ctx = Mock(deps=deps)
@@ -197,7 +257,7 @@ async def test_capabilities_admin_and_broadcast_policy(agent_settings, conversat
     from pybot.services.agent.tools import bot_capabilities
 
     service, users, _ = build_service(agent_settings)
-    deps = AgentDependencies(conversation, users, agent_settings, service.reads)
+    deps = AgentDependencies(conversation, users, agent_settings, service.reads, service.actions)
     ctx = Mock(deps=deps)
     student = await bot_capabilities(ctx)
     assert "/academic_points" not in student and "/broadcast" not in student

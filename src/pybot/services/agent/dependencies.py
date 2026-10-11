@@ -6,6 +6,7 @@ from ...core.config import AppSettings
 from ...domain.agent import AgentAccessDeniedError
 from ...dto import UserReadDTO
 from ...dto.agent import AgentConversation
+from ..ports.agent import AgentActionsPort
 from ..user_services.users import UserService
 from .reads import AgentReadService
 
@@ -18,6 +19,7 @@ class AgentDependencies:
     users: UserService
     settings: AppSettings
     reads: AgentReadService
+    actions: AgentActionsPort
 
     async def get_actor(self) -> UserReadDTO:
         """Re-check registration immediately before reading personal data."""

@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 
 import httpx2
-from fixtures import EvalReads
+from fixtures import EvalActions, EvalReads
 from pydantic import BaseModel, TypeAdapter
 from pydantic_ai import Agent, DeferredToolRequests
 from pydantic_ai.messages import ModelResponse, ToolCallPart
@@ -28,6 +28,7 @@ class EvalCase(BaseModel):
     question: str
     roles: frozenset[str]
     expected_tools: set[str]
+    expected_confirmation: bool = False
     required_phrases: list[str]
     forbidden_phrases: list[str]
 
@@ -66,18 +67,20 @@ async def run_evals() -> int:
     async with httpx2.AsyncClient(timeout=settings.agent_timeout_s) as client:
         model = PolzaAgentModel(settings, client).get_model()
         for case in cases:
+            registry = AgentToolRegistry()
             dependencies = AgentDependencies(
                 AgentConversation(chat_id=-100123, topic_id=7, telegram_id=1),
                 EvalUsers(case.roles),
                 settings,
                 EvalReads(),
+                EvalActions(),
             )
             agent = Agent(
                 model,
                 deps_type=AgentDependencies,
                 output_type=[str, DeferredToolRequests],
                 instructions=build_agent_instructions(),
-                toolsets=[AgentToolRegistry().for_roles(case.roles)],
+                toolsets=[registry.for_roles(case.roles)],
                 model_settings={"temperature": 0, "max_tokens": 1000, "parallel_tool_calls": False},
             )
             try:
@@ -87,11 +90,11 @@ async def run_evals() -> int:
                         deps=dependencies,
                         usage_limits=UsageLimits(request_limit=settings.agent_max_steps, tool_calls_limit=8),
                     )
-                if not isinstance(result.output, str):
-                    print(f"{case.name}: FAIL unexpected_deferred_output")
-                    failures += 1
-                    continue
-                text = AgentService._validate_numbers(result.output, result.new_messages()).lower()
+                is_confirmation = isinstance(result.output, DeferredToolRequests)
+                if is_confirmation:
+                    text = "\n".join(registry.describe_action(call) for call in result.output.approvals).lower()
+                else:
+                    text = AgentService._validate_numbers(result.output, result.new_messages()).lower()
                 tools = {
                     part.tool_name
                     for message in result.new_messages()
@@ -100,7 +103,8 @@ async def run_evals() -> int:
                     if isinstance(part, ToolCallPart)
                 }
                 passed = (
-                    case.expected_tools == tools
+                    case.expected_confirmation == is_confirmation
+                    and case.expected_tools == tools
                     and all(phrase.lower() in text for phrase in case.required_phrases)
                     and not any(phrase.lower() in text for phrase in case.forbidden_phrases)
                 )

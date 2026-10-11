@@ -40,6 +40,7 @@ from ..services import (
     UserService,
     WeeklyLeaderboardPublisherService,
 )
+from ..services.agent.actions import AgentActionService
 from ..services.agent.reads import AgentReadService
 from ..services.agent.runtime import AgentRuntime
 from ..services.agent.service import AgentService
@@ -308,8 +309,10 @@ class AgentProvider(Provider):
         registry: AgentToolRegistry,
         settings: AppSettings,
         reads: AgentReadService,
+        role_request_service: RoleRequestService,
     ) -> AgentService:
-        return AgentService(users, model, memory, runtime, registry, settings, reads)
+        actions = AgentActionService(role_request_service)
+        return AgentService(users, model, memory, runtime, registry, settings, reads, actions)
 
 
 class HealthProvider(Provider):

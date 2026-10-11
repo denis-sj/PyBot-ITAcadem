@@ -5,6 +5,7 @@ from typing import Protocol
 from pydantic_ai.models import Model
 
 from ...dto.agent import AgentConversation, AgentMemoryMessage
+from ...dto.role_dto import CreateRoleRequestDTO
 
 
 class AgentModelPort(Protocol):
@@ -32,4 +33,16 @@ class AgentMemoryPort(Protocol):
 
     async def is_agent_reply(self, chat_id: int, topic_id: int | None, message_id: int) -> bool:
         """Check provenance independently of conversation memory expiration."""
+        ...
+
+
+class AgentActionsPort(Protocol):
+    """Preflight and execute confirmed agent actions through application services."""
+
+    async def validate_role_request(self, user_id: int) -> None:
+        """Check eligibility for the actor's role request."""
+        ...
+
+    async def request_mentor_role(self, user_id: int) -> CreateRoleRequestDTO:
+        """Create the actor's Mentor request after approval."""
         ...

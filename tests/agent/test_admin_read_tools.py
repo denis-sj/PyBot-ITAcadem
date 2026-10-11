@@ -38,7 +38,7 @@ def test_stage_two_admin_read_tools_are_hidden_from_students(agent_settings):
     registry = AgentToolRegistry()
     assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
     assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
-    assert all(not entry.tool.requires_approval for entry in registry.entries)
+    assert [entry.tool.name for entry in registry.entries if entry.tool.requires_approval] == ["request_mentor_role"]
 
 
 def model_call(

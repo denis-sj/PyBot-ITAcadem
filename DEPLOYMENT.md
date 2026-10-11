@@ -740,6 +740,12 @@ available month is selected automatically. Month arguments reject future periods
 `bot_capabilities` lists commands according to the caller's current roles. Commands, active FSM scenarios, active
 `aiogram-dialog` contexts and non-text messages keep their existing handlers.
 
+Stage 3 adds the student's Mentor role request. The agent checks the existing role-request
+eligibility rules before asking for confirmation, binds the confirmation to the author and
+the exact message, then calls `RoleRequestService` after approval. The service checks the
+rules again before persisting and notifying administrators. Cancelling or an expired
+confirmation creates no request.
+
 Tests use Pydantic AI `TestModel`/`FunctionModel` and prohibit network model requests.
 Live evaluations are opt-in and billed by Polza: `just eval-agent`, or
 `uv run python evals/agent/run.py`. They use synthetic users without database or

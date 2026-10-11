@@ -2,7 +2,19 @@
 
 from pybot.dto import UserReadDTO
 from pybot.dto.agent_read import AgentMonth
+from pybot.dto.role_dto import CreateRoleRequestDTO
 from pybot.services.agent.reads import AgentReadService
+from pybot.services.ports.agent import AgentActionsPort
+
+
+class EvalActions(AgentActionsPort):
+    """Allow safe preflight in evals while making accidental mutation fail closed."""
+
+    async def validate_role_request(self, user_id: int) -> None:
+        return None
+
+    async def request_mentor_role(self, user_id: int) -> CreateRoleRequestDTO:
+        raise RuntimeError("Live evaluations cannot mutate role requests")
 
 
 class EvalReads(AgentReadService):

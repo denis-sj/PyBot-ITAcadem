@@ -28,10 +28,15 @@ ADMIN_READ_TOOLS = {
 
 def test_registered_user_sees_stage_one_read_tools_without_approval():
     registry = AgentToolRegistry()
-    assert set(registry.for_roles(frozenset({"Student"})).policies) == READ_TOOLS | {"bot_capabilities"}
+    assert set(registry.for_roles(frozenset({"Student"})).policies) == READ_TOOLS | {
+        "bot_capabilities",
+        "request_mentor_role",
+    }
     assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
     assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
-    assert all(not entry.tool.requires_approval for entry in registry.entries)
+    role_request = next(entry for entry in registry.entries if entry.tool.name == "request_mentor_role")
+    assert role_request.tool.requires_approval
+    assert role_request.allowed_roles == frozenset({"Student"})
 
 
 @pytest.mark.asyncio
@@ -107,7 +112,7 @@ async def test_each_read_rechecks_registration_before_service_call(agent_setting
     reads = Mock(spec=AgentReadService)
     service, users, _ = build_service(agent_settings, reads=reads)
     users.find_user_by_telegram_id.return_value = None
-    ctx = Mock(deps=AgentDependencies(conversation, users, agent_settings, service.reads))
+    ctx = Mock(deps=AgentDependencies(conversation, users, agent_settings, service.reads, service.actions))
     with pytest.raises(AgentAccessDeniedError):
         await getattr(read_tools, tool_name)(ctx)
     assert reads.mock_calls == []
