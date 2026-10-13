@@ -335,7 +335,8 @@ class AgentActionService:
     @staticmethod
     def _format_broadcast_result(result: BroadcastResult) -> str:
         return (
-            f"Рассылка завершена: попыток {result.attempted}, доставлено {result.sent}, "
+            f"Рассылка завершена: доставлено {result.sent} из {result.attempted}, "
+            f"не доставлено {result.attempted - result.sent}, "
             f"временных ошибок {result.failed_temporary}, окончательных ошибок {result.failed_permanent}, "
             f"пропущено недопустимых получателей {result.skipped_invalid_user}."
         )

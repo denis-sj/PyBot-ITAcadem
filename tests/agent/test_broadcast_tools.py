@@ -95,6 +95,7 @@ async def test_broadcast_preview_is_exact_and_sending_waits_for_author_confirmat
     result = await service.confirm(pending.confirmation_id, private_conversation, 99, approved=True)
 
     assert result.status == AgentReplyStatus.SUCCESS
+    assert result.text == "Рассылка выполнена: получателей 3, доставлено 3."
     actions.broadcast.assert_awaited_once_with("role", "Student", "Собрание в 18:00")
 
 

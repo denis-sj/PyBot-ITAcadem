@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import DeferredToolRequests
 from pydantic_ai.messages import ModelMessage
+from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage
 
 from ...dto.agent import AgentConversation
@@ -22,6 +23,7 @@ class PendingAgentRequest:
     question: str
     messages: list[ModelMessage]
     requests: DeferredToolRequests
+    model: Model
     usage: RunUsage
     expires_at: float
     message_id: int | None = None

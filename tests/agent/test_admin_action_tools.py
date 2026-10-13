@@ -101,11 +101,6 @@ def test_points_confirmation_uses_exact_action_arguments():
 
 
 async def admin_points_model(messages, info):
-    if any(
-        isinstance(message, ModelRequest) and any(isinstance(part, ToolReturnPart) for part in message.parts)
-        for message in messages
-    ):
-        return ModelResponse(parts=[TextPart("Баллы изменены")])
     return ModelResponse(
         parts=[
             ToolCallPart(
@@ -165,10 +160,12 @@ async def test_points_change_runs_only_after_confirmation(agent_settings, conver
     service.runtime.bind_message(pending.confirmation_id, 99)
     result = await service.confirm(pending.confirmation_id, conversation, 99, approved=True)
 
-    assert result.text == "Баллы изменены"
+    assert result.text == "Участнику Ивану начислено 10 баллов."
     actions.adjust_points.assert_awaited_once_with(42, 771234, PointsTypeEnum.ACADEMIC, 10, None)
     assert actions.validate_points_adjustment.await_count == 2
-    memory.append.assert_awaited_once_with(conversation, "Начисли 10 академических баллов за доклад", "Баллы изменены")
+    memory.append.assert_awaited_once_with(
+        conversation, "Начисли 10 академических баллов за доклад", "Участнику Ивану начислено 10 баллов."
+    )
 
 
 @pytest.mark.asyncio

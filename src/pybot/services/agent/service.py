@@ -1,6 +1,5 @@
 """Agent orchestration with bounded model runs and deferred tool approvals."""
 
-import asyncio
 import re
 import time
 from dataclasses import replace
@@ -12,11 +11,13 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryPromptPart,
     TextPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
 )
+from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ...core import logger
@@ -26,6 +27,7 @@ from ...domain.agent import AgentAccessDeniedError
 from ...dto.agent import AgentConversation, AgentReply, AgentReplyStatus
 from ..ports.agent import AgentActionsPort, AgentMemoryPort, AgentModelPort
 from ..user_services.users import UserService
+from .model_timeout import AgentTimeoutModel
 from .reads import AgentReadService
 from .runtime import AgentRuntime, PendingAgentRequest
 from .tools import AgentDependencies, AgentToolRegistry
@@ -88,17 +90,16 @@ class AgentService:
         if not self.settings.agent_enabled:
             return AgentReply(status=AgentReplyStatus.UNAVAILABLE)
         try:
-            async with asyncio.timeout(self.settings.agent_timeout_s):
-                user = await self.users.find_user_by_telegram_id(conversation.telegram_id)
-                if user is None:
-                    return AgentReply(status=AgentReplyStatus.REGISTRATION_REQUIRED)
-                history: list[ModelMessage] = []
-                for message in await self.memory.load(conversation):
-                    if message.role == "user":
-                        history.append(ModelRequest(parts=[UserPromptPart(message.text)]))
-                    else:
-                        history.append(ModelResponse(parts=[TextPart(message.text)]))
-                return await self._run(conversation, question, history, prompt=question)
+            user = await self.users.find_user_by_telegram_id(conversation.telegram_id)
+            if user is None:
+                return AgentReply(status=AgentReplyStatus.REGISTRATION_REQUIRED)
+            history: list[ModelMessage] = []
+            for message in await self.memory.load(conversation):
+                if message.role == "user":
+                    history.append(ModelRequest(parts=[UserPromptPart(message.text)]))
+                else:
+                    history.append(ModelResponse(parts=[TextPart(message.text)]))
+            return await self._run(conversation, question, history, prompt=question)
         except AgentAccessDeniedError:
             return AgentReply(status=AgentReplyStatus.ACCESS_DENIED)
         except Exception as error:
@@ -127,26 +128,13 @@ class AgentService:
             return AgentReply(status=AgentReplyStatus.CANCELLED)
         if not self.settings.agent_enabled:
             return AgentReply(status=AgentReplyStatus.EXPIRED, alert=True)
-        results = DeferredToolResults(
-            approvals={
-                call.tool_call_id: True if index == 0 else ToolDenied("Подтверждается только первое действие.")
-                for index, call in enumerate(request.requests.approvals)
-            }
-        )
         try:
-            async with asyncio.timeout(self.settings.agent_timeout_s):
-                if await self.users.find_user_by_telegram_id(conversation.telegram_id) is None:
-                    return AgentReply(status=AgentReplyStatus.REGISTRATION_REQUIRED)
-                dependencies = AgentDependencies(conversation, self.users, self.settings, self.reads, self.actions)
-                for call in request.requests.approvals:
-                    await dependencies.require_roles(self.registry.get_policy(call.tool_name))
-                return await self._run(
-                    conversation,
-                    request.question,
-                    request.messages,
-                    deferred=results,
-                    usage=request.usage,
-                )
+            if await self.users.find_user_by_telegram_id(conversation.telegram_id) is None:
+                return AgentReply(status=AgentReplyStatus.REGISTRATION_REQUIRED)
+            dependencies = AgentDependencies(conversation, self.users, self.settings, self.reads, self.actions)
+            primary_call = request.requests.approvals[0]
+            await dependencies.require_roles(self.registry.get_policy(primary_call.tool_name))
+            return await self._execute_approved_action(request, dependencies)
         except AgentAccessDeniedError:
             return AgentReply(status=AgentReplyStatus.ACCESS_DENIED)
         except Exception as error:
@@ -165,14 +153,8 @@ class AgentService:
     ) -> AgentReply:
         dependencies = AgentDependencies(conversation, self.users, self.settings, self.reads, self.actions)
         roles = await dependencies.get_roles()
-        agent = Agent(
-            self.model.get_model(),
-            deps_type=AgentDependencies,
-            output_type=[str, DeferredToolRequests],
-            instructions=build_agent_instructions(),
-            toolsets=[self.registry.for_roles(roles)],
-            model_settings={"temperature": 0, "max_tokens": 1000, "parallel_tool_calls": False},
-        )
+        model = AgentTimeoutModel(self.model.get_model(), self.settings.agent_timeout_s)
+        agent = self._create_agent(model, roles)
         result = await agent.run(
             prompt,
             deps=dependencies,
@@ -203,6 +185,7 @@ class AgentService:
                     question=question,
                     messages=self._replace_action_arguments(result.all_messages(), canonical_calls),
                     requests=canonical_requests,
+                    model=model,
                     usage=result.usage,
                     expires_at=time.monotonic() + self.settings.agent_memory_ttl_s,
                 )
@@ -217,6 +200,80 @@ class AgentService:
         await self.memory.append(conversation, question, answer)
         logger.info("event=agent_run status=completed")
         return AgentReply(text=answer)
+
+    def _create_agent(
+        self, model: Model, roles: frozenset[str]
+    ) -> Agent[AgentDependencies, str | DeferredToolRequests]:
+        """Build a run with tools filtered to the actor's current roles."""
+        return Agent(
+            model,
+            deps_type=AgentDependencies,
+            output_type=[str, DeferredToolRequests],
+            instructions=build_agent_instructions(),
+            toolsets=[self.registry.for_roles(roles)],
+            model_settings={"temperature": 0, "max_tokens": 1000, "parallel_tool_calls": False},
+        )
+
+    async def _execute_approved_action(
+        self, request: PendingAgentRequest, dependencies: AgentDependencies
+    ) -> AgentReply:
+        """Execute the approved tool and return its result without another model request."""
+        primary_call = request.requests.approvals[0]
+        roles = await dependencies.get_roles()
+        agent = self._create_agent(request.model, roles)
+        deferred_results = self._approval_results(request.requests.approvals)
+        action_result: str | None = None
+        async with agent.iter(
+            message_history=request.messages,
+            deferred_tool_results=deferred_results,
+            deps=dependencies,
+            usage=request.usage,
+            usage_limits=UsageLimits(request_limit=request.usage.requests, tool_calls_limit=8),
+        ) as agent_run:
+            try:
+                async for _node in agent_run:
+                    action_result = self._find_action_result(agent_run.all_messages(), primary_call.tool_call_id)
+                    if action_result is not None:
+                        break
+            except Exception:
+                action_result = self._find_action_result(agent_run.all_messages(), primary_call.tool_call_id)
+                if action_result is None:
+                    raise
+        if action_result is None:
+            logger.error("event=agent_action status=failed reason=missing_tool_result")
+            return AgentReply(text="Действие не выполнено: проверка после подтверждения не пройдена.")
+        try:
+            await self.memory.append(request.conversation, request.question, action_result)
+        except Exception as error:
+            logger.error(
+                "event=agent_action status=completed memory_status=failed error_type={error_type}",
+                error_type=type(error).__name__,
+            )
+        logger.info("event=agent_action status=completed")
+        return AgentReply(text=action_result)
+
+    @staticmethod
+    def _approval_results(approvals: list[ToolCallPart]) -> DeferredToolResults:
+        """Approve the first deferred action and deny every additional action explicitly."""
+        return DeferredToolResults(
+            approvals={
+                call.tool_call_id: True if index == 0 else ToolDenied("Подтверждается только первое действие.")
+                for index, call in enumerate(approvals)
+            }
+        )
+
+    @staticmethod
+    def _find_action_result(messages: list[ModelMessage], tool_call_id: str) -> str | None:
+        """Extract the confirmed action's result before the graph can request the model again."""
+        for message in reversed(messages):
+            if not isinstance(message, ModelRequest):
+                continue
+            for part in reversed(message.parts):
+                if isinstance(part, ToolReturnPart) and part.tool_call_id == tool_call_id:
+                    return part.content if isinstance(part.content, str) else "Действие обработано."
+                if isinstance(part, RetryPromptPart) and part.tool_call_id == tool_call_id:
+                    return "Действие не выполнено: проверка после подтверждения не пройдена."
+        return None
 
     @staticmethod
     def _replace_action_arguments(messages: list[ModelMessage], calls: list[ToolCallPart]) -> list[ModelMessage]:

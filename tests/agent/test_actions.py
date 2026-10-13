@@ -178,7 +178,7 @@ async def test_broadcast_dispatches_all_and_role_audiences(actions, audience, ta
 
     result = await actions.broadcast(audience, target, "Собрание клуба")
 
-    assert "попыток 4, доставлено 3" in result
+    assert "доставлено 3 из 4, не доставлено 1" in result
     getattr(actions.broadcasts, expected_method).assert_awaited_once()
 
 

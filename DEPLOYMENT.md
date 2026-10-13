@@ -703,8 +703,8 @@ Optional agent settings:
   older message needs `@bot` to address the agent.
 - `AGENT_MAX_STEPS=8`: model request limit, between 1 and 20; resumed approvals share
   the original request budget. Each run also permits at most 8 tool calls.
-- `AGENT_TIMEOUT_S=60`: between 5 and 300 seconds for a run, excluding time in the
-  per-user queue and time waiting for approval. The HTTP client has the same timeout.
+- `AGENT_TIMEOUT_S=60`: between 5 and 300 seconds per model HTTP request; it does not limit
+  application tools or confirmed actions. The HTTP client has the same timeout.
 
 Redis is required for agent memory even when `FSM_STORAGE_BACKEND=memory`.
 Text memory keys include chat, topic and author. Tool traces are not persisted.

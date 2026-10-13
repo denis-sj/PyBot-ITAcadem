@@ -2,7 +2,7 @@ import asyncio
 from unittest.mock import Mock
 
 import pytest
-from pydantic_ai import RunContext, Tool
+from pydantic_ai import RunContext, Tool, ToolDenied
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
@@ -132,7 +132,7 @@ async def test_approval_author_and_double_click(agent_settings, conversation):
 @pytest.mark.asyncio
 async def test_one_confirmation_executes_only_first_of_multiple_actions(agent_settings, conversation):
     executions = []
-    denied_tool_results = []
+    model_calls = 0
     roles = frozenset({"Admin"})
 
     async def first_action(ctx: RunContext[AgentDependencies]) -> str:
@@ -157,18 +157,10 @@ async def test_one_confirmation_executes_only_first_of_multiple_actions(agent_se
     )
 
     def model(messages, info):
-        denied_tool_results.extend(
-            part.content
-            for message in messages
-            if isinstance(message, ModelRequest)
-            for part in message.parts
-            if isinstance(part, ToolReturnPart) and part.tool_call_id == "second"
-        )
-        if any(
-            isinstance(message, ModelRequest) and any(isinstance(part, ToolReturnPart) for part in message.parts)
-            for message in messages
-        ):
-            return ModelResponse(parts=[TextPart("Первое действие выполнено")])
+        nonlocal model_calls
+        model_calls += 1
+        if model_calls > 1:
+            raise RuntimeError("The confirmed action must not depend on another model request")
         return ModelResponse(
             parts=[
                 ToolCallPart("first_action", {}, tool_call_id="first"),
@@ -194,8 +186,98 @@ async def test_one_confirmation_executes_only_first_of_multiple_actions(agent_se
 
     assert confirmed.text == "Первое действие выполнено"
     assert repeated.status == AgentReplyStatus.EXPIRED
-    assert denied_tool_results == ["Подтверждается только первое действие."]
+    assert model_calls == 1
     assert executions == ["first"]
+
+
+def test_approval_results_deny_every_action_after_the_first():
+    from pybot.services.agent.service import AgentService
+
+    results = AgentService._approval_results(
+        [
+            ToolCallPart("first_action", {}, tool_call_id="first"),
+            ToolCallPart("second_action", {}, tool_call_id="second"),
+        ]
+    )
+
+    assert results.approvals["first"] is True
+    assert isinstance(results.approvals["second"], ToolDenied)
+    assert results.approvals["second"].message == "Подтверждается только первое действие."
+
+
+@pytest.mark.asyncio
+async def test_slow_confirmed_action_is_not_limited_by_model_timeout(agent_settings, conversation):
+    executions = []
+    roles = frozenset({"Admin"})
+    agent_settings.agent_timeout_s = 0.5
+
+    async def slow_action(ctx: RunContext[AgentDependencies]) -> str:
+        await ctx.deps.require_roles(roles)
+        await asyncio.sleep(agent_settings.agent_timeout_s + 0.05)
+        executions.append("completed")
+        return "Медленное действие завершено"
+
+    registry = AgentToolRegistry(
+        (RegisteredAgentTool(Tool(slow_action, requires_approval=True), roles, lambda call, recipient: "Подтвердить"),)
+    )
+    service, users, _ = build_service(
+        agent_settings,
+        model=TestModel(call_tools=["slow_action"]),
+        registry=registry,
+    )
+    users.find_all_user_roles.return_value = {"Admin"}
+
+    pending = await service.answer(conversation, "Выполни медленное действие")
+    assert pending.confirmation_id is not None
+    service.runtime.bind_message(pending.confirmation_id, 55)
+
+    result = await service.confirm(pending.confirmation_id, conversation, 55, approved=True)
+
+    assert result.text == "Медленное действие завершено"
+    assert executions == ["completed"]
+
+
+@pytest.mark.asyncio
+async def test_action_result_survives_memory_failure_without_followup_model_request(agent_settings, conversation):
+    model_calls = 0
+    executions = []
+
+    def model(messages, info):
+        nonlocal model_calls
+        model_calls += 1
+        if model_calls > 1:
+            raise RuntimeError("model failed after action")
+        return ModelResponse(parts=[ToolCallPart("change_data", {}, tool_call_id="change-data")])
+
+    async def change_data(ctx: RunContext[AgentDependencies]) -> str:
+        await ctx.deps.require_roles(frozenset({"Admin"}))
+        executions.append("completed")
+        return "Изменение выполнено"
+
+    registry = AgentToolRegistry(
+        (
+            RegisteredAgentTool(
+                Tool(change_data, requires_approval=True),
+                frozenset({"Admin"}),
+                lambda call, recipient: "Подтвердить",
+            ),
+        )
+    )
+    service, users, memory = build_service(agent_settings, model=FunctionModel(model), registry=registry)
+    users.find_all_user_roles.return_value = {"Admin"}
+    memory.append.side_effect = RuntimeError("memory unavailable")
+
+    pending = await service.answer(conversation, "Измени данные")
+    assert pending.confirmation_id is not None
+    service.runtime.bind_message(pending.confirmation_id, 55)
+
+    result = await service.confirm(pending.confirmation_id, conversation, 55, approved=True)
+
+    assert result.status == AgentReplyStatus.SUCCESS
+    assert result.text == "Изменение выполнено"
+    assert executions == ["completed"]
+    assert model_calls == 1
+    memory.append.assert_awaited_once_with(conversation, "Измени данные", "Изменение выполнено")
 
 
 @pytest.mark.asyncio
@@ -223,10 +305,14 @@ async def test_role_request_is_preflighted_then_created_only_after_approval(agen
     service.runtime.bind_message(reply.confirmation_id, 55)
     confirmed = await service.confirm(reply.confirmation_id, conversation, 55, approved=True)
 
-    assert confirmed.text == "Заявка отправлена"
+    assert confirmed.text == "Заявка на роль Mentor отправлена администраторам."
     actions.request_mentor_role.assert_awaited_once_with(42)
     assert actions.validate_role_request.await_count >= 2
-    memory.append.assert_awaited_once_with(conversation, "Подай заявку на роль наставника", "Заявка отправлена")
+    memory.append.assert_awaited_once_with(
+        conversation,
+        "Подай заявку на роль наставника",
+        "Заявка на роль Mentor отправлена администраторам.",
+    )
 
 
 @pytest.mark.asyncio
