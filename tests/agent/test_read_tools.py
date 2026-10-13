@@ -231,10 +231,9 @@ async def test_invalid_model_month_never_reaches_attendance_service(agent_settin
 
 
 @pytest.mark.asyncio
-async def test_read_question_through_telegram_handler_is_immediate_reply(agent_settings, monkeypatch):
+async def test_read_question_through_telegram_handler_is_immediate_reply(agent_settings, agent_bot):
     from unittest.mock import AsyncMock
 
-    from aiogram.types import Message
     from pydantic_ai.models.test import TestModel
 
     from pybot.presentation.bot.handlers.agent.handlers import handle_agent_message
@@ -249,12 +248,12 @@ async def test_read_question_through_telegram_handler_is_immediate_reply(agent_s
     )
     memory.mark_reply = AsyncMock()
     send = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=50))
-    monkeypatch.setattr(Message, "answer", send)
+    agent_bot.send_message = send
     question = build_message("Сколько у меня посещений?")
-    await handle_agent_message(question, service, service.runtime, memory)
+    await handle_agent_message(question, service, service.runtime, memory, bot=agent_bot)
     reads.get_attendance_summary.assert_awaited_once_with(42)
     assert send.await_args is not None
-    assert send.await_args.args[0] == "Посещений: 2"
+    assert send.await_args.kwargs["text"] == "Посещений: 2"
     assert send.await_args.kwargs["parse_mode"] is None
     assert send.await_args.kwargs["message_thread_id"] == 3
     assert send.await_args.kwargs["reply_parameters"].message_id == question.message_id

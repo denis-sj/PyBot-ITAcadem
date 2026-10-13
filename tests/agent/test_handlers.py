@@ -6,6 +6,7 @@ import pytest
 from aiogram import Bot, Dispatcher, Router
 from aiogram.enums import MessageOriginType
 from aiogram.filters import Command
+from aiogram.methods import SendMessage
 from aiogram.types import CallbackQuery, Message, MessageOriginUser, TextQuote, Update, User
 from dishka import Provider, Scope, make_async_container, provide
 from dishka.integrations.aiogram import AiogramProvider, setup_dishka
@@ -33,6 +34,28 @@ from pybot.services.ports.agent import AgentActionsPort, AgentMemoryPort
 from tests.agent.conftest import build_message, build_service
 
 
+def patch_telegram_api(bot: Bot, monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    methods: list[object] = []
+
+    async def make_request(request_bot: Bot, method: object, timeout: int | None = None) -> object:
+        del timeout
+        methods.append(method)
+        if isinstance(method, SendMessage):
+            return build_message(
+                text=method.text,
+                chat_type="private" if int(method.chat_id) > 0 else "supergroup",
+                chat_id=int(method.chat_id),
+                topic_id=method.message_thread_id,
+                sender_id=request_bot.id,
+                sender_is_bot=True,
+                message_id=50 + len(methods),
+            ).as_(request_bot)
+        return True
+
+    monkeypatch.setattr(bot.session, "make_request", make_request)
+    return methods
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("message_source", "question", "can_confirm"),
@@ -52,7 +75,7 @@ from tests.agent.conftest import build_message, build_service
     ],
 )
 async def test_action_telegram_id_must_come_from_authors_own_text(
-    agent_settings, monkeypatch, message_source, question, can_confirm
+    agent_settings, agent_bot, message_source, question, can_confirm
 ):
     def role_change_model(messages, info):
         if any(
@@ -104,9 +127,9 @@ async def test_action_telegram_id_must_come_from_authors_own_text(
         message = message.model_copy(update={"quote": TextQuote(text="Telegram ID 771234", position=0)})
 
     send_reply = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True))
-    monkeypatch.setattr(Message, "answer", send_reply)
+    agent_bot.send_message = send_reply
 
-    await handle_agent_message(message, service, service.runtime, memory)
+    await handle_agent_message(message, service, service.runtime, memory, bot=agent_bot)
 
     assert bool(service.runtime.pending) is can_confirm
     if can_confirm:
@@ -115,11 +138,11 @@ async def test_action_telegram_id_must_come_from_authors_own_text(
         assert actions.find_user.await_count == 0
         sent_call = send_reply.await_args
         assert sent_call is not None
-        assert "@username или Telegram ID в своём сообщении" in sent_call.args[0]
+        assert "@username или Telegram ID в своём сообщении" in sent_call.kwargs["text"]
 
 
 @pytest.mark.asyncio
-async def test_forwarded_message_still_runs_read_tools(agent_settings, monkeypatch):
+async def test_forwarded_message_still_runs_read_tools(agent_settings, monkeypatch, agent_bot):
     service, users, memory = build_service(
         agent_settings,
         model=TestModel(call_tools=["get_my_profile"], custom_output_text="Профиль прочитан"),
@@ -138,15 +161,13 @@ async def test_forwarded_message_still_runs_read_tools(agent_settings, monkeypat
             )
         }
     )
-    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True)))
-
-    await handle_agent_message(message, service, service.runtime, memory)
+    await handle_agent_message(message, service, service.runtime, memory, bot=agent_bot)
 
     get_profile.assert_awaited_once_with(users.find_user_by_telegram_id.return_value)
 
 
 @pytest.mark.asyncio
-async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings, monkeypatch):
+async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings, agent_bot):
     service, _, memory = build_service(agent_settings)
     runtime = service.runtime
     memory.mark_reply = AsyncMock()
@@ -157,8 +178,8 @@ async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings
         return sent
 
     answer = AsyncMock(side_effect=send)
-    monkeypatch.setattr(Message, "answer", answer)
-    await handle_agent_message(build_message(), service, runtime, memory)
+    agent_bot.send_message = answer
+    await handle_agent_message(build_message(), service, runtime, memory, bot=agent_bot)
     assert answer.await_args is not None
     kwargs = answer.await_args.kwargs
     assert kwargs["parse_mode"] is None
@@ -169,20 +190,96 @@ async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings
 
 
 @pytest.mark.asyncio
-async def test_agent_run_started_log_contains_chat_type_without_question_text(agent_settings, monkeypatch):
+@pytest.mark.parametrize(
+    ("chat_type", "chat_id", "topic_id"),
+    [
+        ("private", 11, None),
+        ("group", -22, None),
+        ("supergroup", -100, 3),
+    ],
+)
+async def test_real_aiogram_message_sends_reply_to_private_group_and_topic(
+    agent_settings, monkeypatch, chat_type, chat_id, topic_id
+):
+    bot = Bot("99:test-token")
+    service, _, memory = build_service(agent_settings)
+    memory.mark_reply = AsyncMock()
+    message = build_message(chat_type=chat_type, chat_id=chat_id, topic_id=topic_id).as_(bot)
+    methods = patch_telegram_api(bot, monkeypatch)
+
+    try:
+        await handle_agent_message(message, service, service.runtime, memory, bot=bot)
+    finally:
+        await bot.session.close()
+
+    send = next(method for method in methods if isinstance(method, SendMessage))
+    assert send.chat_id == chat_id
+    assert send.message_thread_id == topic_id
+    assert send.reply_parameters is not None
+    assert send.reply_parameters.message_id == message.message_id
+    assert send.parse_mode is None
+    memory.mark_reply.assert_awaited_once_with(chat_id, topic_id, 51)
+
+
+@pytest.mark.asyncio
+async def test_confirmation_sends_real_aiogram_reply_to_original_message_in_topic(agent_settings, monkeypatch):
+    bot = Bot("99:test-token")
+    service, _, memory = build_service(agent_settings)
+    confirm = AsyncMock(return_value=AgentReply(text="Роль обновлена."))
+    monkeypatch.setattr(service, "confirm", confirm)
+    memory.mark_reply = AsyncMock()
+    original = build_message(message_id=4, chat_type="supergroup", chat_id=-100, topic_id=3)
+    confirmation = build_message(
+        sender_id=99,
+        sender_is_bot=True,
+        message_id=50,
+        chat_type="supergroup",
+        chat_id=-100,
+        topic_id=3,
+        reply=original,
+    ).as_(bot)
+    callback = CallbackQuery(
+        id="real-callback",
+        from_user=User(id=11, is_bot=False, first_name="Tester"),
+        chat_instance="c",
+        message=confirmation,
+    ).as_(bot)
+    methods = patch_telegram_api(bot, monkeypatch)
+
+    try:
+        await handle_agent_confirmation(
+            callback,
+            AgentConfirmation(confirmation_id="confirm-1", approved=True),
+            service,
+            service.runtime,
+            memory,
+            bot=bot,
+        )
+    finally:
+        await bot.session.close()
+
+    send = next(method for method in methods if isinstance(method, SendMessage))
+    assert send.chat_id == -100
+    assert send.message_thread_id == 3
+    assert send.reply_parameters is not None
+    assert send.reply_parameters.message_id == original.message_id
+    assert memory.mark_reply.await_args is not None
+    assert memory.mark_reply.await_args.args == (-100, 3, 53)
+
+
+@pytest.mark.asyncio
+async def test_agent_run_started_log_contains_chat_type_without_question_text(agent_settings, monkeypatch, agent_bot):
     service, _, memory = build_service(agent_settings)
     log = Mock()
     monkeypatch.setattr(agent_handlers, "logger", log)
-    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True)))
-
-    await handle_agent_message(build_message("PRIVATE_SENTINEL"), service, service.runtime, memory)
+    await handle_agent_message(build_message("PRIVATE_SENTINEL"), service, service.runtime, memory, bot=agent_bot)
 
     log.info.assert_called_once_with("event=agent_run status=started chat_type={chat_type}", chat_type="supergroup")
     assert "PRIVATE_SENTINEL" not in repr(log.info.call_args)
 
 
 @pytest.mark.asyncio
-async def test_confirmation_keyboard_and_message_binding(agent_settings, monkeypatch):
+async def test_confirmation_keyboard_and_message_binding(agent_settings, monkeypatch, agent_bot):
     service, _, memory = build_service(agent_settings)
     answer_service = AsyncMock(return_value=AgentReply(text="x" * 4001, confirmation_id="abc"))
     monkeypatch.setattr(service, "answer", answer_service)
@@ -190,10 +287,10 @@ async def test_confirmation_keyboard_and_message_binding(agent_settings, monkeyp
     first_sent = build_message(sender_id=99, sender_is_bot=True, message_id=50)
     last_sent = build_message(sender_id=99, sender_is_bot=True, message_id=51)
     answer = AsyncMock(side_effect=[first_sent, last_sent])
-    monkeypatch.setattr(Message, "answer", answer)
+    agent_bot.send_message = answer
     bind_message = Mock()
     monkeypatch.setattr(service.runtime, "bind_message", bind_message)
-    await handle_agent_message(build_message(), service, service.runtime, memory)
+    await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
     assert answer.await_count == 2
     assert answer.await_args_list[0].kwargs["reply_markup"] is None
     buttons = answer.await_args_list[1].kwargs["reply_markup"].inline_keyboard[0]
@@ -204,7 +301,7 @@ async def test_confirmation_keyboard_and_message_binding(agent_settings, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_failed_later_preview_chunk_invalidates_confirmation(agent_settings, monkeypatch):
+async def test_failed_later_preview_chunk_invalidates_confirmation(agent_settings, monkeypatch, agent_bot):
     service, _, memory = build_service(agent_settings)
     monkeypatch.setattr(
         service,
@@ -214,10 +311,10 @@ async def test_failed_later_preview_chunk_invalidates_confirmation(agent_setting
     memory.mark_reply = AsyncMock()
     service.runtime.pending["abc"] = Mock()
     answer = AsyncMock(side_effect=[build_message(sender_id=99, sender_is_bot=True), RuntimeError("send failed")])
-    monkeypatch.setattr(Message, "answer", answer)
+    agent_bot.send_message = answer
 
     with pytest.raises(RuntimeError, match="send failed"):
-        await handle_agent_message(build_message(), service, service.runtime, memory)
+        await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
 
     assert answer.await_count == 2
     assert "abc" not in service.runtime.pending
@@ -237,6 +334,7 @@ async def test_failed_later_preview_chunk_invalidates_confirmation(agent_setting
         service,
         service.runtime,
         memory,
+        bot=agent_bot,
     )
     assert callback_answer.await_args is not None
     assert callback_answer.await_args.args[0] == AGENT_EXPIRED
@@ -245,7 +343,7 @@ async def test_failed_later_preview_chunk_invalidates_confirmation(agent_setting
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("foreign", [True, False])
-async def test_callback_alert_does_not_remove_keyboard(agent_settings, monkeypatch, foreign):
+async def test_callback_alert_does_not_remove_keyboard(agent_settings, monkeypatch, foreign, agent_bot):
     service, _, memory = build_service(agent_settings)
     monkeypatch.setattr(
         service,
@@ -261,7 +359,12 @@ async def test_callback_alert_does_not_remove_keyboard(agent_settings, monkeypat
     monkeypatch.setattr(CallbackQuery, "answer", answer)
     monkeypatch.setattr(Message, "edit_reply_markup", edit)
     await handle_agent_confirmation(
-        callback, AgentConfirmation(confirmation_id="abc", approved=True), service, service.runtime, memory
+        callback,
+        AgentConfirmation(confirmation_id="abc", approved=True),
+        service,
+        service.runtime,
+        memory,
+        bot=agent_bot,
     )
     assert answer.await_args is not None
     assert answer.await_args.kwargs["show_alert"] is True
@@ -269,7 +372,7 @@ async def test_callback_alert_does_not_remove_keyboard(agent_settings, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_callback_clears_keyboard_and_replies_to_original_question(agent_settings, monkeypatch):
+async def test_callback_clears_keyboard_and_replies_to_original_question(agent_settings, monkeypatch, agent_bot):
     service, _, memory = build_service(agent_settings)
     monkeypatch.setattr(service, "confirm", AsyncMock(return_value=AgentReply(text="Отменено")))
     memory.mark_reply = AsyncMock()
@@ -280,11 +383,16 @@ async def test_callback_clears_keyboard_and_replies_to_original_question(agent_s
     )
     answer = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=51))
     edit = AsyncMock()
-    monkeypatch.setattr(Message, "answer", answer)
+    agent_bot.send_message = answer
     monkeypatch.setattr(Message, "edit_reply_markup", edit)
     monkeypatch.setattr(CallbackQuery, "answer", AsyncMock())
     await handle_agent_confirmation(
-        callback, AgentConfirmation(confirmation_id="abc", approved=False), service, service.runtime, memory
+        callback,
+        AgentConfirmation(confirmation_id="abc", approved=False),
+        service,
+        service.runtime,
+        memory,
+        bot=agent_bot,
     )
     edit.assert_awaited_once_with(reply_markup=None)
     assert answer.await_args is not None
@@ -294,7 +402,7 @@ async def test_callback_clears_keyboard_and_replies_to_original_question(agent_s
 
 @pytest.mark.asyncio
 async def test_failed_confirmation_result_delivery_is_logged_and_never_reexecutes_action(
-    agent_settings, conversation, monkeypatch
+    agent_settings, conversation, monkeypatch, agent_bot
 ):
     def role_change_model(messages, info):
         return ModelResponse(
@@ -345,11 +453,7 @@ async def test_failed_confirmation_result_delivery_is_logged_and_never_reexecute
     log_exception = Mock()
     monkeypatch.setattr(CallbackQuery, "answer", callback_answer)
     monkeypatch.setattr(Message, "edit_reply_markup", AsyncMock())
-    monkeypatch.setattr(
-        Message,
-        "answer",
-        AsyncMock(side_effect=RuntimeError("Telegram result unavailable")),
-    )
+    agent_bot.send_message = AsyncMock(side_effect=RuntimeError("Telegram result unavailable"))
     monkeypatch.setattr(agent_handlers, "logger", Mock(exception=log_exception), raising=False)
 
     await handle_agent_confirmation(
@@ -358,6 +462,7 @@ async def test_failed_confirmation_result_delivery_is_logged_and_never_reexecute
         service,
         service.runtime,
         memory,
+        bot=agent_bot,
     )
     await handle_agent_confirmation(
         callback,
@@ -365,6 +470,7 @@ async def test_failed_confirmation_result_delivery_is_logged_and_never_reexecute
         service,
         service.runtime,
         memory,
+        bot=agent_bot,
     )
 
     actions.change_role.assert_awaited_once_with(771234, RoleEnum.MENTOR, True)
@@ -406,7 +512,9 @@ async def test_real_dispatcher_command_priority_and_fsm(agent_settings, monkeypa
     dispatcher.include_router(create_agent_router(agent_settings, memory))
     setup_dishka(container, dispatcher, auto_inject=True)
     bot = Bot("99:test-token")
-    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=build_message(message_id=50)))
+    patch_telegram_api(bot, monkeypatch)
+    start_log = Mock()
+    monkeypatch.setattr(agent_handlers, "logger", start_log)
     try:
         await dispatcher.emit_startup(bot=bot)
         private = build_message("/profile", chat_type="private", chat_id=11, topic_id=None)
@@ -426,6 +534,9 @@ async def test_real_dispatcher_command_priority_and_fsm(agent_settings, monkeypa
         await state.clear()
         await dispatcher.feed_update(bot, Update(update_id=5, message=private.model_copy(update={"text": "Справка"})))
         answer_service.assert_awaited_once()
+        start_log.info.assert_called_once_with(
+            "event=agent_run status=started chat_type={chat_type}", chat_type="private"
+        )
         assert dispatcher.sub_routers[-1].message.handlers[0].flags["rate_limit"] == "expensive"
     finally:
         await dispatcher.storage.close()

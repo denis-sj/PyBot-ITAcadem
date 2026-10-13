@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from aiogram import Bot
 from aiogram.types import Chat, Message, User
 from pydantic_ai import models
 from pydantic_ai.models import Model
@@ -58,6 +59,13 @@ def build_message(  # noqa: PLR0913
         text=text,
         reply_to_message=reply,
     )
+
+
+@pytest.fixture
+def agent_bot() -> Mock:
+    bot = Mock(spec=Bot)
+    bot.send_message = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=50))
+    return bot
 
 
 def build_service(

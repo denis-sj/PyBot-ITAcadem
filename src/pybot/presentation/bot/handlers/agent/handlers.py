@@ -1,6 +1,6 @@
 """Thin Telegram entrypoints for questions and author-owned confirmations."""
 
-from aiogram import Router
+from aiogram import Bot, Router
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyParameters
 from dishka import FromDishka
@@ -37,6 +37,7 @@ async def handle_agent_message(
     service: FromDishka[AgentService],
     runtime: FromDishka[AgentRuntime],
     memory: FromDishka[AgentMemoryPort],
+    bot: Bot,
 ) -> None:
     if message.from_user is None or message.text is None:
         return
@@ -46,15 +47,16 @@ async def handle_agent_message(
     )
     async with runtime.for_user(message.from_user.id):
         result = await service.answer(conversation, message.text, is_forwarded=message.forward_origin is not None)
-        await _send_reply(message, result, runtime, memory)
+        await _send_reply(bot, message, result, runtime, memory)
 
 
-async def handle_agent_confirmation(
+async def handle_agent_confirmation(  # noqa: PLR0913
     callback: CallbackQuery,
     callback_data: AgentConfirmation,
     service: FromDishka[AgentService],
     runtime: FromDishka[AgentRuntime],
     memory: FromDishka[AgentMemoryPort],
+    bot: Bot,
 ) -> None:
     message = callback.message
     if not isinstance(message, Message):
@@ -77,12 +79,14 @@ async def handle_agent_confirmation(
             update={"message_thread_id": message.message_thread_id}
         )
         try:
-            await _send_reply(target, result, runtime, memory)
+            await _send_reply(bot, target, result, runtime, memory)
         except Exception:
             logger.exception("event=agent_confirmation phase=result_delivery status=failed")
 
 
-async def _send_reply(message: Message, result: AgentReply, runtime: AgentRuntime, memory: AgentMemoryPort) -> None:
+async def _send_reply(
+    bot: Bot, message: Message, result: AgentReply, runtime: AgentRuntime, memory: AgentMemoryPort
+) -> None:
     keyboard = None
     if result.confirmation_id is not None:
         keyboard = InlineKeyboardMarkup(
@@ -103,10 +107,12 @@ async def _send_reply(message: Message, result: AgentReply, runtime: AgentRuntim
     for chunk_index, start in enumerate(chunk_starts):
         is_last_chunk = chunk_index == len(chunk_starts) - 1
         try:
-            sent = await message.answer(
-                text[start : start + _TELEGRAM_TEXT_LIMIT] or "Попробуйте уточнить запрос",
-                parse_mode=None,
+            sent = await bot.send_message(
+                chat_id=message.chat.id,
+                text=text[start : start + _TELEGRAM_TEXT_LIMIT] or "Попробуйте уточнить запрос",
                 message_thread_id=message.message_thread_id,
+                parse_mode=None,
+                business_connection_id=message.business_connection_id,
                 reply_parameters=ReplyParameters(message_id=message.message_id),
                 reply_markup=keyboard if is_last_chunk else None,
             )
