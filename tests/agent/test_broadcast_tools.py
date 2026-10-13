@@ -1,12 +1,13 @@
 """Broadcast tools enforce configured roles and wait for explicit confirmation."""
 
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
-from pydantic_ai.models.function import FunctionModel
 import pytest
+from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.models.function import FunctionModel
 
 from pybot.core.constants import RoleEnum
 from pybot.domain.agent import AgentAccessDeniedError
 from pybot.dto.agent import AgentConversation, AgentReplyStatus
+from pybot.services.agent.broadcast_tools import broadcast_confirmation_summary
 from pybot.services.agent.dependencies import AgentDependencies
 from pybot.services.agent.tools import AgentToolRegistry
 from tests.agent.conftest import build_service
@@ -42,6 +43,26 @@ def test_broadcast_tool_uses_configured_roles_and_requires_approval():
     assert next(entry for entry in configured_registry.entries if entry.tool.name == tool_name).tool.requires_approval
 
 
+@pytest.mark.parametrize(
+    ("arguments", "audience_label"),
+    [
+        ({"audience": "all", "message": "Встреча"}, "всем зарегистрированным пользователям"),
+        ({"audience": "role", "target": "Student", "message": "Встреча"}, "пользователям с ролью Student"),
+        (
+            {"audience": "competence", "target": "Python", "message": "Встреча"},
+            "пользователям с компетенцией «Python»",
+        ),
+    ],
+)
+def test_broadcast_preview_identifies_audience_and_full_message(arguments, audience_label):
+    call = ToolCallPart("send_broadcast", arguments, tool_call_id="broadcast-preview")
+
+    preview = broadcast_confirmation_summary(call, None)
+
+    assert audience_label in preview
+    assert "---\nВстреча\n---" in preview
+
+
 @pytest.mark.asyncio
 async def test_broadcast_preview_is_exact_and_sending_waits_for_author_confirmation(agent_settings, conversation):
     from unittest.mock import AsyncMock, Mock
@@ -64,7 +85,8 @@ async def test_broadcast_preview_is_exact_and_sending_waits_for_author_confirmat
     pending = await service.answer(private_conversation, "Подготовь рассылку студентам")
 
     assert pending.confirmation_id is not None
-    assert "всем участникам с ролью Student" in pending.text
+    assert "пользователям с ролью Student" in pending.text
+    assert "---\nСобрание в 18:00\n---" in pending.text
     assert "Собрание в 18:00" in pending.text
     actions.validate_broadcast.assert_awaited_once_with("role", "Student", "Собрание в 18:00")
     actions.broadcast.assert_not_awaited()
@@ -92,8 +114,41 @@ async def test_group_context_cannot_prepare_a_broadcast(agent_settings, conversa
     deps = AgentDependencies(conversation, users, agent_settings, service.reads, actions)
 
     with pytest.raises(ModelRetry, match="только в личном чате"):
-        await validate_broadcast(Mock(deps=deps), "Собрание в 18:00")
+        await validate_broadcast(Mock(deps=deps), "Собрание в 18:00", "all")
     actions.validate_broadcast.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_without_audience_asks_for_clarification_before_confirmation(agent_settings):
+    def model(messages, info):
+        if any(
+            isinstance(message, ModelRequest) and any(isinstance(part, RetryPromptPart) for part in message.parts)
+            for message in messages
+        ):
+            return ModelResponse(parts=[TextPart("Кому отправить: всем, по роли или по компетенции?")])
+        return ModelResponse(
+            parts=[ToolCallPart("send_broadcast", {"message": "Собрание в 18:00"}, tool_call_id="missing-audience")]
+        )
+
+    from unittest.mock import AsyncMock, Mock
+
+    from pybot.services.ports.agent import AgentActionsPort
+
+    actions = Mock(spec=AgentActionsPort)
+    actions.validate_broadcast = AsyncMock()
+    actions.broadcast = AsyncMock()
+    registry = AgentToolRegistry(broadcast_allowed_roles=frozenset({RoleEnum.ADMIN.value}))
+    conversation = AgentConversation(chat_id=11, topic_id=None, telegram_id=11)
+    service, users, _ = build_service(agent_settings, model=FunctionModel(model), registry=registry, actions=actions)
+    users.find_all_user_roles.return_value = {RoleEnum.ADMIN.value}
+
+    result = await service.answer(conversation, "Отправь сообщение о собрании")
+
+    assert result.confirmation_id is None
+    assert result.text == "Кому отправить: всем, по роли или по компетенции?"
+    assert not service.runtime.pending
+    actions.validate_broadcast.assert_not_awaited()
+    actions.broadcast.assert_not_awaited()
 
 
 @pytest.mark.asyncio

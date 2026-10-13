@@ -15,7 +15,7 @@ from .dependencies import AgentDependencies
 async def validate_broadcast(
     ctx: RunContext[AgentDependencies],
     message: Annotated[str, Field(min_length=1, max_length=3500, strict=True)],
-    audience: AgentBroadcastAudience = "all",
+    audience: AgentBroadcastAudience,
     target: Annotated[str | None, Field(max_length=100, strict=True)] = None,
 ) -> None:
     """Validate the target and exact text before presenting a confirmation to a permitted sender."""
@@ -32,7 +32,7 @@ async def validate_broadcast(
 async def send_broadcast(
     ctx: RunContext[AgentDependencies],
     message: Annotated[str, Field(min_length=1, max_length=3500, strict=True)],
-    audience: AgentBroadcastAudience = "all",
+    audience: AgentBroadcastAudience,
     target: Annotated[str | None, Field(max_length=100, strict=True)] = None,
 ) -> str:
     """Send a prepared broadcast only after the user confirms the exact audience and text."""
@@ -59,9 +59,9 @@ def broadcast_confirmation_summary(call: ToolCallPart, recipient: str | None) ->
     if audience == "all":
         recipients = "всем зарегистрированным пользователям"
     elif audience == "role" and isinstance(target, str):
-        recipients = f"всем участникам с ролью {target}"
+        recipients = f"пользователям с ролью {target}"
     elif audience == "competence" and isinstance(target, str):
-        recipients = f"всем участникам с компетенцией «{target}»"
+        recipients = f"пользователям с компетенцией «{target}»"
     else:
         recipients = "указанным получателям"
 

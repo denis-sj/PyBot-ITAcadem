@@ -306,7 +306,7 @@ async def test_invalid_action_arguments_never_create_a_confirmation(agent_settin
         ),
         (
             "send_broadcast",
-            {"message": "Собрание в 18:00"},
+            {"message": "Собрание в 18:00", "audience": "all"},
             {"Admin"},
             "validate_broadcast",
             ("all", None, "Собрание в 18:00"),
