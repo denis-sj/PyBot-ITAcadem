@@ -5,6 +5,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyParameters
 from dishka import FromDishka
 
+from .....core import logger
 from .....core.config import AppSettings
 from .....dto.agent import AgentConversation, AgentReply
 from .....services.agent.runtime import AgentRuntime
@@ -74,7 +75,10 @@ async def handle_agent_confirmation(
         target = (message.reply_to_message or message).model_copy(
             update={"message_thread_id": message.message_thread_id}
         )
-        await _send_reply(target, result, runtime, memory)
+        try:
+            await _send_reply(target, result, runtime, memory)
+        except Exception:
+            logger.exception("event=agent_confirmation phase=result_delivery status=failed")
 
 
 async def _send_reply(message: Message, result: AgentReply, runtime: AgentRuntime, memory: AgentMemoryPort) -> None:

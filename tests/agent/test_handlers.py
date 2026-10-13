@@ -16,6 +16,7 @@ from pydantic_ai.models.test import TestModel
 from pybot.core.constants import RoleEnum
 from pybot.di.containers import setup_container
 from pybot.dto.agent import AgentReply
+from pybot.presentation.bot.handlers.agent import handlers as agent_handlers
 from pybot.presentation.bot.handlers.agent.handlers import (
     AgentConfirmation,
     create_agent_router,
@@ -276,6 +277,86 @@ async def test_callback_clears_keyboard_and_replies_to_original_question(agent_s
     assert answer.await_args is not None
     assert answer.await_args.kwargs["reply_parameters"].message_id == 4
     assert answer.await_args.kwargs["message_thread_id"] == 3
+
+
+@pytest.mark.asyncio
+async def test_failed_confirmation_result_delivery_is_logged_and_never_reexecutes_action(
+    agent_settings, conversation, monkeypatch
+):
+    def role_change_model(messages, info):
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    "change_user_role",
+                    {"telegram_id": 771234, "role": RoleEnum.MENTOR.value, "add": True},
+                    tool_call_id="delivery-failure-role-change",
+                )
+            ]
+        )
+
+    actions = Mock(spec=AgentActionsPort)
+    actions.find_user.return_value = Mock(
+        telegram_id=771234,
+        first_name="Иван",
+        last_name="Иванов",
+        patronymic="Иванович",
+        telegram_username="ivanov",
+    )
+    actions.change_role.return_value = "Роль Mentor выдана."
+    service, users, memory = build_service(
+        agent_settings,
+        model=FunctionModel(role_change_model),
+        actions=actions,
+    )
+    users.find_all_user_roles.return_value = {RoleEnum.ADMIN.value}
+    memory.mark_reply = AsyncMock()
+    question = "Выдай роль Mentor пользователю с Telegram ID 771234"
+    pending = await service.answer(conversation, question)
+    assert pending.confirmation_id is not None
+    service.runtime.bind_message(pending.confirmation_id, 50)
+
+    original_message = build_message(question)
+    confirmation_message = build_message(
+        sender_id=99,
+        sender_is_bot=True,
+        message_id=50,
+        reply=original_message,
+    )
+    callback = CallbackQuery(
+        id="delivery-failure",
+        from_user=User(id=11, is_bot=False, first_name="Tester"),
+        chat_instance="c",
+        message=confirmation_message,
+    )
+    callback_answer = AsyncMock()
+    log_exception = Mock()
+    monkeypatch.setattr(CallbackQuery, "answer", callback_answer)
+    monkeypatch.setattr(Message, "edit_reply_markup", AsyncMock())
+    monkeypatch.setattr(
+        Message,
+        "answer",
+        AsyncMock(side_effect=RuntimeError("Telegram result unavailable")),
+    )
+    monkeypatch.setattr(agent_handlers, "logger", Mock(exception=log_exception), raising=False)
+
+    await handle_agent_confirmation(
+        callback,
+        AgentConfirmation(confirmation_id=pending.confirmation_id, approved=True),
+        service,
+        service.runtime,
+        memory,
+    )
+    await handle_agent_confirmation(
+        callback,
+        AgentConfirmation(confirmation_id=pending.confirmation_id, approved=True),
+        service,
+        service.runtime,
+        memory,
+    )
+
+    actions.change_role.assert_awaited_once_with(771234, RoleEnum.MENTOR, True)
+    log_exception.assert_called_once_with("event=agent_confirmation phase=result_delivery status=failed")
+    assert callback_answer.await_count == 2
 
 
 @pytest.mark.asyncio
