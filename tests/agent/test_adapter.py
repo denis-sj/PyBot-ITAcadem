@@ -136,4 +136,6 @@ async def test_deepseek_wire_omits_unsupported_parallel_parameter(agent_settings
         )
     assert len(requests) == 1
     assert "parallel_tool_calls" not in requests[0]
+    assert requests[0]["provider"]["only"] == ["decart/fp4"]
+    assert requests[0]["provider"]["require_parameters"] is True
     assert requests[0]["tools"][0]["function"]["name"] == "get_my_profile"

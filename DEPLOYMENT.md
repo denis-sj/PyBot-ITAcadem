@@ -686,10 +686,20 @@ Important:
 `AGENT_ENABLED=false` is the default: the agent router is not registered and ordinary
 bot behavior stays unchanged. To enable the agent in a test bot, set `AGENT_ENABLED=true`
 and the existing `POLZA_API_KEY`. The independent `AGENT_MODEL` defaults to
-`google/gemini-3.5-flash-lite` (verified in the [Polza catalog](https://polza.ai/models/google/gemini-3.5-flash-lite)).
+`deepseek/deepseek-v4.1-flash`.
 `POLZA_BASE_URL` is shared with vision; `POLZA_VISION_MODEL` remains unchanged.
 
 Optional agent settings:
+
+- `AGENT_PROVIDER`: routing JSON. The evaluated default is
+  `{"only":["decart/fp4"],"require_parameters":true,"allow_fallbacks":false}`.
+  `order` and `only` accept unique non-empty provider IDs from Polza's catalog.
+  To use automatic routing, set
+  `{"only":[],"require_parameters":false,"allow_fallbacks":true}`.
+  Recheck provider capabilities and tariffs when changing the model.
+  Diagnostics dated 2026-10-13: both `decart/fp4` and `deepseek` passed all 16
+  minimal probes after omitting `parallel_tool_calls`; `decart/fp4` had lower
+  catalog prices (10.70964/21.41928 ₽ per million input/output tokens).
 
 - `AGENT_GROUP_CHAT_ID` and `AGENT_TOPIC_ID`: configure together (negative group ID,
   positive topic ID), or leave both blank. That topic accepts unaddressed text;

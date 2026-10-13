@@ -81,6 +81,9 @@ class PolzaAgentModel:
             raise ValueError("POLZA_API_KEY is required for the agent")
         return _PolzaChatModel(
             self.settings.agent_model,
+            settings={
+                "extra_body": {"provider": self.settings.agent_provider.model_dump(mode="json", exclude_defaults=False)}
+            },
             provider=OpenAIProvider(
                 openai_client=AsyncOpenAI(
                     base_url=self.settings.polza_base_url,

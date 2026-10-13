@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -92,7 +93,31 @@ def _validate_agent_env(env_values: dict[str, str]) -> list[str]:
             errors.append(f"{key} is outside its supported range")
     if "AGENT_MODEL" in env_values and not env_values["AGENT_MODEL"].strip():
         errors.append("AGENT_MODEL must be non-empty")
+    provider_json = env_values.get("AGENT_PROVIDER")
+    if provider_json is not None and not _is_valid_agent_provider_json(provider_json):
+        errors.append("AGENT_PROVIDER must be valid routing JSON with supported fields")
     return errors
+
+
+def _is_valid_agent_provider_json(value: str) -> bool:
+    """Keep deploy validation usable with the runner's standard-library Python."""
+    try:
+        provider = json.loads(value)
+    except ValueError:
+        return False
+    if not isinstance(provider, dict) or set(provider) - {"order", "only", "require_parameters", "allow_fallbacks"}:
+        return False
+    for key in ("require_parameters", "allow_fallbacks"):
+        if key in provider and not isinstance(provider[key], bool):
+            return False
+    for key in ("order", "only"):
+        names = provider.get(key, [])
+        if not isinstance(names, list) or any(not isinstance(name, str) or not name.strip() for name in names):
+            return False
+        normalized = [name.strip() for name in names]
+        if len(set(normalized)) != len(normalized):
+            return False
+    return True
 
 
 def _validate_database_url(env_values: dict[str, str]) -> list[str]:

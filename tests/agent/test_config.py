@@ -32,7 +32,8 @@ def settings(**overrides):
 def test_agent_defaults_disabled_and_vision_unchanged():
     parsed = settings()
     assert not parsed.agent_enabled
-    assert parsed.agent_model == "google/gemini-3.5-flash-lite"
+    assert parsed.agent_model == "deepseek/deepseek-v4.1-flash"
+    assert parsed.agent_provider.only == ("decart/fp4",)
     assert parsed.agent_memory_max_messages == 10
     assert parsed.agent_memory_ttl_s == 1800
     assert parsed.agent_reply_mark_ttl_s == 604800
@@ -92,3 +93,29 @@ def test_agent_enabled_with_credentials():
 )
 def test_deploy_validation_matches_runtime(values, expected):
     assert bool(_validate_agent_env(values) + _validate_orchestration_switches(values)) is expected
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        {"only": [""]},
+        {"order": ["deepseek", "deepseek"]},
+        {"unsupported": True},
+    ],
+)
+def test_invalid_provider_settings_rejected_by_runtime_and_deploy(provider):
+    import json
+
+    with pytest.raises(ValidationError):
+        settings(AGENT_PROVIDER=provider)
+    assert _validate_agent_env({"AGENT_PROVIDER": json.dumps(provider)})
+
+
+def test_custom_provider_routing_and_deploy_validation():
+    import json
+
+    provider = {"order": ["deepseek", "decart/fp4"], "only": [], "require_parameters": True, "allow_fallbacks": True}
+    parsed = settings(AGENT_PROVIDER=provider)
+    assert parsed.agent_provider.order == ("deepseek", "decart/fp4")
+    assert parsed.agent_provider.only == ()
+    assert not _validate_agent_env({"AGENT_PROVIDER": json.dumps(provider)})

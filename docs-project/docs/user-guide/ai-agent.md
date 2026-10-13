@@ -186,7 +186,7 @@ sequenceDiagram
 | Переменная | По умолчанию | Назначение |
 |---|---|---|
 | `AGENT_ENABLED` | `false` | Включает агента |
-| `AGENT_MODEL` | `google/gemini-3.5-flash-lite` | Модель агента в Polza |
+| `AGENT_MODEL` | `deepseek/deepseek-v4.1-flash` | Модель агента в Polza |
 | `AGENT_GROUP_CHAT_ID` | — | Группа с топиком агента |
 | `AGENT_TOPIC_ID` | — | Топик, где можно писать без `@` |
 | `AGENT_MEMORY_MAX_MESSAGES` | `10` | Сколько сообщений помнить |
@@ -213,3 +213,14 @@ sequenceDiagram
 
 Подтверждённые действия выполняются отдельно и автоматически не повторяются.
 Скрытые повторы OpenAI SDK отключены, чтобы каждая попытка была видна в учёте.
+
+
+### Маршрутизация Polza
+
+`AGENT_PROVIDER` задаёт JSON с полями `order`, `only`, `require_parameters` и
+`allow_fallbacks`. Рекомендуемое значение по диагностике 13.10.2026:
+`{"only":["decart/fp4"],"require_parameters":true,"allow_fallbacks":false}`.
+Проверенные инструменты работают у `decart/fp4` и `deepseek`; выбран более дешёвый
+вариант. При смене модели нужно заново проверить ID исполнителей и их тарифы.
+Параметр `parallel_tool_calls` исключается из запросов DeepSeek; последовательность
+исполнения инструментов задаётся реестром PyBot.
