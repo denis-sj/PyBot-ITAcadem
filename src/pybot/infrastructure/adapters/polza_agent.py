@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx2
+from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -81,9 +82,12 @@ class PolzaAgentModel:
         return _PolzaChatModel(
             self.settings.agent_model,
             provider=OpenAIProvider(
-                base_url=self.settings.polza_base_url,
-                api_key=key.get_secret_value(),
-                http_client=self.client,
+                openai_client=AsyncOpenAI(
+                    base_url=self.settings.polza_base_url,
+                    api_key=key.get_secret_value(),
+                    http_client=self.client,
+                    max_retries=0,
+                ),
             ),
             profile=(
                 OpenAIModelProfile(openai_unsupported_model_settings=("parallel_tool_calls",))
