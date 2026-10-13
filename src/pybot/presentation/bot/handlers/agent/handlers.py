@@ -94,14 +94,21 @@ async def _send_reply(message: Message, result: AgentReply, runtime: AgentRuntim
             ]
         )
     text = render_agent_reply(result)
-    for start in range(0, max(len(text), 1), _TELEGRAM_TEXT_LIMIT):
-        sent = await message.answer(
-            text[start : start + _TELEGRAM_TEXT_LIMIT] or "Попробуйте уточнить запрос",
-            parse_mode=None,
-            message_thread_id=message.message_thread_id,
-            reply_parameters=ReplyParameters(message_id=message.message_id),
-            reply_markup=keyboard if start == 0 else None,
-        )
-        if result.confirmation_id is not None and start == 0:
+    chunk_starts = range(0, max(len(text), 1), _TELEGRAM_TEXT_LIMIT)
+    for chunk_index, start in enumerate(chunk_starts):
+        is_last_chunk = chunk_index == len(chunk_starts) - 1
+        try:
+            sent = await message.answer(
+                text[start : start + _TELEGRAM_TEXT_LIMIT] or "Попробуйте уточнить запрос",
+                parse_mode=None,
+                message_thread_id=message.message_thread_id,
+                reply_parameters=ReplyParameters(message_id=message.message_id),
+                reply_markup=keyboard if is_last_chunk else None,
+            )
+        except Exception:
+            if result.confirmation_id is not None:
+                runtime.invalidate(result.confirmation_id)
+            raise
+        if result.confirmation_id is not None and is_last_chunk:
             runtime.bind_message(result.confirmation_id, sent.message_id)
         await memory.mark_reply(message.chat.id, message.message_thread_id, sent.message_id)

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 from pydantic_ai import RunContext, Tool
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
@@ -127,6 +127,75 @@ async def test_approval_author_and_double_click(agent_settings, conversation):
     assert second.status == AgentReplyStatus.EXPIRED
     assert executions == ["changed"]
     memory.append.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_one_confirmation_executes_only_first_of_multiple_actions(agent_settings, conversation):
+    executions = []
+    denied_tool_results = []
+    roles = frozenset({"Admin"})
+
+    async def first_action(ctx: RunContext[AgentDependencies]) -> str:
+        await ctx.deps.require_roles(roles)
+        executions.append("first")
+        return "Первое действие выполнено"
+
+    async def second_action(ctx: RunContext[AgentDependencies]) -> str:
+        await ctx.deps.require_roles(roles)
+        executions.append("second")
+        return "Второе действие выполнено"
+
+    def summary(call, recipient):
+        del recipient
+        return "Предпросмотр первого действия" if call.tool_name == "first_action" else "Предпросмотр второго действия"
+
+    registry = AgentToolRegistry(
+        (
+            RegisteredAgentTool(Tool(first_action, requires_approval=True), roles, summary),
+            RegisteredAgentTool(Tool(second_action, requires_approval=True), roles, summary),
+        )
+    )
+
+    def model(messages, info):
+        denied_tool_results.extend(
+            part.content
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, ToolReturnPart) and part.tool_call_id == "second"
+        )
+        if any(
+            isinstance(message, ModelRequest) and any(isinstance(part, ToolReturnPart) for part in message.parts)
+            for message in messages
+        ):
+            return ModelResponse(parts=[TextPart("Первое действие выполнено")])
+        return ModelResponse(
+            parts=[
+                ToolCallPart("first_action", {}, tool_call_id="first"),
+                ToolCallPart("second_action", {}, tool_call_id="second"),
+            ]
+        )
+
+    service, users, _ = build_service(agent_settings, model=FunctionModel(model), registry=registry)
+    users.find_all_user_roles.return_value = {"Admin"}
+    pending = await service.answer(conversation, "Выполни два действия")
+
+    assert pending.confirmation_id is not None
+    assert "Предпросмотр первого действия" in pending.text
+    assert "Предпросмотр второго действия" not in pending.text
+    assert (
+        "Выполняю по одному действию за раз. Подтвердите это, остальное напишите отдельным сообщением" in pending.text
+    )
+    assert len(service.runtime.pending[pending.confirmation_id].requests.approvals) == 2
+    service.runtime.bind_message(pending.confirmation_id, 55)
+
+    confirmed = await service.confirm(pending.confirmation_id, conversation, 55, approved=True)
+    repeated = await service.confirm(pending.confirmation_id, conversation, 55, approved=True)
+
+    assert confirmed.text == "Первое действие выполнено"
+    assert repeated.status == AgentReplyStatus.EXPIRED
+    assert denied_tool_results == ["Подтверждается только первое действие."]
+    assert executions == ["first"]
 
 
 @pytest.mark.asyncio

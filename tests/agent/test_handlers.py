@@ -52,21 +52,63 @@ async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings
 @pytest.mark.asyncio
 async def test_confirmation_keyboard_and_message_binding(agent_settings, monkeypatch):
     service, _, memory = build_service(agent_settings)
-    answer_service = AsyncMock(return_value=AgentReply(text="Будет выполнено действие", confirmation_id="abc"))
+    answer_service = AsyncMock(return_value=AgentReply(text="x" * 4001, confirmation_id="abc"))
     monkeypatch.setattr(service, "answer", answer_service)
     memory.mark_reply = AsyncMock()
-    sent = build_message(sender_id=99, sender_is_bot=True, message_id=50)
-    answer = AsyncMock(return_value=sent)
+    first_sent = build_message(sender_id=99, sender_is_bot=True, message_id=50)
+    last_sent = build_message(sender_id=99, sender_is_bot=True, message_id=51)
+    answer = AsyncMock(side_effect=[first_sent, last_sent])
     monkeypatch.setattr(Message, "answer", answer)
     bind_message = Mock()
     monkeypatch.setattr(service.runtime, "bind_message", bind_message)
     await handle_agent_message(build_message(), service, service.runtime, memory)
-    assert answer.await_args is not None
-    buttons = answer.await_args.kwargs["reply_markup"].inline_keyboard[0]
+    assert answer.await_count == 2
+    assert answer.await_args_list[0].kwargs["reply_markup"] is None
+    buttons = answer.await_args_list[1].kwargs["reply_markup"].inline_keyboard[0]
     assert [button.text for button in buttons] == ["Да", "Отмена"]
     assert AgentConfirmation.unpack(buttons[0].callback_data).approved
     assert not AgentConfirmation.unpack(buttons[1].callback_data).approved
-    bind_message.assert_called_once_with("abc", 50)
+    bind_message.assert_called_once_with("abc", 51)
+
+
+@pytest.mark.asyncio
+async def test_failed_later_preview_chunk_invalidates_confirmation(agent_settings, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    monkeypatch.setattr(
+        service,
+        "answer",
+        AsyncMock(return_value=AgentReply(text="Длинный предпросмотр " * 600, confirmation_id="abc")),
+    )
+    memory.mark_reply = AsyncMock()
+    service.runtime.pending["abc"] = Mock()
+    answer = AsyncMock(side_effect=[build_message(sender_id=99, sender_is_bot=True), RuntimeError("send failed")])
+    monkeypatch.setattr(Message, "answer", answer)
+
+    with pytest.raises(RuntimeError, match="send failed"):
+        await handle_agent_message(build_message(), service, service.runtime, memory)
+
+    assert answer.await_count == 2
+    assert "abc" not in service.runtime.pending
+
+    stale_message = build_message(sender_id=99, sender_is_bot=True, message_id=51)
+    callback = CallbackQuery(
+        id="stale",
+        from_user=User(id=11, is_bot=False, first_name="Tester"),
+        chat_instance="c",
+        message=stale_message,
+    )
+    callback_answer = AsyncMock()
+    monkeypatch.setattr(CallbackQuery, "answer", callback_answer)
+    await handle_agent_confirmation(
+        callback,
+        AgentConfirmation(confirmation_id="abc", approved=True),
+        service,
+        service.runtime,
+        memory,
+    )
+    assert callback_answer.await_args is not None
+    assert callback_answer.await_args.args[0] == AGENT_EXPIRED
+    assert callback_answer.await_args.kwargs["show_alert"] is True
 
 
 @pytest.mark.asyncio

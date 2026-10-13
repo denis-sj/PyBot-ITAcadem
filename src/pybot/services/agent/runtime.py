@@ -67,6 +67,10 @@ class AgentRuntime:
         if request is not None:
             request.message_id = message_id
 
+    def invalidate(self, confirmation_id: str) -> None:
+        """Remove a confirmation when its complete preview could not be delivered."""
+        self.pending.pop(confirmation_id, None)
+
     def find_pending(self, confirmation_id: str) -> PendingAgentRequest | None:
         """Find a live request; an expired request is removed immediately."""
         request = self.pending.get(confirmation_id)

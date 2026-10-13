@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults
+from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, ToolDenied
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -127,7 +127,12 @@ class AgentService:
             return AgentReply(status=AgentReplyStatus.CANCELLED)
         if not self.settings.agent_enabled:
             return AgentReply(status=AgentReplyStatus.EXPIRED, alert=True)
-        results = DeferredToolResults(approvals={call.tool_call_id: True for call in request.requests.approvals})
+        results = DeferredToolResults(
+            approvals={
+                call.tool_call_id: True if index == 0 else ToolDenied("Подтверждается только первое действие.")
+                for index, call in enumerate(request.requests.approvals)
+            }
+        )
         try:
             async with asyncio.timeout(self.settings.agent_timeout_s):
                 if await self.users.find_user_by_telegram_id(conversation.telegram_id) is None:
@@ -177,12 +182,16 @@ class AgentService:
             usage_limits=UsageLimits(request_limit=self.settings.agent_max_steps, tool_calls_limit=8),
         )
         if isinstance(result.output, DeferredToolRequests):
+            if deferred is not None:
+                return AgentReply(text="Действие обработано. Для следующего действия отправьте отдельное сообщение.")
             canonical_calls: list[ToolCallPart] = []
             descriptions: list[str] = []
-            for call in result.output.approvals:
-                canonical_call, description = await self.registry.describe_action(call, dependencies)
+            approval_calls = result.output.approvals
+            if approval_calls:
+                canonical_call, description = await self.registry.describe_action(approval_calls[0], dependencies)
                 canonical_calls.append(canonical_call)
                 descriptions.append(description)
+                canonical_calls.extend(approval_calls[1:])
             canonical_requests = DeferredToolRequests(
                 calls=result.output.calls,
                 approvals=canonical_calls,
@@ -198,7 +207,12 @@ class AgentService:
                     expires_at=time.monotonic() + self.settings.agent_memory_ttl_s,
                 )
             )
-            return AgentReply(text="\n".join(descriptions), confirmation_id=confirmation_id)
+            preview = "\n".join(descriptions)
+            if len(approval_calls) > 1:
+                preview += (
+                    "\n\nВыполняю по одному действию за раз. Подтвердите это, остальное напишите отдельным сообщением"
+                )
+            return AgentReply(text=preview, confirmation_id=confirmation_id)
         answer = self._validate_numbers(result.output, result.new_messages())
         await self.memory.append(conversation, question, answer)
         logger.info("event=agent_run status=completed")
