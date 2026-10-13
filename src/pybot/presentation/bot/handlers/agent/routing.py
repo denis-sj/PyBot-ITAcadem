@@ -44,7 +44,6 @@ class AgentMessageFilter(Filter):
         if (
             message.chat.id == self.settings.agent_group_chat_id
             and message.message_thread_id == self.settings.agent_topic_id
-            and "@" not in message.text
         ):
             return True
         if "@" in message.text:
