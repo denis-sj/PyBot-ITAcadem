@@ -272,6 +272,9 @@ class AppSettings(BaseSettings):
     agent_enabled: bool = Field(False, alias="AGENT_ENABLED")
     agent_model: str = Field("deepseek/deepseek-v4.1-flash", alias="AGENT_MODEL", min_length=1)
     agent_provider: AgentProviderSettings = Field(default_factory=AgentProviderSettings, alias="AGENT_PROVIDER")
+    agent_reasoning_effort: Literal["max", "xhigh", "high", "medium", "low", "minimal", "none"] = Field(
+        "none", alias="AGENT_REASONING_EFFORT"
+    )
     agent_group_chat_id: int | None = Field(None, alias="AGENT_GROUP_CHAT_ID", lt=0)
     agent_topic_id: int | None = Field(None, alias="AGENT_TOPIC_ID", gt=0)
     agent_memory_max_messages: int = Field(10, alias="AGENT_MEMORY_MAX_MESSAGES", ge=2, le=10)

@@ -187,6 +187,7 @@ sequenceDiagram
 |---|---|---|
 | `AGENT_ENABLED` | `false` | Включает агента |
 | `AGENT_MODEL` | `deepseek/deepseek-v4.1-flash` | Модель агента в Polza |
+| `AGENT_REASONING_EFFORT` | `none` | Режим рассуждений: `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, `none` |
 | `AGENT_GROUP_CHAT_ID` | — | Группа с топиком агента |
 | `AGENT_TOPIC_ID` | — | Топик, где можно писать без `@` |
 | `AGENT_MEMORY_MAX_MESSAGES` | `10` | Сколько сообщений помнить |

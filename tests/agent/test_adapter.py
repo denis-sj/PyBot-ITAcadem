@@ -139,3 +139,71 @@ async def test_deepseek_wire_omits_unsupported_parallel_parameter(agent_settings
     assert requests[0]["provider"]["only"] == ["decart/fp4"]
     assert requests[0]["provider"]["require_parameters"] is True
     assert requests[0]["tools"][0]["function"]["name"] == "get_my_profile"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("effort", ["none", "high"])
+async def test_two_step_wire_preserves_reasoning_and_provider(agent_settings, monkeypatch, effort):
+    import json
+
+    from pydantic_ai import Agent, Tool, models
+
+    monkeypatch.setattr(models, "ALLOW_MODEL_REQUESTS", True)
+    agent_settings.polza_api_key = SecretStr("synthetic-key")
+    agent_settings.agent_model = "deepseek/deepseek-v4.1-flash"
+    agent_settings.agent_reasoning_effort = effort
+    requests = []
+
+    async def synthetic_read() -> str:
+        return "Синтетические данные."
+
+    def respond(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        assert body["reasoning"] == {"effort": effort}
+        assert body["provider"]["only"] == ["decart/fp4"]
+        if len(requests) == 1:
+            message = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "synthetic-tool",
+                        "type": "function",
+                        "function": {"name": "synthetic_read", "arguments": "{}"},
+                    }
+                ],
+            }
+            if effort != "none":
+                message["reasoning_content"] = "Синтетическое рассуждение."
+        else:
+            assistant = next(message for message in body["messages"] if message["role"] == "assistant")
+            if effort != "none":
+                assert assistant["reasoning_content"] == "Синтетическое рассуждение."
+            else:
+                assert "reasoning_content" not in assistant
+            message = {"role": "assistant", "content": "Готово."}
+        return httpx2.Response(
+            200,
+            json={
+                "id": "synthetic-completion",
+                "object": "chat.completion",
+                "created": 1,
+                "model": agent_settings.agent_model,
+                "choices": [
+                    {"index": 0, "finish_reason": "tool_calls" if len(requests) == 1 else "stop", "message": message}
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 2,
+                    "total_tokens": 12,
+                    "completion_tokens_details": {"reasoning_tokens": 0 if effort == "none" else 1},
+                },
+            },
+        )
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(respond)) as client:
+        model = PolzaAgentModel(agent_settings, client).get_model()
+        result = await Agent(model, tools=[Tool(synthetic_read, takes_ctx=False)]).run("Синтетический запрос.")
+    assert result.output == "Готово."
+    assert len(requests) == 2

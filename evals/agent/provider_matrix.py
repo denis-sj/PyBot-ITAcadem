@@ -178,8 +178,8 @@ def _model_settings(variant: ProbeVariant) -> ModelSettings:
         extra_body["provider"] = variant.provider
     if variant.reasoning == "disabled":
         extra_body["reasoning"] = {"effort": "none"}
-    if extra_body:
-        model_settings["extra_body"] = extra_body
+    # Override runtime defaults so the diagnostic "default"/"auto" variants stay independent.
+    model_settings["extra_body"] = extra_body
     return model_settings
 
 

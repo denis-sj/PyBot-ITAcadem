@@ -93,6 +93,16 @@ def _validate_agent_env(env_values: dict[str, str]) -> list[str]:
             errors.append(f"{key} is outside its supported range")
     if "AGENT_MODEL" in env_values and not env_values["AGENT_MODEL"].strip():
         errors.append("AGENT_MODEL must be non-empty")
+    if env_values.get("AGENT_REASONING_EFFORT", "none") not in {
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low",
+        "minimal",
+        "none",
+    }:
+        errors.append("AGENT_REASONING_EFFORT must be max, xhigh, high, medium, low, minimal or none")
     provider_json = env_values.get("AGENT_PROVIDER")
     if provider_json is not None and not _is_valid_agent_provider_json(provider_json):
         errors.append("AGENT_PROVIDER must be valid routing JSON with supported fields")

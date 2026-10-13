@@ -119,3 +119,20 @@ def test_custom_provider_routing_and_deploy_validation():
     assert parsed.agent_provider.order == ("deepseek", "decart/fp4")
     assert parsed.agent_provider.only == ()
     assert not _validate_agent_env({"AGENT_PROVIDER": json.dumps(provider)})
+
+
+@pytest.mark.parametrize("effort", ["max", "xhigh", "high", "medium", "low", "minimal", "none"])
+def test_reasoning_efforts_match_runtime_and_deploy(effort):
+    assert settings(AGENT_REASONING_EFFORT=effort).agent_reasoning_effort == effort
+    assert not _validate_agent_env({"AGENT_REASONING_EFFORT": effort})
+
+
+@pytest.mark.parametrize("effort", ["", "disabled", "NONE"])
+def test_invalid_reasoning_effort_is_rejected(effort):
+    with pytest.raises(ValidationError):
+        settings(AGENT_REASONING_EFFORT=effort)
+    assert _validate_agent_env({"AGENT_REASONING_EFFORT": effort})
+
+
+def test_reasoning_defaults_disabled():
+    assert settings().agent_reasoning_effort == "none"

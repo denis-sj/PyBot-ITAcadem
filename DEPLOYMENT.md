@@ -691,6 +691,11 @@ and the existing `POLZA_API_KEY`. The independent `AGENT_MODEL` defaults to
 
 Optional agent settings:
 
+- `AGENT_REASONING_EFFORT=none`: disable paid model reasoning through Polza
+  `reasoning.effort`. Accepted values: `max`, `xhigh`, `high`, `medium`, `low`,
+  `minimal`, `none`. With reasoning enabled, Pydantic AI preserves the returned
+  `reasoning_content` in subsequent tool requests.
+
 - `AGENT_PROVIDER`: routing JSON. The evaluated default is
   `{"only":["decart/fp4"],"require_parameters":true,"allow_fallbacks":false}`.
   `order` and `only` accept unique non-empty provider IDs from Polza's catalog.

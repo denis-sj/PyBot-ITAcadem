@@ -234,6 +234,7 @@ class ObservedPolzaModel(WrapperModel):
 
         self.request_count += 1
         started_at = time.perf_counter()
+        self.response_tariff = self.tariff
         try:
             response = await super().request(messages, model_settings, model_request_parameters)
         except BaseException as error:
@@ -254,6 +255,11 @@ class ObservedPolzaModel(WrapperModel):
         finally:
             self.request_latencies_s.append(time.perf_counter() - started_at)
 
+        self._record_response(response, estimated_input_tokens, output_limit)
+        return response
+
+    def _record_response(self, response: ModelResponse, estimated_input_tokens: int, output_limit: int) -> None:
+        """Prefer exact billing; otherwise price usage or the bounded request."""
         self.responses.append(response)
         cost_rub = _response_cost(response)
         estimated = cost_rub is None
@@ -282,7 +288,6 @@ class ObservedPolzaModel(WrapperModel):
             self.budget_exceeded = True
             self.stop_reason = "cumulative_budget_exceeded"
             raise BudgetStopError("The cumulative Polza budget was exceeded")
-        return response
 
 
 class EvalModelPort(AgentModelPort):
@@ -353,10 +358,13 @@ async def run_evals() -> int:
     aborted = False
     abort_reason: str | None = None
     http_metadata: list[dict[str, JsonValue]] = []
+    observed_model: ObservedPolzaModel | None = None
 
     async def capture_metadata(response: httpx2.Response) -> None:
         await response.aread()
         http_metadata.append(_safe_http_metadata(response))
+        if observed_model is not None:
+            observed_model.response_tariff = _response_provider_tariff(response, catalog)
 
     async with httpx2.AsyncClient(
         timeout=settings.agent_timeout_s, event_hooks={"response": [capture_metadata]}
@@ -641,6 +649,16 @@ def _validate_ledger_budget(ledger: SpendLedger) -> None:
         raise BudgetStopError("Recorded spend leaves less than the maximum cost of one request under the 30 ₽ limit")
 
 
+def _response_provider_tariff(response: httpx2.Response, catalog: ProviderCatalog) -> ModelTariff:
+    """Use serving-provider prices only when the response explicitly identifies it."""
+    try:
+        body = response.json()
+    except ValueError:
+        return catalog.tariff()
+    provider_name = body.get("provider") if isinstance(body, dict) else None
+    return catalog.tariff(provider_name if isinstance(provider_name, str) else None)
+
+
 def _safe_http_metadata(response: httpx2.Response) -> dict[str, JsonValue]:
     """Keep only field names, numeric billing data and fixed error categories."""
     metadata: dict[str, JsonValue] = {"status": response.status_code}
@@ -877,6 +895,7 @@ def _build_report(
                 "p95": _p95([float(cost) for cost in priced_costs]) if all_costs_known else None,
             },
             "tokens_per_question": {
+                "total_p95": _p95([float(run.input_tokens + run.output_tokens) for run in runs]),
                 "input": _mean([float(run.input_tokens) for run in runs]),
                 "cached": _mean([float(run.cached_tokens) for run in runs]),
                 "output": _mean([float(run.output_tokens) for run in runs]),

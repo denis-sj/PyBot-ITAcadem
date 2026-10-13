@@ -260,3 +260,10 @@ async def test_duplicate_correct_read_tool_is_not_wrong_tool_selection(tmp_path,
     assert result.tools_correct
     assert result.passed
     assert result.requests == 2
+
+
+def test_matrix_default_variant_clears_runtime_provider_and_reasoning_defaults():
+    from evals.agent.provider_matrix import ProbeVariant, _model_settings
+
+    variant = ProbeVariant("none", "default", "auto", None, None)
+    assert _model_settings(variant)["extra_body"] == {}

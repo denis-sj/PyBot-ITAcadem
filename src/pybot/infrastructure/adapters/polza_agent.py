@@ -82,7 +82,10 @@ class PolzaAgentModel:
         return _PolzaChatModel(
             self.settings.agent_model,
             settings={
-                "extra_body": {"provider": self.settings.agent_provider.model_dump(mode="json", exclude_defaults=False)}
+                "extra_body": {
+                    "provider": self.settings.agent_provider.model_dump(mode="json", exclude_defaults=False),
+                    "reasoning": {"effort": self.settings.agent_reasoning_effort},
+                }
             },
             provider=OpenAIProvider(
                 openai_client=AsyncOpenAI(
