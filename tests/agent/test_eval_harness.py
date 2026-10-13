@@ -150,22 +150,61 @@ async def test_missing_cost_prices_usage_tokens_and_marks_estimate(tmp_path) -> 
 
 
 @pytest.mark.asyncio
-async def test_error_without_usage_records_upper_estimate_before_reraising(tmp_path) -> None:
+async def test_http_error_is_not_billed_but_is_recorded_and_diagnosed(tmp_path) -> None:
     def fail(messages, info):
-        raise ModelHTTPError(400, TARGET_MODEL, {"error": "synthetic failure"})
+        raise ModelHTTPError(429, TARGET_MODEL, {"error": {"metadata": {"provider_name": "synthetic"}}})
+
+    ledger = SpendLedger(tmp_path / "ledger.json")
+    model = ObservedPolzaModel(FunctionModel(fail), TARGET_MODEL, ledger, MAX_BUDGET_RUB)
+    messages: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart("synthetic")])]
+    with pytest.raises(ModelHTTPError):
+        await model.request(messages, {"max_tokens": 1000}, ModelRequestParameters())
+
+    assert ledger.total_cost_rub == 0
+    assert ledger.entries[0]["estimated"] is True
+    assert ledger.entries[0]["source"] == "http_error_not_billed_per_polza_docs"
+    assert model.failures[0]["http_status"] == 429
+    terms = model.failures[0]["recognized_error_terms"]
+    assert isinstance(terms, list)
+    assert "provider_name" in terms
+    assert ledger.request_count == 1
+
+
+@pytest.mark.asyncio
+async def test_error_without_http_answer_records_upper_estimate_before_reraising(tmp_path) -> None:
+    def fail(messages, info):
+        raise TimeoutError
 
     ledger = SpendLedger(tmp_path / "ledger.json")
     model = ObservedPolzaModel(FunctionModel(fail), TARGET_MODEL, ledger, MAX_BUDGET_RUB)
     messages: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart("synthetic")])]
     parameters = ModelRequestParameters()
-    with pytest.raises(ModelHTTPError):
+    with pytest.raises(TimeoutError):
         await model.request(messages, {"max_tokens": 1000}, parameters)
 
     assert ledger.total_cost_rub == _estimated_request_cost(_estimate_request_input_tokens(messages, parameters), 1000)
     assert ledger.entries[0]["estimated"] is True
     assert ledger.entries[0]["source"] == "request_error_upper_bound"
-    assert model.failures[0]["http_status"] == 400
     assert ledger.request_count == 1
+
+
+def test_failure_reasons_name_wrong_tools_and_missing_phrases_without_reply_text() -> None:
+    from evals.agent.run import _failure_reasons, _load_cases
+
+    case = next(item for item in _load_cases(["my_profile"]))
+    reasons = _failure_reasons(
+        case,
+        {"bot_capabilities"},
+        confirmation_correct=False,
+        reply_text="синтетический ответ",
+        all_args_correct=True,
+        calls=[],
+        status="success",
+    )
+
+    assert any(reason.startswith("tools expected=") and "bot_capabilities" in reason for reason in reasons)
+    assert any(reason.startswith("confirmation expected=") for reason in reasons)
+    assert not any("синтетический ответ" in reason for reason in reasons)
 
 
 @pytest.mark.asyncio
@@ -267,3 +306,48 @@ def test_matrix_default_variant_clears_runtime_provider_and_reasoning_defaults()
 
     variant = ProbeVariant("none", "default", "auto", None, None)
     assert _model_settings(variant)["extra_body"] == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_kind", ["rate_limit", "cancelled"])
+async def test_runner_saves_checkpoint_and_stops_without_more_paid_attempts(
+    tmp_path, monkeypatch, agent_settings, failure_kind
+):
+    import argparse
+    import asyncio
+
+    import evals.agent.run as harness
+
+    attempts = 0
+
+    def fail(messages, info):
+        nonlocal attempts
+        attempts += 1
+        if failure_kind == "cancelled":
+            raise asyncio.CancelledError
+        raise ModelHTTPError(429, TARGET_MODEL, {"error": "synthetic rate limit"})
+
+    ledger = SpendLedger(tmp_path / "ledger.json")
+    report_path = tmp_path / "checkpoint.json"
+    monkeypatch.setattr(harness, "SpendLedger", lambda: ledger)
+    monkeypatch.setattr(harness, "get_settings", lambda: agent_settings)
+    monkeypatch.setattr(harness, "_build_eval_model", lambda settings, client: FunctionModel(fail))
+    monkeypatch.setattr(
+        harness,
+        "_parse_args",
+        lambda: argparse.Namespace(model=TARGET_MODEL, repeat=3, case=["my_profile"], report=report_path),
+    )
+
+    if failure_kind == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            await harness.run_evals()
+    else:
+        assert await harness.run_evals() == 2
+    report = json.loads(report_path.read_text())
+    assert attempts == 1
+    assert report["aborted"] is True
+    assert report["abort_reason"] == ("interrupted" if failure_kind == "cancelled" else "model_http_429")
+    assert report["question_runs"] == (0 if failure_kind == "cancelled" else 1)
+    assert Decimal(report["budget"]["run_cost_rub"]) == ledger.total_cost_rub
+    assert ledger.request_count == 1
+    assert not report_path.with_suffix(".tmp").exists()

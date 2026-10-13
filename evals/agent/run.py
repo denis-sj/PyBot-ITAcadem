@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
+from http import HTTPStatus
 from pathlib import Path
 from statistics import mean
 from typing import Literal
@@ -130,6 +131,7 @@ class CaseRun:
     security_errors: dict[str, int]
     blocked_attempts: dict[str, int]
     executed_after_confirmation: int
+    failure_reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -143,6 +145,7 @@ class ReportMetadata:
     ledger: SpendLedger
     aborted: bool
     abort_reason: str | None
+    initial_cost_rub: Decimal | None = None
 
 
 class BudgetStopError(RuntimeError):
@@ -238,8 +241,15 @@ class ObservedPolzaModel(WrapperModel):
         try:
             response = await super().request(messages, model_settings, model_request_parameters)
         except BaseException as error:
-            cost = _estimated_request_cost(estimated_input_tokens, output_limit, self.response_tariff)
-            self.ledger.record_cost(self.polza_model_name, cost, estimated=True, source="request_error_upper_bound")
+            if isinstance(error, ModelHTTPError):
+                # Polza docs: a request that ended with an HTTP error is not billed. Timeouts and cancellations
+                # (no HTTP answer) keep the conservative upper bound because partial output may be billed.
+                cost = Decimal(0)
+                source = "http_error_not_billed_per_polza_docs"
+            else:
+                cost = _estimated_request_cost(estimated_input_tokens, output_limit, self.response_tariff)
+                source = "request_error_upper_bound"
+            self.ledger.record_cost(self.polza_model_name, cost, estimated=True, source=source)
             self.run_cost_rub += cost
             diagnostic: dict[str, JsonValue] = {"error_type": type(error).__name__, "usage_received": False}
             if isinstance(error, ModelHTTPError):
@@ -247,7 +257,15 @@ class ObservedPolzaModel(WrapperModel):
                 body_text = str(error.body).casefold()
                 diagnostic["recognized_error_terms"] = [
                     term
-                    for term in ("reasoning_content", "parallel_tool_calls", "max_tokens", "model", "provider")
+                    for term in (
+                        "reasoning_content",
+                        "parallel_tool_calls",
+                        "max_tokens",
+                        "model",
+                        "provider",
+                        "provider_name",
+                        "rate",
+                    )
                     if term in body_text
                 ]
             self.failures.append(diagnostic)
@@ -350,6 +368,7 @@ async def run_evals() -> int:
     ledger = SpendLedger()
     catalog = ProviderCatalog.load(REPORTS_DIR / "provider-catalog.json")
     _validate_ledger_budget(ledger)
+    initial_cost_rub = ledger.total_cost_rub
     prefix_tokens = _role_prefix_token_counts()
     forecast = _forecast_max_batch_cost(len(cases), args.repeat, settings.agent_max_steps, catalog.tariff())
 
@@ -359,45 +378,52 @@ async def run_evals() -> int:
     abort_reason: str | None = None
     http_metadata: list[dict[str, JsonValue]] = []
     observed_model: ObservedPolzaModel | None = None
+    report_path = args.report or REPORTS_DIR / f"{run_id}.json"
+
+    def save_report() -> dict[str, JsonValue]:
+        return _write_eval_report(
+            report_path,
+            ReportMetadata(
+                args.model, args.repeat, prefix_tokens, forecast, ledger, aborted, abort_reason, initial_cost_rub
+            ),
+            runs,
+            http_metadata,
+            catalog,
+        )
 
     async def capture_metadata(response: httpx2.Response) -> None:
-        await response.aread()
-        http_metadata.append(_safe_http_metadata(response))
-        if observed_model is not None:
-            observed_model.response_tariff = _response_provider_tariff(response, catalog)
+        await _capture_eval_response(response, catalog, observed_model, http_metadata)
 
     async with httpx2.AsyncClient(
         timeout=settings.agent_timeout_s, event_hooks={"response": [capture_metadata]}
     ) as client:
         base_model = _build_eval_model(settings, client)
-        for repetition in range(1, args.repeat + 1):
-            for case in cases:
-                observed_model = ObservedPolzaModel(base_model, args.model, ledger, MAX_BUDGET_RUB, catalog.tariff())
-                try:
-                    case_run = await _run_case(case, settings, observed_model)
-                except BudgetStopError:
-                    aborted = True
+        try:
+            for repetition in range(1, args.repeat + 1):
+                for case in cases:
+                    observed_model = ObservedPolzaModel(
+                        base_model, args.model, ledger, MAX_BUDGET_RUB, catalog.tariff()
+                    )
+                    try:
+                        case_run = await _run_case(case, settings, observed_model)
+                    except BudgetStopError:
+                        aborted, abort_reason = True, observed_model.stop_reason or "budget_reserve"
+                        break
+                    runs.append(case_run)
+                    _print_case_progress(case_run, repetition, args.repeat, observed_model)
+                    abort_reason = _model_stop_reason(observed_model)
+                    aborted = abort_reason is not None
+                    save_report()
+                    if aborted:
+                        break
+                if aborted:
                     break
-                runs.append(case_run)
-                print(f"{case.name} [{repetition}/{args.repeat}]: {'PASS' if case_run.passed else 'FAIL'}")
-                for failure in observed_model.failures:
-                    print(json.dumps(failure, ensure_ascii=False))
-                if observed_model.stop_reason is not None:
-                    aborted = True
-                    abort_reason = observed_model.stop_reason
-                    break
-            if aborted:
-                break
+        except asyncio.CancelledError:
+            aborted, abort_reason = True, "interrupted"
+            raise
+        finally:
+            report = save_report()
 
-    report = _build_report(
-        ReportMetadata(args.model, args.repeat, prefix_tokens, forecast, ledger, aborted, abort_reason), runs
-    )
-    report["http_response_metadata"] = http_metadata
-    report["catalog_tariffs"] = catalog.model_dump(mode="json")
-    report["tariffs_checked_at"] = "2026-10-13"
-    report_path = args.report or REPORTS_DIR / f"{run_id}.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
         f"Отчёт: {report_path}; расход этого запуска: {report['budget']['run_cost_rub']} ₽; "
         f"накопительно: {report['budget']['cumulative_cost_rub']} ₽"
@@ -406,6 +432,54 @@ async def run_evals() -> int:
         print(f"STOP: {abort_reason or 'не удалось безопасно оценить стоимость'}; новые запросы не отправлялись.")
         return 2
     return 0 if report["metrics"]["correct_tools_pct"] == FULL_PERCENTAGE else 1
+
+
+async def _capture_eval_response(
+    response: httpx2.Response,
+    catalog: ProviderCatalog,
+    model: ObservedPolzaModel | None,
+    http_metadata: list[dict[str, JsonValue]],
+) -> None:
+    """Keep safe HTTP metadata and update only the serving-provider tariff."""
+    await response.aread()
+    http_metadata.append(_safe_http_metadata(response))
+    if model is not None:
+        model.response_tariff = _response_provider_tariff(response, catalog)
+
+
+def _print_case_progress(case_run: CaseRun, repetition: int, repeat: int, model: ObservedPolzaModel) -> None:
+    """Print synthetic case labels and fixed error diagnostics, never conversations."""
+    print(f"{case_run.case_name} [{repetition}/{repeat}]: {'PASS' if case_run.passed else 'FAIL'}")
+    for reason in case_run.failure_reasons:
+        print(f"  reason: {reason}")
+    for failure in model.failures:
+        print(json.dumps(failure, ensure_ascii=False))
+
+
+def _write_eval_report(
+    path: Path,
+    metadata: ReportMetadata,
+    runs: list[CaseRun],
+    http_metadata: list[dict[str, JsonValue]],
+    catalog: ProviderCatalog,
+) -> dict[str, JsonValue]:
+    """Atomically save completed-case metrics and all recorded request liabilities."""
+    report = _build_report(metadata, runs)
+    report["http_response_metadata"] = http_metadata
+    report["catalog_tariffs"] = catalog.model_dump(mode="json")
+    report["tariffs_checked_at"] = "2026-10-13"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(".tmp")
+    temporary_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary_path.replace(path)
+    return report
+
+
+def _model_stop_reason(model: ObservedPolzaModel) -> str | None:
+    """Stop a paid batch at its first HTTP 429; never retry 4xx automatically."""
+    if any(failure.get("http_status") == HTTPStatus.TOO_MANY_REQUESTS for failure in model.failures):
+        return "model_http_429"
+    return model.stop_reason
 
 
 async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaModel) -> CaseRun:
@@ -463,6 +537,15 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
     all_args_correct = all(_has_matching_call(expected, calls) for expected in case.expected_call_args)
     status_correct = reply.status.value == "success"
     passed = tools_correct and confirmation_correct and phrases_correct and all_args_correct and status_correct
+    failure_reasons = _failure_reasons(
+        case,
+        actual_tools,
+        confirmation_correct=confirmation_correct,
+        reply_text=reply_text,
+        all_args_correct=all_args_correct,
+        calls=calls,
+        status=reply.status.value,
+    )
 
     blocked_attempts, security_errors = _security_counts(
         case, calls, pending, reads.allowed_search_recipient_ids, executions_before_confirmation
@@ -490,7 +573,38 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         security_errors=security_errors,
         blocked_attempts=blocked_attempts,
         executed_after_confirmation=executions_after_confirmation,
+        failure_reasons=failure_reasons,
     )
+
+
+def _failure_reasons(  # noqa: PLR0913
+    case: EvalCase,
+    actual_tools: set[str],
+    *,
+    confirmation_correct: bool,
+    reply_text: str,
+    all_args_correct: bool,
+    calls: list[ObservedCall],
+    status: str,
+) -> tuple[str, ...]:
+    """Describe why a synthetic case failed without storing the model's reply text."""
+    reasons: list[str] = []
+    if actual_tools != case.expected_tools:
+        reasons.append(f"tools expected={sorted(case.expected_tools)} actual={sorted(actual_tools)}")
+    if not confirmation_correct:
+        reasons.append(f"confirmation expected={case.expected_confirmation}")
+    missing = [phrase for phrase in case.required_phrases if phrase.casefold() not in reply_text]
+    forbidden = [phrase for phrase in case.forbidden_phrases if phrase.casefold() in reply_text]
+    if missing:
+        reasons.append(f"phrases missing={missing}")
+    if forbidden:
+        reasons.append(f"phrases forbidden_present={forbidden}")
+    if not all_args_correct:
+        wrong = [expected.tool_name for expected in case.expected_call_args if not _has_matching_call(expected, calls)]
+        reasons.append(f"args mismatch tools={wrong}")
+    if status != "success":
+        reasons.append(f"status={status}")
+    return tuple(reasons)
 
 
 def _synthetic_actions() -> Mock:
@@ -830,7 +944,12 @@ def _build_report(
     cached_tokens = sum(run.cached_tokens for run in runs)
     output_tokens = sum(run.output_tokens for run in runs)
     reasoning_tokens = sum(run.reasoning_tokens for run in runs)
-    run_cost = sum(priced_costs, start=Decimal("0")) if all_costs_known else None
+    completed_cost = sum(priced_costs, start=Decimal("0")) if all_costs_known else None
+    run_cost = (
+        metadata.ledger.total_cost_rub - metadata.initial_cost_rub
+        if metadata.initial_cost_rub is not None
+        else completed_cost
+    )
     security_names = (
         "action_outside_rights",
         "wrong_recipient",
@@ -856,6 +975,7 @@ def _build_report(
                 "wrong_recipient": sum(run.blocked_attempts["wrong_recipient"] for run in case_runs),
             },
             "actions_executed_after_confirmation": sum(run.executed_after_confirmation for run in case_runs),
+            "failure_reasons": sorted({reason for run in case_runs for reason in run.failure_reasons}),
         }
         for name, case_runs in sorted(grouped.items())
     ]
@@ -873,6 +993,7 @@ def _build_report(
             "limit_rub": format(MAX_BUDGET_RUB, "f"),
             "forecast_max_batch_rub": format(metadata.forecast, "f"),
             "run_cost_rub": None if run_cost is None else format(run_cost, "f"),
+            "completed_question_cost_rub": None if completed_cost is None else format(completed_cost, "f"),
             "cumulative_cost_rub": format(metadata.ledger.total_cost_rub, "f"),
             "unpriced_requests": metadata.ledger.unpriced_requests,
             "estimated_records": sum(entry.get("estimated") is True for entry in metadata.ledger.entries),
