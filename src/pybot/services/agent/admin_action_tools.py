@@ -12,13 +12,17 @@ from ...core.constants import PointsTypeEnum, RoleEnum
 from ...domain.exceptions import DomainError
 from .dependencies import AgentDependencies
 
+TelegramUserId = Annotated[int, Field(strict=True, gt=0)]
+PointsDelta = Annotated[int, Field(strict=True)]
+StrictBoolean = Annotated[bool, Field(strict=True)]
+
 
 async def validate_points_adjustment(
     ctx: RunContext[AgentDependencies],
-    telegram_id: int,
+    telegram_id: TelegramUserId,
     points_type: PointsTypeEnum,
-    delta: int,
-    reason: Annotated[str | None, Field(max_length=250)] = None,
+    delta: PointsDelta,
+    reason: Annotated[str | None, Field(max_length=250, strict=True)] = None,
 ) -> None:
     """Check a points change and balance before asking the administrator to confirm."""
     del reason
@@ -33,10 +37,10 @@ async def validate_points_adjustment(
 
 async def adjust_user_points(
     ctx: RunContext[AgentDependencies],
-    telegram_id: int,
+    telegram_id: TelegramUserId,
     points_type: PointsTypeEnum,
-    delta: int,
-    reason: Annotated[str | None, Field(max_length=250)] = None,
+    delta: PointsDelta,
+    reason: Annotated[str | None, Field(max_length=250, strict=True)] = None,
 ) -> str:
     """Начислить или списать академические либо репутационные баллы после подтверждения."""
     admin = await ctx.deps.get_actor()
@@ -47,7 +51,7 @@ async def adjust_user_points(
 
 
 async def validate_user_role_change(
-    ctx: RunContext[AgentDependencies], telegram_id: int, role: RoleEnum, add: bool
+    ctx: RunContext[AgentDependencies], telegram_id: TelegramUserId, role: RoleEnum, add: StrictBoolean
 ) -> None:
     """Check recipient and current role assignment before confirmation."""
     try:
@@ -58,7 +62,9 @@ async def validate_user_role_change(
         ) from error
 
 
-async def change_user_role(ctx: RunContext[AgentDependencies], telegram_id: int, role: RoleEnum, add: bool) -> str:
+async def change_user_role(
+    ctx: RunContext[AgentDependencies], telegram_id: TelegramUserId, role: RoleEnum, add: StrictBoolean
+) -> str:
     """Issue or remove a role after confirmation using the existing role service."""
     try:
         return await ctx.deps.actions.change_role(telegram_id, role, add)
@@ -68,9 +74,9 @@ async def change_user_role(ctx: RunContext[AgentDependencies], telegram_id: int,
 
 async def validate_user_competence_change(
     ctx: RunContext[AgentDependencies],
-    telegram_id: int,
-    competence_name: Annotated[str, Field(min_length=1, max_length=100)],
-    add: bool,
+    telegram_id: TelegramUserId,
+    competence_name: Annotated[str, Field(min_length=1, max_length=100, strict=True)],
+    add: StrictBoolean,
 ) -> None:
     """Check the requested competence and membership before confirmation."""
     try:
@@ -83,9 +89,9 @@ async def validate_user_competence_change(
 
 async def change_user_competence(
     ctx: RunContext[AgentDependencies],
-    telegram_id: int,
-    competence_name: Annotated[str, Field(min_length=1, max_length=100)],
-    add: bool,
+    telegram_id: TelegramUserId,
+    competence_name: Annotated[str, Field(min_length=1, max_length=100, strict=True)],
+    add: StrictBoolean,
 ) -> str:
     """Issue or remove a competence after confirmation using existing services."""
     try:
@@ -95,7 +101,11 @@ async def change_user_competence(
 
 
 async def validate_visit_update(
-    ctx: RunContext[AgentDependencies], telegram_id: int, visit_date: date, start_time: time, end_time: time
+    ctx: RunContext[AgentDependencies],
+    telegram_id: TelegramUserId,
+    visit_date: date,
+    start_time: time,
+    end_time: time,
 ) -> None:
     """Check an existing visit and the proposed interval before confirmation."""
     try:
@@ -108,7 +118,7 @@ async def validate_visit_update(
 
 async def update_attendance_visit_time(
     ctx: RunContext[AgentDependencies],
-    telegram_id: int,
+    telegram_id: TelegramUserId,
     visit_date: date,
     start_time: time,
     end_time: time,
@@ -121,7 +131,9 @@ async def update_attendance_visit_time(
         return "Посещение не изменено: после подтверждения запись изменилась или проверка не пройдена."
 
 
-async def validate_visit_delete(ctx: RunContext[AgentDependencies], telegram_id: int, visit_date: date) -> None:
+async def validate_visit_delete(
+    ctx: RunContext[AgentDependencies], telegram_id: TelegramUserId, visit_date: date
+) -> None:
     """Check an existing visit before confirmation to delete it."""
     try:
         await ctx.deps.actions.validate_visit_delete(telegram_id, visit_date)
@@ -129,7 +141,9 @@ async def validate_visit_delete(ctx: RunContext[AgentDependencies], telegram_id:
         raise ModelRetry("Не удалось подготовить удаление. Проверьте Telegram ID и дату посещения.") from error
 
 
-async def delete_attendance_visit(ctx: RunContext[AgentDependencies], telegram_id: int, visit_date: date) -> str:
+async def delete_attendance_visit(
+    ctx: RunContext[AgentDependencies], telegram_id: TelegramUserId, visit_date: date
+) -> str:
     """Delete a visit after confirmation and write the standard audit history."""
     admin = await ctx.deps.get_actor()
     try:
@@ -139,7 +153,11 @@ async def delete_attendance_visit(ctx: RunContext[AgentDependencies], telegram_i
 
 
 async def validate_manual_visit(
-    ctx: RunContext[AgentDependencies], telegram_id: int, visit_date: date, start_time: time, end_time: time
+    ctx: RunContext[AgentDependencies],
+    telegram_id: TelegramUserId,
+    visit_date: date,
+    start_time: time,
+    end_time: time,
 ) -> None:
     """Check a proposed manual visit before confirmation."""
     try:
@@ -152,7 +170,7 @@ async def validate_manual_visit(
 
 async def add_manual_attendance_visit(
     ctx: RunContext[AgentDependencies],
-    telegram_id: int,
+    telegram_id: TelegramUserId,
     visit_date: date,
     start_time: time,
     end_time: time,
@@ -165,11 +183,10 @@ async def add_manual_attendance_visit(
         return "Посещение не добавлено: после подтверждения данные изменились или проверка не пройдена."
 
 
-def confirmation_summary(call: ToolCallPart) -> str:
+def confirmation_summary(call: ToolCallPart, recipient: str | None) -> str:
     """Build a code-owned summary from the exact validated arguments awaiting approval."""
     arguments = call.args_as_dict()
-    telegram_id = _int_value(arguments.get("telegram_id"))
-    recipient = f"Telegram ID {telegram_id}" if telegram_id is not None else "указанному участнику"
+    recipient = recipient or "участнику из базы данных"
 
     if call.tool_name == "adjust_user_points":
         delta = _int_value(arguments.get("delta"))

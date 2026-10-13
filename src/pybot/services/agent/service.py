@@ -3,11 +3,20 @@
 import asyncio
 import re
 import time
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 
 from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults
-from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolReturnPart, UserPromptPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ...core import logger
@@ -168,22 +177,50 @@ class AgentService:
             usage_limits=UsageLimits(request_limit=self.settings.agent_max_steps, tool_calls_limit=8),
         )
         if isinstance(result.output, DeferredToolRequests):
+            canonical_calls: list[ToolCallPart] = []
+            descriptions: list[str] = []
+            for call in result.output.approvals:
+                canonical_call, description = await self.registry.describe_action(call, dependencies)
+                canonical_calls.append(canonical_call)
+                descriptions.append(description)
+            canonical_requests = DeferredToolRequests(
+                calls=result.output.calls,
+                approvals=canonical_calls,
+                metadata=result.output.metadata,
+            )
             confirmation_id = self.runtime.defer(
                 PendingAgentRequest(
                     conversation=conversation,
                     question=question,
-                    messages=result.all_messages(),
-                    requests=result.output,
+                    messages=self._replace_action_arguments(result.all_messages(), canonical_calls),
+                    requests=canonical_requests,
                     usage=result.usage,
                     expires_at=time.monotonic() + self.settings.agent_memory_ttl_s,
                 )
             )
-            descriptions = [self.registry.describe_action(call) for call in result.output.approvals]
             return AgentReply(text="\n".join(descriptions), confirmation_id=confirmation_id)
         answer = self._validate_numbers(result.output, result.new_messages())
         await self.memory.append(conversation, question, answer)
         logger.info("event=agent_run status=completed")
         return AgentReply(text=answer)
+
+    @staticmethod
+    def _replace_action_arguments(messages: list[ModelMessage], calls: list[ToolCallPart]) -> list[ModelMessage]:
+        """Keep the validated action arguments in the history resumed after approval."""
+        arguments_by_id = {call.tool_call_id: call.args for call in calls}
+        canonical_messages: list[ModelMessage] = []
+        for message in messages:
+            if not isinstance(message, ModelResponse):
+                canonical_messages.append(message)
+                continue
+            parts = [
+                replace(part, args=arguments_by_id[part.tool_call_id])
+                if isinstance(part, ToolCallPart) and part.tool_call_id in arguments_by_id
+                else part
+                for part in message.parts
+            ]
+            canonical_messages.append(replace(message, parts=parts))
+        return canonical_messages
 
     @staticmethod
     def _validate_numbers(answer: str, messages: list[ModelMessage]) -> str:

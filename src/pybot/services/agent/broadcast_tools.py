@@ -14,9 +14,9 @@ from .dependencies import AgentDependencies
 
 async def validate_broadcast(
     ctx: RunContext[AgentDependencies],
-    message: Annotated[str, Field(min_length=1, max_length=3500)],
+    message: Annotated[str, Field(min_length=1, max_length=3500, strict=True)],
     audience: AgentBroadcastAudience = "all",
-    target: Annotated[str | None, Field(max_length=100)] = None,
+    target: Annotated[str | None, Field(max_length=100, strict=True)] = None,
 ) -> None:
     """Validate the target and exact text before presenting a confirmation to a permitted sender."""
     if not _is_private_chat(ctx):
@@ -31,9 +31,9 @@ async def validate_broadcast(
 
 async def send_broadcast(
     ctx: RunContext[AgentDependencies],
-    message: Annotated[str, Field(min_length=1, max_length=3500)],
+    message: Annotated[str, Field(min_length=1, max_length=3500, strict=True)],
     audience: AgentBroadcastAudience = "all",
-    target: Annotated[str | None, Field(max_length=100)] = None,
+    target: Annotated[str | None, Field(max_length=100, strict=True)] = None,
 ) -> str:
     """Send a prepared broadcast only after the user confirms the exact audience and text."""
     if not _is_private_chat(ctx):
@@ -48,8 +48,9 @@ async def send_broadcast(
         return "Не удалось отправить рассылку: проверка не пройдена, сообщение не отправлено."
 
 
-def broadcast_confirmation_summary(call: ToolCallPart) -> str:
+def broadcast_confirmation_summary(call: ToolCallPart, recipient: str | None) -> str:
     """Show a code-owned recipient description and the full exact text being approved."""
+    del recipient
     arguments = call.args_as_dict()
     audience = arguments.get("audience")
     target = arguments.get("target")

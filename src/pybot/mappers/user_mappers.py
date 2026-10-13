@@ -19,6 +19,7 @@ async def map_orm_user_to_user_read_dto(orm_user: User) -> UserReadDTO:
         last_name=orm_user.last_name,
         patronymic=orm_user.patronymic,
         telegram_id=orm_user.telegram_id,
+        telegram_username=orm_user.telegram_username,
         academic_points=Points(value=orm_user.academic_points, point_type=PointsTypeEnum.ACADEMIC),
         reputation_points=Points(value=orm_user.reputation_points, point_type=PointsTypeEnum.REPUTATION),
         join_date=orm_user.join_date,
@@ -35,6 +36,7 @@ async def map_dialog_data_to_user_create_dto(manager: DialogManager) -> UserCrea
     first_name = manager.dialog_data.get("first_name")
     last_name = manager.dialog_data.get("last_name")
     patronymic = manager.dialog_data.get("patronymic")
+    telegram_username = manager.dialog_data.get("telegram_username")
 
     if not (phone and tg_id and first_name and last_name):
         logger.error("Недостаточно данных для создания профиля в dialog_data.")
@@ -47,6 +49,7 @@ async def map_dialog_data_to_user_create_dto(manager: DialogManager) -> UserCrea
             first_name=first_name,
             last_name=last_name,
             patronymic=patronymic,
+            telegram_username=telegram_username,
         )
     except (ValidationError, TypeError):
         logger.exception("Ошибка валидации данных для создания профиля из dialog_data")

@@ -39,6 +39,7 @@ class UserCreateDTO(BaseDTO):
     first_name: str = Field(..., min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
     last_name: str = Field(..., min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
     patronymic: str | None = Field(None, min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
+    telegram_username: str | None = None
 
     @field_validator("first_name", "last_name", "patronymic")
     @classmethod
@@ -118,6 +119,7 @@ class UserReadDTO(BaseDTO):
     academic_points: Points
     reputation_points: Points
     join_date: date
+    telegram_username: str | None = None
 
 
 class UpdateUserLevelDTO(BaseDTO):

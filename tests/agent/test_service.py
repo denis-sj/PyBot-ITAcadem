@@ -96,7 +96,7 @@ def action_registry(executions, *, roles=frozenset({"Admin"})):
         return "Действие выполнено"
 
     tool = Tool(change_data, requires_approval=True)
-    return AgentToolRegistry((RegisteredAgentTool(tool, roles, lambda call: "Изменить тестовые данные"),))
+    return AgentToolRegistry((RegisteredAgentTool(tool, roles, lambda call, recipient: "Изменить тестовые данные"),))
 
 
 async def defer_action(settings, conversation, executions):

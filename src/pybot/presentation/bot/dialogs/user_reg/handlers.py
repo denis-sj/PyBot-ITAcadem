@@ -111,8 +111,10 @@ async def _handle_contact_input(
     manager.dialog_data["competence_ids"] = []
     if message.from_user and hasattr(message.from_user, "id"):
         manager.dialog_data["tg_id"] = message.from_user.id
+        manager.dialog_data["telegram_username"] = message.from_user.username
     else:
         manager.dialog_data["tg_id"] = None
+        manager.dialog_data["telegram_username"] = None
     await message.answer(REGISTRATION_CONTACT_ACCEPTED, reply_markup=ReplyKeyboardRemove())
     await manager.next()
 

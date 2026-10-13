@@ -36,7 +36,7 @@ class UserActivityMiddleware(BaseMiddleware):
             async with container() as request_container:
                 user_service: UserService = await request_container.get(UserService)
                 user_roles_service: UserRolesService = await request_container.get(UserRolesService)
-                user_id = await user_service.track_activity(user.id)
+                user_id = await user_service.track_activity(user.id, user.username)
                 if user_id is not None:
                     data["user_id"] = user_id  # Decouple downstream logic from Telegram ids.
                     data["user_roles"] = set(await user_roles_service.find_user_roles(user_id))

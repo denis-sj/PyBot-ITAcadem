@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
-from pydantic import JsonValue
+from pydantic import JsonValue, TypeAdapter
 from pydantic_ai import RunContext, Tool
 from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.toolsets.abstract import ToolsetTool
+from pydantic_core import to_json
 
 from ...domain.agent import AgentAccessDeniedError
+from ...dto import UserReadDTO
 from .admin_action_tools import (
     add_manual_attendance_visit,
     adjust_user_points,
@@ -51,6 +53,8 @@ from .read_tools import (
 )
 from .role_tools import request_mentor_role, validate_mentor_request
 
+_ACTION_ARGUMENTS_ADAPTER = TypeAdapter(dict[str, JsonValue])
+
 
 @dataclass(frozen=True)
 class RegisteredAgentTool:
@@ -58,7 +62,7 @@ class RegisteredAgentTool:
 
     tool: Tool[AgentDependencies]
     allowed_roles: frozenset[str] = frozenset()
-    confirmation_summary: Callable[[ToolCallPart], str] | None = None
+    confirmation_summary: Callable[[ToolCallPart, str | None], str] | None = None
     uses_broadcast_roles: bool = False
 
 
@@ -185,12 +189,35 @@ class AgentToolRegistry:
         if len(names) != len(set(names)):
             raise ValueError("Duplicate agent tool name")
 
-    def describe_action(self, call: ToolCallPart) -> str:
-        """Describe business intent using code-owned wording, never model-generated consent."""
+    async def describe_action(self, call: ToolCallPart, dependencies: AgentDependencies) -> tuple[ToolCallPart, str]:
+        """Validate, canonicalize, and describe one action using code-owned wording."""
         for entry in self.entries:
             if entry.tool.name == call.tool_name and entry.confirmation_summary is not None:
-                return entry.confirmation_summary(call)
+                validated_args = entry.tool.function_schema.validator.validate_python(call.args_as_dict())
+                canonical_args = _ACTION_ARGUMENTS_ADAPTER.validate_json(to_json(validated_args))
+                canonical_call = replace(call, args=canonical_args)
+                recipient = await self._recipient_label(canonical_args, dependencies)
+                if "telegram_id" in canonical_args and recipient is None:
+                    raise AgentAccessDeniedError
+                return canonical_call, entry.confirmation_summary(canonical_call, recipient)
         raise AgentAccessDeniedError
+
+    @staticmethod
+    async def _recipient_label(arguments: dict[str, JsonValue], dependencies: AgentDependencies) -> str | None:
+        """Resolve a model-supplied Telegram ID to the exact persisted user identity."""
+        telegram_id = arguments.get("telegram_id")
+        if telegram_id is None:
+            return None
+        if not isinstance(telegram_id, int) or isinstance(telegram_id, bool) or telegram_id <= 0:
+            raise AgentAccessDeniedError
+
+        recipient: UserReadDTO = await dependencies.actions.find_user(telegram_id)
+        if recipient.telegram_id != telegram_id:
+            raise AgentAccessDeniedError
+        full_name = " ".join(part for part in (recipient.last_name, recipient.first_name, recipient.patronymic) if part)
+        full_name = full_name or "Имя не указано"
+        username = f" (@{recipient.telegram_username})" if recipient.telegram_username else ""
+        return f"{full_name}{username}, Telegram ID {recipient.telegram_id}"
 
     def get_policy(self, name: str) -> frozenset[str]:
         """Find a registered tool policy, rejecting unregistered names."""
@@ -270,7 +297,7 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
     return introduction + commands
 
 
-def _role_request_summary(call: ToolCallPart) -> str:
+def _role_request_summary(call: ToolCallPart, recipient: str | None) -> str:
     """Return code-owned approval text for the fixed Mentor request."""
-    del call
+    del call, recipient
     return "Подать от вашего имени заявку на роль Mentor. После отправки её рассмотрят администраторы."
