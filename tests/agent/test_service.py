@@ -553,3 +553,18 @@ def test_number_validation_preserves_negative_sign_and_rejects_inventions(answer
 
     with pytest.raises(ValueError):
         AgentService._validate_numbers(answer, [ModelRequest(parts=[ToolReturnPart("read", "-5 баллов")])])
+
+
+def test_number_validation_allows_numbers_from_the_current_question_only():
+    from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
+
+    from pybot.services.agent.service import AgentService
+
+    evidence: list[ModelMessage] = [ModelRequest(parts=[ToolReturnPart("read", "Баллы: 75")])]
+    profile_answer = "Профиль 771234: 75 баллов"
+    broadcast_answer = "Встреча в 14:00"
+
+    assert AgentService._validate_numbers(profile_answer, evidence, "Покажи профиль 771234") == profile_answer
+    assert AgentService._validate_numbers(broadcast_answer, evidence, "Рассылка: встреча в 14:00") == broadcast_answer
+    with pytest.raises(ValueError):
+        AgentService._validate_numbers("У пользователя 999 баллов", evidence, "Покажи профиль 771234")
