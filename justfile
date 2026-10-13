@@ -97,5 +97,5 @@ pre-commit: # Install and run pre-commit hooks
     uv run pre-commit install
     uv run pre-commit run --all-files
 
-eval-agent: # Run opt-in live Polza evaluations (paid model requests, not CI)
-    uv run python evals/agent/run.py
+eval-agent *ARGS: # Run opt-in live Polza evaluations (paid model requests, not CI)
+    uv run python -m evals.agent.run {{ARGS}}

@@ -1,0 +1,7437 @@
+{
+  "checked_at": "2026-10-13T16:13:13.630112+00:00",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "question": "Покажи мой профиль.",
+  "max_tokens": 300,
+  "retries": 0,
+  "budget_limit_rub": "30",
+  "cumulative_cost_rub": "10.5144915560",
+  "estimated_records": 20,
+  "exact_records": 68,
+  "stopped": false,
+  "catalog_tariffs": {
+    "id": "deepseek/deepseek-v4.1-flash",
+    "providers": [
+      {
+        "name": "cloudflare",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.71397600"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "top_k",
+          "seed",
+          "repetition_penalty",
+          "frequency_penalty",
+          "presence_penalty",
+          "min_p",
+          "stop",
+          "logit_bias",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "atlas-cloud/fp8",
+        "pricing": {
+          "prompt_per_million": "22.84723200",
+          "completion_per_million": "91.38892800",
+          "input_cache_read_per_million": "0.45694464"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "top_k",
+          "min_p",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "stop",
+          "seed",
+          "logit_bias",
+          "response_format",
+          "tools",
+          "tool_choice",
+          "structured_outputs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "novita/fp8",
+        "pricing": {
+          "prompt_per_million": "23.20422000",
+          "completion_per_million": "92.81688000",
+          "input_cache_read_per_million": "0.46408440"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "seed",
+          "top_k",
+          "repetition_penalty",
+          "response_format",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "morph/fp8",
+        "pricing": {
+          "prompt_per_million": "5.83080400",
+          "completion_per_million": "82.10724000",
+          "input_cache_read_per_million": "1.07096400"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "stop",
+          "top_p",
+          "top_k",
+          "min_p",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "seed",
+          "logit_bias",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "relace",
+        "pricing": {
+          "prompt_per_million": "5.94980000",
+          "completion_per_million": "71.39760000",
+          "input_cache_read_per_million": "0.95196800"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "top_k",
+          "min_p",
+          "stop",
+          "max_tokens",
+          "logit_bias",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "ionstream",
+        "pricing": {
+          "prompt_per_million": "32.12892000",
+          "completion_per_million": "130.89560000",
+          "input_cache_read_per_million": "0.59498000"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "top_p",
+          "top_k",
+          "frequency_penalty",
+          "presence_penalty",
+          "stop",
+          "seed",
+          "logit_bias",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "crusoe/fp8",
+        "pricing": {
+          "prompt_per_million": "34.50884000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.83297200"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "seed",
+          "min_p",
+          "repetition_penalty",
+          "top_k",
+          "logit_bias",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "streamlake/fp8",
+        "pricing": {
+          "prompt_per_million": "17.49241200",
+          "completion_per_million": "69.96964800",
+          "input_cache_read_per_million": "0.34984824"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "logprobs",
+          "top_logprobs",
+          "response_format",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "digitalocean",
+        "pricing": {
+          "prompt_per_million": "19.63434000",
+          "completion_per_million": "78.53736000",
+          "input_cache_read_per_million": "0.71397600"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "max_tokens",
+          "response_format",
+          "logprobs",
+          "top_logprobs",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "parasail/fp8",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.71397600"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "seed",
+          "stop",
+          "top_k",
+          "logit_bias",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "open-inference/fp4",
+        "pricing": {
+          "prompt_per_million": "5.24772360",
+          "completion_per_million": "73.89651600",
+          "input_cache_read_per_million": "0.64257840"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "max_tokens",
+          "stop",
+          "seed",
+          "top_p",
+          "frequency_penalty",
+          "presence_penalty",
+          "top_k",
+          "min_p",
+          "logit_bias",
+          "repetition_penalty",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "fireworks/us",
+        "pricing": {
+          "prompt_per_million": "53.54820000",
+          "completion_per_million": "214.19280000",
+          "input_cache_read_per_million": "1.07096400"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "top_k",
+          "repetition_penalty",
+          "logit_bias",
+          "logprobs",
+          "top_logprobs",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "deepseek",
+        "pricing": {
+          "prompt_per_million": "17.84940000",
+          "completion_per_million": "71.39760000",
+          "input_cache_read_per_million": "0.35698800"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "logprobs",
+          "top_logprobs",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "alibaba",
+        "pricing": {
+          "prompt_per_million": "17.84940000",
+          "completion_per_million": "71.39760000",
+          "input_cache_read_per_million": "1.78494000"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "seed",
+          "presence_penalty",
+          "response_format",
+          "top_k",
+          "frequency_penalty",
+          "stop",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "gmicloud/fp8",
+        "pricing": {
+          "prompt_per_million": "21.41928000",
+          "completion_per_million": "85.67712000",
+          "input_cache_read_per_million": "0.42838560"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "seed",
+          "response_format",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "baseten/fast",
+        "pricing": {
+          "prompt_per_million": "71.39760000",
+          "completion_per_million": "285.59040000",
+          "input_cache_read_per_million": "1.66594400"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "fireworks",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.71397600"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "top_k",
+          "repetition_penalty",
+          "logit_bias",
+          "logprobs",
+          "top_logprobs",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "sail-research/fp4",
+        "pricing": {
+          "prompt_per_million": "10.70964000",
+          "completion_per_million": "35.69880000",
+          "input_cache_read_per_million": "0.71397600"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "frequency_penalty",
+          "max_tokens",
+          "presence_penalty",
+          "seed",
+          "stop",
+          "temperature",
+          "top_k",
+          "top_p",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "decart/fp4",
+        "pricing": {
+          "prompt_per_million": "10.70964000",
+          "completion_per_million": "21.41928000",
+          "input_cache_read_per_million": "2.14192800"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "top_k",
+          "min_p",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "stop",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "makora/fp8",
+        "pricing": {
+          "prompt_per_million": "32.12892000",
+          "completion_per_million": "136.84540000",
+          "input_cache_read_per_million": "1.07096400"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "top_k",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "stop",
+          "max_tokens",
+          "seed",
+          "min_p",
+          "logit_bias",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "baseten/fp8",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.83297200"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "together",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.71397600"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "top_k",
+          "repetition_penalty",
+          "logit_bias",
+          "min_p",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "coreweave/fp8",
+        "pricing": {
+          "prompt_per_million": "23.79920000",
+          "completion_per_million": "77.34740000",
+          "input_cache_read_per_million": "3.56988000"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "top_k",
+          "repetition_penalty",
+          "frequency_penalty",
+          "presence_penalty",
+          "stop",
+          "seed",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "baidu/fp8",
+        "pricing": {
+          "prompt_per_million": "12.13759200",
+          "completion_per_million": "48.55036800",
+          "input_cache_read_per_million": "0.24275184"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "max_tokens",
+          "stop",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "deepinfra/fp8:batch",
+        "pricing": {
+          "prompt_per_million": "13.32755200",
+          "completion_per_million": "39.98265600",
+          "input_cache_read_per_million": "0.39982656"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "top_k",
+          "seed",
+          "min_p",
+          "logit_bias",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "phala",
+        "pricing": {
+          "prompt_per_million": "24.98916000",
+          "completion_per_million": "99.95664000",
+          "input_cache_read_per_million": "0.49978320"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "seed",
+          "top_k",
+          "min_p",
+          "repetition_penalty",
+          "response_format",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "siliconflow/fp8",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.71397600"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "top_k",
+          "frequency_penalty",
+          "max_tokens",
+          "response_format",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "modal",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "3.56988000"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "stop",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "inference-net/fp8",
+        "pricing": {
+          "prompt_per_million": "9.16269200",
+          "completion_per_million": "65.44780000",
+          "input_cache_read_per_million": "1.18996000"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "seed",
+          "top_k",
+          "min_p",
+          "logit_bias",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "repetition_penalty",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "deepinfra/fp8",
+        "pricing": {
+          "prompt_per_million": "16.65944000",
+          "completion_per_million": "49.97832000",
+          "input_cache_read_per_million": "0.49978320"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "top_k",
+          "seed",
+          "min_p",
+          "logit_bias",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "wafer",
+        "pricing": {
+          "prompt_per_million": "8.32972000",
+          "completion_per_million": "83.29720000",
+          "input_cache_read_per_million": "1.42795200"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "temperature",
+          "top_p",
+          "top_k",
+          "min_p",
+          "frequency_penalty",
+          "presence_penalty",
+          "repetition_penalty",
+          "stop",
+          "seed",
+          "max_tokens",
+          "logit_bias",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "logprobs",
+          "top_logprobs",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "venice/fp8",
+        "pricing": {
+          "prompt_per_million": "35.69880000",
+          "completion_per_million": "142.79520000",
+          "input_cache_read_per_million": "0.89247000"
+        },
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "top_k",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "reasoning_effort"
+        ]
+      },
+      {
+        "name": "cloud-ru",
+        "pricing": {
+          "prompt_per_million": "92.21480000",
+          "completion_per_million": "276.63020000",
+          "input_cache_read_per_million": null
+        },
+        "supported_parameters": [
+          "temperature",
+          "top_p",
+          "max_tokens",
+          "stream",
+          "tools",
+          "tool_choice",
+          "response_format",
+          "reasoning_effort"
+        ]
+      }
+    ]
+  },
+  "records": [
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 4.927,
+      "cost_rub": "0.01729785",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 65,
+          "completion_tokens": 204,
+          "total_tokens": 269,
+          "completion_tokens_details": {
+            "reasoning_tokens": 179,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.01729785,
+          "cost": 0.01729785
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 60.009,
+      "cost_rub": "0.1542849312",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "error_type": "ModelAPIError"
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 3.886,
+      "cost_rub": "0.00096387",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 25,
+          "total_tokens": 65,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00096387,
+          "cost": 0.00096387
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 4.022,
+      "cost_rub": "0.00096387",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 25,
+          "total_tokens": 65,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00096387,
+          "cost": 0.00096387
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 19.426,
+      "cost_rub": "0.00439095",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 47,
+          "total_tokens": 363,
+          "completion_tokens_details": {
+            "reasoning_tokens": 23,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00439095,
+          "cost": 0.00439095
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 7.369,
+      "cost_rub": "0.00439095",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 47,
+          "total_tokens": 363,
+          "completion_tokens_details": {
+            "reasoning_tokens": 23,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00439095,
+          "cost": 0.00439095
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 4.616,
+      "cost_rub": "0.00363057",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 24,
+          "total_tokens": 315,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00363057,
+          "cost": 0.00363057
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 3.561,
+      "cost_rub": "0.00143723",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 24,
+          "total_tokens": 315,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 256,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00143723,
+          "cost": 0.00143723
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 5.836,
+      "cost_rub": "0.01415814",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 45,
+          "total_tokens": 1277,
+          "completion_tokens_details": {
+            "reasoning_tokens": 21,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.01415814,
+          "cost": 0.01415814
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 3.587,
+      "cost_rub": "0.01402963",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 39,
+          "total_tokens": 1271,
+          "completion_tokens_details": {
+            "reasoning_tokens": 14,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.01402963,
+          "cost": 0.01402963
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 4.189,
+      "cost_rub": "0.0134406",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 24,
+          "total_tokens": 1231,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.0134406,
+          "cost": 0.0134406
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 5.677,
+      "cost_rub": "0.0134406",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 24,
+          "total_tokens": 1231,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.0134406,
+          "cost": 0.0134406
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 4.449,
+      "cost_rub": "0.03284647",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 75,
+          "total_tokens": 2992,
+          "completion_tokens_details": {
+            "reasoning_tokens": 63,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.03284647,
+          "cost": 0.03284647
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 4.482,
+      "cost_rub": "0.02349481",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 48,
+          "total_tokens": 2965,
+          "completion_tokens_details": {
+            "reasoning_tokens": 27,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.02349481,
+          "cost": 0.02349481
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 1,
+      "elapsed_s": 3.397,
+      "cost_rub": "0.03148634",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 24,
+          "total_tokens": 2916,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.03148634,
+          "cost": 0.03148634
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "auto",
+      "provider_request": null,
+      "repeat": 2,
+      "elapsed_s": 4.372,
+      "cost_rub": "0.00735966",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 24,
+          "total_tokens": 2916,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 2816,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00735966,
+          "cost": 0.00735966
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 6.585,
+      "cost_rub": "0.00416605",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 65,
+          "completion_tokens": 162,
+          "total_tokens": 227,
+          "completion_tokens_details": {
+            "reasoning_tokens": 169,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00416605,
+          "cost": 0.00416605
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 4.657,
+      "cost_rub": "0.00446592",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 65,
+          "completion_tokens": 176,
+          "total_tokens": 241,
+          "completion_tokens_details": {
+            "reasoning_tokens": 188,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00446592,
+          "cost": 0.00446592
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 5.642,
+      "cost_rub": "0.00096387",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 25,
+          "total_tokens": 65,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00096387,
+          "cost": 0.00096387
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 4.177,
+      "cost_rub": "0.00152077",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 51,
+          "total_tokens": 91,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00152077,
+          "cost": 0.00152077
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 2.021,
+      "cost_rub": "0.1605555376",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"52486032-6eba-478c-8683-660b40cf68ca\"}, \"trace_id\": \"52486032-6eba-478c-8683-660b40cf68ca\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 1.977,
+      "cost_rub": "0.1605555376",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"4c690211-3428-4b85-a57f-45e2af75ab34\"}, \"trace_id\": \"4c690211-3428-4b85-a57f-45e2af75ab34\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 2.806,
+      "cost_rub": "0.1605555376",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"e77da4cf-9728-4213-b4ff-194face708e9\"}, \"trace_id\": \"e77da4cf-9728-4213-b4ff-194face708e9\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 3.008,
+      "cost_rub": "0.1605555376",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"b1b9219b-f942-4681-9738-1a172d016a61\"}, \"trace_id\": \"b1b9219b-f942-4681-9738-1a172d016a61\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 3.169,
+      "cost_rub": "0.3276487552",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"e7fa4a69-6ae0-4e3c-88f8-3544de6b7fd6\"}, \"trace_id\": \"e7fa4a69-6ae0-4e3c-88f8-3544de6b7fd6\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 1.846,
+      "cost_rub": "0.3276487552",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"152e8b32-26c5-4eda-9d3e-51a20e048b34\"}, \"trace_id\": \"152e8b32-26c5-4eda-9d3e-51a20e048b34\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 4.715,
+      "cost_rub": "0.3276487552",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"1be0a30f-e06b-4d1e-818d-34488d6ba77a\"}, \"trace_id\": \"1be0a30f-e06b-4d1e-818d-34488d6ba77a\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 2.509,
+      "cost_rub": "0.3276487552",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"fd80ba19-1d51-4d2d-a434-3a5d926f7915\"}, \"trace_id\": \"fd80ba19-1d51-4d2d-a434-3a5d926f7915\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 3.647,
+      "cost_rub": "0.5959938232",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"fb6d9e66-7796-4889-ad9e-e2c073607b91\"}, \"trace_id\": \"fb6d9e66-7796-4889-ad9e-e2c073607b91\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 1.991,
+      "cost_rub": "0.5959938232",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"95d66c45-5478-4fe3-baca-6e4d1711ca6a\"}, \"trace_id\": \"95d66c45-5478-4fe3-baca-6e4d1711ca6a\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 1,
+      "elapsed_s": 5.113,
+      "cost_rub": "0.5959938232",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"af971b43-6c06-4969-a26a-525ba668cf90\"}, \"trace_id\": \"af971b43-6c06-4969-a26a-525ba668cf90\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "repeat": 2,
+      "elapsed_s": 3.309,
+      "cost_rub": "0.5959938232",
+      "estimated": true,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 400,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "parallel_tool_calls",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "error",
+          "trace_id"
+        ],
+        "error_fields": [
+          "code",
+          "message",
+          "trace_id"
+        ],
+        "error_code": "BAD_REQUEST",
+        "error_categories": [],
+        "error_body": "{\"error\": {\"code\": \"BAD_REQUEST\", \"message\": \"Некорректный запрос.\", \"trace_id\": \"0ef7cef2-1210-428d-a17f-d1e6c23b1166\"}, \"trace_id\": \"0ef7cef2-1210-428d-a17f-d1e6c23b1166\"}",
+        "error_type": "ModelHTTPError"
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 5.918,
+      "cost_rub": "0.00439095",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 47,
+          "total_tokens": 363,
+          "completion_tokens_details": {
+            "reasoning_tokens": 23,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00439095,
+          "cost": 0.00439095
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 4.621,
+      "cost_rub": "0.00219762",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 47,
+          "total_tokens": 363,
+          "completion_tokens_details": {
+            "reasoning_tokens": 22,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 256,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00219762,
+          "cost": 0.00219762
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.887,
+      "cost_rub": "0.00363057",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 24,
+          "total_tokens": 315,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00363057,
+          "cost": 0.00363057
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 4.29,
+      "cost_rub": "0.00143723",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 24,
+          "total_tokens": 315,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 256,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00143723,
+          "cost": 0.00143723
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 5.132,
+      "cost_rub": "0.00525629",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 39,
+          "total_tokens": 1271,
+          "completion_tokens_details": {
+            "reasoning_tokens": 14,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00525629,
+          "cost": 0.00525629
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.949,
+      "cost_rub": "0.01402963",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 39,
+          "total_tokens": 1271,
+          "completion_tokens_details": {
+            "reasoning_tokens": 14,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.01402963,
+          "cost": 0.01402963
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 4.727,
+      "cost_rub": "0.0134406",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 24,
+          "total_tokens": 1231,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.0134406,
+          "cost": 0.0134406
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.327,
+      "cost_rub": "0.00466726",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 24,
+          "total_tokens": 1231,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00466726,
+          "cost": 0.00466726
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.869,
+      "cost_rub": "0.02334487",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 41,
+          "total_tokens": 2958,
+          "completion_tokens_details": {
+            "reasoning_tokens": 17,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.02334487,
+          "cost": 0.02334487
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.154,
+      "cost_rub": "0.03237524",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 53,
+          "total_tokens": 2970,
+          "completion_tokens_details": {
+            "reasoning_tokens": 31,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.03237524,
+          "cost": 0.03237524
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.59,
+      "cost_rub": "0.00735966",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 24,
+          "total_tokens": 2916,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 2816,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00735966,
+          "cost": 0.00735966
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "only_cheapest",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "decart/fp4"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 4.01,
+      "cost_rub": "0.03148634",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 24,
+          "total_tokens": 2916,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.03148634,
+          "cost": 0.03148634
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 2.992,
+      "cost_rub": "0.00835352",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 38,
+          "total_tokens": 354,
+          "completion_tokens_details": {
+            "reasoning_tokens": 14,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00835352,
+          "cost": 0.00835352
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.705,
+      "cost_rub": "0.00675707",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 47,
+          "total_tokens": 363,
+          "completion_tokens_details": {
+            "reasoning_tokens": 23,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 128,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00675707,
+          "cost": 0.00675707
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.038,
+      "cost_rub": "0.00683632",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 23,
+          "total_tokens": 314,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00683632,
+          "cost": 0.00683632
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 4.945,
+      "cost_rub": "0.00459729",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 23,
+          "total_tokens": 314,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 128,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00459729,
+          "cost": 0.00459729
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 4.502,
+      "cost_rub": "0.02563174",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 51,
+          "total_tokens": 1283,
+          "completion_tokens_details": {
+            "reasoning_tokens": 27,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.02563174,
+          "cost": 0.02563174
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.3,
+      "cost_rub": "0.00629156",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 31,
+          "total_tokens": 1263,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00629156,
+          "cost": 0.00629156
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 4.65,
+      "cost_rub": "0.02318637",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 23,
+          "total_tokens": 1230,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.02318637,
+          "cost": 0.02318637
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 4.69,
+      "cost_rub": "0.00527414",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 23,
+          "total_tokens": 1230,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00527414,
+          "cost": 0.00527414
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.709,
+      "cost_rub": "0.03362898",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 24,
+          "total_tokens": 2941,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1152,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.03362898,
+          "cost": 0.03362898
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.568,
+      "cost_rub": "0.00904536",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 56,
+          "total_tokens": 2973,
+          "completion_tokens_details": {
+            "reasoning_tokens": 32,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 2688,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00904536,
+          "cost": 0.00904536
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.577,
+      "cost_rub": "0.03758941",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 23,
+          "total_tokens": 2915,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 896,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.03758941,
+          "cost": 0.03758941
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 4.192,
+      "cost_rub": "0.00624301",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 23,
+          "total_tokens": 2915,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 2688,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00624301,
+          "cost": 0.00624301
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 7.103,
+      "cost_rub": "0.00412321",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 65,
+          "completion_tokens": 160,
+          "total_tokens": 225,
+          "completion_tokens_details": {
+            "reasoning_tokens": 156,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00412321,
+          "cost": 0.00412321
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 5.951,
+      "cost_rub": "0.00517276",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 65,
+          "completion_tokens": 209,
+          "total_tokens": 274,
+          "completion_tokens_details": {
+            "reasoning_tokens": 228,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00517276,
+          "cost": 0.00517276
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.695,
+      "cost_rub": "0.00154219",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 52,
+          "total_tokens": 92,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00154219,
+          "cost": 0.00154219
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.916,
+      "cost_rub": "0.00154219",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 52,
+          "total_tokens": 92,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00154219,
+          "cost": 0.00154219
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 4.128,
+      "cost_rub": "0.00219762",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 47,
+          "total_tokens": 363,
+          "completion_tokens_details": {
+            "reasoning_tokens": 23,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 256,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00219762,
+          "cost": 0.00219762
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.763,
+      "cost_rub": "0.00439095",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 316,
+          "completion_tokens": 47,
+          "total_tokens": 363,
+          "completion_tokens_details": {
+            "reasoning_tokens": 23,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00439095,
+          "cost": 0.00439095
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 7.145,
+      "cost_rub": "0.00143723",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 24,
+          "total_tokens": 315,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 256,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00143723,
+          "cost": 0.00143723
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "simple",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.911,
+      "cost_rub": "0.00143723",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 291,
+          "completion_tokens": 24,
+          "total_tokens": 315,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 256,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00143723,
+          "cost": 0.00143723
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 20.429,
+      "cost_rub": "0.00525629",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 39,
+          "total_tokens": 1271,
+          "completion_tokens_details": {
+            "reasoning_tokens": 14,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00525629,
+          "cost": 0.00525629
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 7.207,
+      "cost_rub": "0.00525629",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1232,
+          "completion_tokens": 39,
+          "total_tokens": 1271,
+          "completion_tokens_details": {
+            "reasoning_tokens": 14,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00525629,
+          "cost": 0.00525629
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.684,
+      "cost_rub": "0.00466726",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 24,
+          "total_tokens": 1231,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00466726,
+          "cost": 0.00466726
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "student",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 4.844,
+      "cost_rub": "0.0134406",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 1207,
+          "completion_tokens": 24,
+          "total_tokens": 1231,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.0134406,
+          "cost": 0.0134406
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.599,
+      "cost_rub": "0.03211821",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 41,
+          "total_tokens": 2958,
+          "completion_tokens_details": {
+            "reasoning_tokens": 17,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.03211821,
+          "cost": 0.03211821
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "default",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 5.869,
+      "cost_rub": "0.02362332",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2917,
+          "completion_tokens": 54,
+          "total_tokens": 2971,
+          "completion_tokens_details": {
+            "reasoning_tokens": 31,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.02362332,
+          "cost": 0.02362332
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 8.076,
+      "cost_rub": "0.022713",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 24,
+          "total_tokens": 2916,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 1024,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.022713,
+          "cost": 0.022713
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "admin",
+      "reasoning": "disabled",
+      "route": "order_cheapest_native",
+      "provider_request": {
+        "require_parameters": true,
+        "order": [
+          "decart/fp4",
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.512,
+      "cost_rub": "0.00735966",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature",
+          "tool_choice",
+          "tools"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          null,
+          null,
+          true,
+          null,
+          true,
+          null,
+          true,
+          true,
+          true,
+          null
+        ],
+        "tool_choice": "auto",
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 24,
+          "total_tokens": 2916,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 2816,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00735966,
+          "cost": 0.00735966
+        },
+        "tool_calls": [
+          "get_my_profile"
+        ]
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 4.196,
+      "cost_rub": "0.00858556",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 65,
+          "completion_tokens": 104,
+          "total_tokens": 169,
+          "completion_tokens_details": {
+            "reasoning_tokens": 80,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00858556,
+          "cost": 0.00858556
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "default",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 5.884,
+      "cost_rub": "0.01601091",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 65,
+          "completion_tokens": 208,
+          "total_tokens": 273,
+          "completion_tokens_details": {
+            "reasoning_tokens": 49,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.01601091,
+          "cost": 0.01601091
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 1,
+      "elapsed_s": 3.44,
+      "cost_rub": "0.00242752",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00242752,
+          "cost": 0.00242752
+        },
+        "tool_calls": []
+      }
+    },
+    {
+      "tools": "none",
+      "reasoning": "disabled",
+      "route": "only_native",
+      "provider_request": {
+        "require_parameters": true,
+        "only": [
+          "deepseek"
+        ],
+        "allow_fallbacks": false
+      },
+      "parallel_tool_calls": null,
+      "repeat": 2,
+      "elapsed_s": 3.018,
+      "cost_rub": "0.00242752",
+      "estimated": false,
+      "tariff": {
+        "provider": "unknown_provider_catalog_upper_bound",
+        "input_price": "92.21480000",
+        "output_price": "285.59040000",
+        "cached_input_price": null
+      },
+      "http": {
+        "status": 200,
+        "request_fields": [
+          "max_completion_tokens",
+          "messages",
+          "model",
+          "provider",
+          "reasoning",
+          "stream",
+          "temperature"
+        ],
+        "message_roles": [
+          "system",
+          "user"
+        ],
+        "tool_strict_flags": [],
+        "tool_choice": null,
+        "fields": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "usage"
+        ],
+        "usage_fields": [
+          "completion_tokens",
+          "completion_tokens_details",
+          "cost",
+          "cost_rub",
+          "plugins",
+          "prompt_tokens",
+          "prompt_tokens_details",
+          "server_tool_use",
+          "total_tokens"
+        ],
+        "billing": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_rub": 0.00242752,
+          "cost": 0.00242752
+        },
+        "tool_calls": []
+      }
+    }
+  ]
+}

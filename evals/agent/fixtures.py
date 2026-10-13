@@ -1,15 +1,16 @@
 """Synthetic read results; no database, Telegram or production services."""
 
 from pybot.dto import UserReadDTO
-from pybot.dto.agent_read import AgentMonth
+from pybot.dto.agent_read import AgentMonth, AgentUserCandidate, AgentUserSearchResult
 from pybot.services.agent.reads import AgentReadService
 
 
 class EvalReads(AgentReadService):
     """Replace every read use case with deterministic, non-personal evidence."""
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, search_mode: str = "unique") -> None:
+        self.search_mode = search_mode
+        self.allowed_search_recipient_ids: set[int] = set()
 
     async def get_profile(self, user: UserReadDTO) -> str:
         return "Мой профиль: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
@@ -17,8 +18,41 @@ class EvalReads(AgentReadService):
     async def get_profile_for_telegram_id(self, telegram_id: int) -> str:
         return "Профиль участника: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
 
-    async def find_user_candidates(self, name_query: str) -> str:
-        return f"Кандидаты по запросу «{name_query}»: Иванов Тест — Telegram ID 1."
+    async def find_user_candidates(self, name_query: str) -> AgentUserSearchResult:
+        candidates = [
+            AgentUserCandidate(
+                full_name="Иванов Иван Иванович",
+                telegram_id=771234,
+                telegram_username="test_student",
+            )
+        ]
+        if "Петров" in name_query:
+            candidates = [
+                AgentUserCandidate(
+                    full_name="Петрова Анна Сергеевна",
+                    telegram_id=884422,
+                    telegram_username="anna_test",
+                )
+            ]
+        if self.search_mode == "ambiguous":
+            candidates.append(
+                AgentUserCandidate(
+                    full_name="Иванов Иван Петрович",
+                    telegram_id=884422,
+                    telegram_username="ivan_test",
+                )
+            )
+        elif self.search_mode == "none":
+            candidates = []
+
+        self.allowed_search_recipient_ids = (
+            {candidate.telegram_id for candidate in candidates} if len(candidates) == 1 else set()
+        )
+        return AgentUserSearchResult(
+            name_query=name_query,
+            candidates=candidates,
+            total_matches=len(candidates),
+        )
 
     async def get_attendance_for_telegram_id(self, telegram_id: int, period: AgentMonth) -> str:
         return f"Посещаемость участника за {period.year}-{period.month:02}: 90 минут; посещений: 2; место: 3."
