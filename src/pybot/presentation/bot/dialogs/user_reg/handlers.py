@@ -252,11 +252,18 @@ async def _on_competence_submit_impl(
     user_reg_service: UserRegistrationService,
     user_profile_service: UserProfileService,
 ) -> None:
-    user = await _register_user_from_dialog(manager, user_reg_service)
+    try:
+        user = await _register_user_from_dialog(manager, user_reg_service)
+    except Exception:
+        logger.exception("event=registration phase=completion status=failed")
+        if callback.message is not None:
+            await callback.message.answer(REGISTRATION_INTERNAL_ERROR)
+        await manager.done()
+        return
+
     if user is None:
         if callback.message is not None:
             await callback.message.answer(REGISTRATION_INTERNAL_ERROR)
-        await callback.answer()
         await manager.done()
         return
 
@@ -269,7 +276,6 @@ async def _on_competence_submit_impl(
             parse_mode="HTML",
             reply_markup=get_main_menu_keyboard(),
         )
-    await callback.answer()
     await manager.done()
 
 
