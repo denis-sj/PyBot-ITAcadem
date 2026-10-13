@@ -15,6 +15,14 @@ from .dependencies import AgentDependencies
 TelegramUserId = Annotated[int, Field(strict=True, gt=0)]
 PointsDelta = Annotated[int, Field(strict=True)]
 StrictBoolean = Annotated[bool, Field(strict=True)]
+VisitTimeInput = Annotated[
+    str,
+    Field(
+        strict=True,
+        pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
+        description="Строгий формат ЧЧ:ММ, например 10:00. Секунды не допускаются.",
+    ),
+]
 
 
 async def validate_points_adjustment(
@@ -104,12 +112,14 @@ async def validate_visit_update(
     ctx: RunContext[AgentDependencies],
     telegram_id: TelegramUserId,
     visit_date: date,
-    start_time: time,
-    end_time: time,
+    start_time: VisitTimeInput,
+    end_time: VisitTimeInput,
 ) -> None:
     """Check an existing visit and the proposed interval before confirmation."""
     try:
-        await ctx.deps.actions.validate_visit_update(telegram_id, visit_date, start_time, end_time)
+        await ctx.deps.actions.validate_visit_update(
+            telegram_id, visit_date, _parse_visit_time(start_time), _parse_visit_time(end_time)
+        )
     except DomainError as error:
         raise ModelRetry(
             "Не удалось подготовить изменение посещения. Проверьте Telegram ID, дату и интервал времени."
@@ -120,13 +130,15 @@ async def update_attendance_visit_time(
     ctx: RunContext[AgentDependencies],
     telegram_id: TelegramUserId,
     visit_date: date,
-    start_time: time,
-    end_time: time,
+    start_time: VisitTimeInput,
+    end_time: VisitTimeInput,
 ) -> str:
     """Change a visit time after confirmation and write the standard audit history."""
     admin = await ctx.deps.get_actor()
     try:
-        return await ctx.deps.actions.update_visit_time(telegram_id, visit_date, start_time, end_time, admin)
+        return await ctx.deps.actions.update_visit_time(
+            telegram_id, visit_date, _parse_visit_time(start_time), _parse_visit_time(end_time), admin
+        )
     except DomainError:
         return "Посещение не изменено: после подтверждения запись изменилась или проверка не пройдена."
 
@@ -156,12 +168,14 @@ async def validate_manual_visit(
     ctx: RunContext[AgentDependencies],
     telegram_id: TelegramUserId,
     visit_date: date,
-    start_time: time,
-    end_time: time,
+    start_time: VisitTimeInput,
+    end_time: VisitTimeInput,
 ) -> None:
     """Check a proposed manual visit before confirmation."""
     try:
-        await ctx.deps.actions.validate_manual_visit(telegram_id, visit_date, start_time, end_time)
+        await ctx.deps.actions.validate_manual_visit(
+            telegram_id, visit_date, _parse_visit_time(start_time), _parse_visit_time(end_time)
+        )
     except DomainError as error:
         raise ModelRetry(
             "Не удалось подготовить добавление посещения. Проверьте Telegram ID, дату и интервал времени."
@@ -172,13 +186,15 @@ async def add_manual_attendance_visit(
     ctx: RunContext[AgentDependencies],
     telegram_id: TelegramUserId,
     visit_date: date,
-    start_time: time,
-    end_time: time,
+    start_time: VisitTimeInput,
+    end_time: VisitTimeInput,
 ) -> str:
     """Add a manual visit after confirmation through the audited attendance service."""
     admin = await ctx.deps.get_actor()
     try:
-        return await ctx.deps.actions.create_manual_visit(telegram_id, visit_date, start_time, end_time, admin)
+        return await ctx.deps.actions.create_manual_visit(
+            telegram_id, visit_date, _parse_visit_time(start_time), _parse_visit_time(end_time), admin
+        )
     except DomainError:
         return "Посещение не добавлено: после подтверждения данные изменились или проверка не пройдена."
 
@@ -236,3 +252,8 @@ def _format_time(value: int | str | bool | None) -> str | None:
         return time.fromisoformat(raw_value).strftime("%H:%M")
     except ValueError:
         return None
+
+
+def _parse_visit_time(value: VisitTimeInput) -> time:
+    """Convert a schema-validated minute-precision time to the attendance service type."""
+    return time.fromisoformat(value)

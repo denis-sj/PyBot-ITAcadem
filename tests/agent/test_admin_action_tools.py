@@ -54,10 +54,28 @@ def test_admin_mutation_tools_are_filtered_and_always_deferred():
             "update_attendance_visit_time",
             {"telegram_id": "771234", "visit_date": "2026-10-10", "start_time": "10:00", "end_time": "11:00"},
         ),
+        (
+            "update_attendance_visit_time",
+            {
+                "telegram_id": 771234,
+                "visit_date": "2026-10-10",
+                "start_time": "10:00:59",
+                "end_time": "11:00",
+            },
+        ),
         ("delete_attendance_visit", {"telegram_id": 771234.5, "visit_date": "2026-10-10"}),
         ("send_broadcast", {"message": "Текст", "audience": 1}),
         ("send_broadcast", {"message": "Текст", "audience": "students"}),
         ("send_broadcast", {"message": "Текст", "audience": "role", "target": 1}),
+        (
+            "add_manual_attendance_visit",
+            {
+                "telegram_id": 771234,
+                "visit_date": "2026-10-10",
+                "start_time": "10:00:59",
+                "end_time": "11:00",
+            },
+        ),
         (
             "add_manual_attendance_visit",
             {"telegram_id": -771234, "visit_date": "2026-10-10", "start_time": "10:00", "end_time": "11:00"},
@@ -81,6 +99,61 @@ def test_negative_points_delta_remains_a_valid_deduction():
     )
 
     assert validated["delta"] == -10
+
+
+@pytest.mark.parametrize("tool_name", ["update_attendance_visit_time", "add_manual_attendance_visit"])
+def test_attendance_action_time_schema_accepts_only_hh_mm(tool_name):
+    registry = AgentToolRegistry()
+    tool = next(entry.tool for entry in registry.entries if entry.tool.name == tool_name)
+    arguments = {
+        "telegram_id": 771234,
+        "visit_date": "2026-10-10",
+        "start_time": "10:00",
+        "end_time": "11:00",
+    }
+
+    validated = tool.function_schema.validator.validate_python(arguments)
+
+    assert validated["start_time"] == "10:00"
+    assert validated["end_time"] == "11:00"
+    with pytest.raises(ValidationError, match="pattern"):
+        tool.function_schema.validator.validate_python({**arguments, "start_time": "10:00:59"})
+
+
+@pytest.mark.asyncio
+async def test_visit_with_seconds_is_rejected_without_confirmation(agent_settings, conversation):
+    actions = Mock(spec=AgentActionsPort)
+
+    def model(messages, info):
+        if any(
+            isinstance(message, ModelRequest) and any(isinstance(part, RetryPromptPart) for part in message.parts)
+            for message in messages
+        ):
+            return ModelResponse(parts=[TextPart("Время посещения нужно указать в формате ЧЧ:ММ, без секунд.")])
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    "update_attendance_visit_time",
+                    {
+                        "telegram_id": 771234,
+                        "visit_date": "2026-10-10",
+                        "start_time": "10:00:59",
+                        "end_time": "11:00",
+                    },
+                    tool_call_id="visit-with-seconds",
+                )
+            ]
+        )
+
+    service, users, _ = build_service(agent_settings, model=FunctionModel(model), actions=actions)
+    users.find_all_user_roles.return_value = {"Admin"}
+
+    result = await service.answer(conversation, "Измени посещение Telegram ID 771234 на 10:00:59–11:00")
+
+    assert result.confirmation_id is None
+    assert result.text == "Время посещения нужно указать в формате ЧЧ:ММ, без секунд."
+    assert not service.runtime.pending
+    actions.validate_visit_update.assert_not_awaited()
 
 
 def test_points_confirmation_uses_exact_action_arguments():
@@ -267,8 +340,8 @@ async def test_invalid_action_arguments_never_create_a_confirmation(agent_settin
             {
                 "telegram_id": 771234,
                 "visit_date": "2026-10-10",
-                "start_time": "10:00:00",
-                "end_time": "11:00:00",
+                "start_time": "10:00",
+                "end_time": "11:00",
             },
         ),
         (
@@ -297,8 +370,8 @@ async def test_invalid_action_arguments_never_create_a_confirmation(agent_settin
             {
                 "telegram_id": 771234,
                 "visit_date": "2026-10-10",
-                "start_time": "10:00:00",
-                "end_time": "11:00:00",
+                "start_time": "10:00",
+                "end_time": "11:00",
             },
         ),
         (
@@ -374,6 +447,10 @@ async def test_action_preview_uses_the_same_canonical_arguments_as_execution(
     assert stored_tool_call.args_as_dict() == canonical_arguments
     if "telegram_id" in arguments:
         assert "Петров Пётр Петрович (@petrov), Telegram ID 771234" in pending.text
+    if tool_name == "update_attendance_visit_time":
+        assert pending.text.endswith("на 10:00–11:00.")
+    if tool_name == "add_manual_attendance_visit":
+        assert pending.text.endswith(": 10:00–11:00.")
 
     service.runtime.bind_message(pending.confirmation_id, 77)
     confirmed = await service.confirm(pending.confirmation_id, action_conversation, 77, approved=True)
