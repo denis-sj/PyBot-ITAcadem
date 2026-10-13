@@ -31,6 +31,12 @@ from .model_timeout import AgentTimeoutModel
 from .reads import AgentReadService, format_user_candidates
 from .runtime import AgentRuntime, PendingAgentRequest
 from .tools import AgentDependencies, AgentToolRegistry
+from .usage import (
+    log_agent_usage,
+    snapshot_run_usage,
+    summarize_run_usage,
+    summarize_usage_increment,
+)
 
 AGENT_INSTRUCTIONS = """Ты — помощник Telegram-бота ITAcadem. Отвечай по-русски и только о функциях бота.
 Для справки обязательно вызывай bot_capabilities. На посторонний вопрос вежливо откажи и перечисли доступные функции.
@@ -186,6 +192,7 @@ class AgentService:
             usage=usage,
             usage_limits=UsageLimits(request_limit=self.settings.agent_max_steps, tool_calls_limit=8),
         )
+        log_agent_usage(summarize_run_usage(result.usage, result.new_messages()), self.settings.agent_model)
         if isinstance(result.output, DeferredToolRequests):
             if deferred is not None:
                 return AgentReply(text="Действие обработано. Для следующего действия отправьте отдельное сообщение.")
@@ -260,6 +267,7 @@ class AgentService:
         roles = await dependencies.get_roles()
         agent = self._create_agent(request.model, roles)
         deferred_results = self._approval_results(request.requests.approvals)
+        usage_before = snapshot_run_usage(request.usage)
         action_result: str | None = None
         async with agent.iter(
             message_history=request.messages,
@@ -274,9 +282,20 @@ class AgentService:
                     if action_result is not None:
                         break
             except Exception:
-                action_result = self._find_action_result(agent_run.all_messages(), primary_call.tool_call_id)
+                messages = agent_run.all_messages()
+                log_agent_usage(
+                    summarize_usage_increment(request.usage, usage_before, agent_run.new_messages()),
+                    self.settings.agent_model,
+                )
+                action_result = self._find_action_result(messages, primary_call.tool_call_id)
                 if action_result is None:
                     raise
+            else:
+                messages = agent_run.all_messages()
+                log_agent_usage(
+                    summarize_usage_increment(request.usage, usage_before, agent_run.new_messages()),
+                    self.settings.agent_model,
+                )
         if action_result is None:
             logger.error("event=agent_action status=failed reason=missing_tool_result")
             return AgentReply(text="Действие не выполнено: проверка после подтверждения не пройдена.")
