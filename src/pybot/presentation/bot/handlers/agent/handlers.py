@@ -40,6 +40,7 @@ async def handle_agent_message(
 ) -> None:
     if message.from_user is None or message.text is None:
         return
+    logger.info("event=agent_run status=started chat_type={chat_type}", chat_type=message.chat.type)
     conversation = AgentConversation(
         chat_id=message.chat.id, topic_id=message.message_thread_id, telegram_id=message.from_user.id
     )

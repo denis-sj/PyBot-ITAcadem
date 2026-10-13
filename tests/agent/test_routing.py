@@ -6,7 +6,7 @@ from aiogram.types import User
 from fakeredis import FakeAsyncRedis
 
 from pybot.infrastructure.adapters.agent_memory import RedisAgentMemory
-
+from pybot.presentation.bot.handlers.agent import routing
 from pybot.presentation.bot.handlers.agent.routing import AgentMessageFilter
 from pybot.presentation.bot.handlers.broadcast.states import BroadcastMenuSG
 from pybot.services.ports.agent import AgentMemoryPort
@@ -74,6 +74,30 @@ async def test_active_fsm_and_dialog_take_priority(router_filter, bot, state, di
     agent_filter, _ = router_filter
     assert not await agent_filter(build_message("@academy_bot help"), bot, raw_state=state, aiogd_context=dialog)
     bot.me.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("chat_id", "topic_id", "text", "raw_state", "dialog", "reason"),
+    [
+        (-100, 3, "/profile PRIVATE_SENTINEL", None, None, "command"),
+        (-100, 3, "question PRIVATE_SENTINEL", "Broadcast:waiting_for_text", None, "fsm_state"),
+        (-100, 3, "question PRIVATE_SENTINEL", None, Mock(), "dialog"),
+        (-999, 4, "question PRIVATE_SENTINEL", None, None, "no_group_address"),
+    ],
+)
+async def test_filter_logs_skip_reason_without_message_text(
+    router_filter, bot, monkeypatch, chat_id, topic_id, text, raw_state, dialog, reason
+):
+    agent_filter, _ = router_filter
+    log = Mock()
+    monkeypatch.setattr(routing, "logger", log)
+    message = build_message(text, chat_id=chat_id, topic_id=topic_id)
+
+    assert not await agent_filter(message, bot, raw_state=raw_state, aiogd_context=dialog)
+
+    log.debug.assert_called_once_with("event=agent_filter status=skipped reason={reason}", reason=reason)
+    assert "PRIVATE_SENTINEL" not in repr(log.debug.call_args)
 
 
 @pytest.mark.asyncio

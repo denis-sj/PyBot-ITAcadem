@@ -16,6 +16,7 @@ from pydantic_ai.models.test import TestModel
 from pybot.core.constants import RoleEnum
 from pybot.di.containers import setup_container
 from pybot.dto.agent import AgentReply
+from pybot.presentation.bot import tg_bot_run
 from pybot.presentation.bot.handlers.agent import handlers as agent_handlers
 from pybot.presentation.bot.handlers.agent.handlers import (
     AgentConfirmation,
@@ -23,13 +24,12 @@ from pybot.presentation.bot.handlers.agent.handlers import (
     handle_agent_confirmation,
     handle_agent_message,
 )
+from pybot.presentation.bot.handlers.broadcast.states import BroadcastMenuSG
 from pybot.presentation.bot.tg_bot_run import setup_agent_handler
+from pybot.presentation.texts.agent import AGENT_EXPIRED
 from pybot.services.agent.runtime import AgentRuntime
 from pybot.services.agent.service import AgentService
-from pybot.presentation.texts.agent import AGENT_EXPIRED
 from pybot.services.ports.agent import AgentActionsPort, AgentMemoryPort
-from pybot.presentation.bot.handlers.broadcast.states import BroadcastMenuSG
-
 from tests.agent.conftest import build_message, build_service
 
 
@@ -166,6 +166,19 @@ async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings
     assert kwargs["reply_parameters"].message_id == 1
     memory.mark_reply.assert_awaited_once_with(-100, 3, 50)
     assert runtime.queues == {}
+
+
+@pytest.mark.asyncio
+async def test_agent_run_started_log_contains_chat_type_without_question_text(agent_settings, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    log = Mock()
+    monkeypatch.setattr(agent_handlers, "logger", log)
+    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True)))
+
+    await handle_agent_message(build_message("PRIVATE_SENTINEL"), service, service.runtime, memory)
+
+    log.info.assert_called_once_with("event=agent_run status=started chat_type={chat_type}", chat_type="supergroup")
+    assert "PRIVATE_SENTINEL" not in repr(log.info.call_args)
 
 
 @pytest.mark.asyncio
@@ -435,6 +448,51 @@ async def test_public_di_resolves_shared_runtime_and_request_service(agent_setti
         assert first.model is second.model
     finally:
         await container.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("enabled", "group_chat_id", "topic_id", "expected_status", "expected_topic"),
+    [
+        (True, -100, 3, "enabled", "true"),
+        (False, None, None, "disabled", "false"),
+    ],
+)
+async def test_agent_setup_logs_enabled_status_and_topic(
+    agent_settings,
+    monkeypatch,
+    enabled,
+    group_chat_id,
+    topic_id,
+    expected_status,
+    expected_topic,
+):
+    log = Mock()
+    monkeypatch.setattr(tg_bot_run, "logger", log)
+    agent_settings.agent_enabled = enabled
+    agent_settings.agent_model = "test/agent-model"
+    agent_settings.agent_group_chat_id = group_chat_id
+    agent_settings.agent_topic_id = topic_id
+    container = Mock(get=AsyncMock(return_value=Mock(spec=AgentMemoryPort)))
+    dispatcher = Dispatcher()
+
+    try:
+        await setup_agent_handler(dispatcher, container, agent_settings)
+    finally:
+        await dispatcher.storage.close()
+
+    log.info.assert_called_once_with(
+        "event=agent_setup status={status} model={model} topic_configured={topic_configured}",
+        status=expected_status,
+        model="test/agent-model",
+        topic_configured=expected_topic,
+    )
+    if enabled:
+        container.get.assert_awaited_once_with(AgentMemoryPort)
+        assert len(dispatcher.sub_routers) == 1
+    else:
+        container.get.assert_not_awaited()
+        assert dispatcher.sub_routers == []
 
 
 @pytest.mark.asyncio

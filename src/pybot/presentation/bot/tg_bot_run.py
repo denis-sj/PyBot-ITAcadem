@@ -118,6 +118,13 @@ def setup_handlers(dp: Dispatcher) -> None:
 
 async def setup_agent_handler(dp: Dispatcher, container: AsyncContainer, settings: AppSettings) -> None:
     """Register agent last, only when explicitly enabled."""
+    topic_configured = settings.agent_group_chat_id is not None and settings.agent_topic_id is not None
+    logger.info(
+        "event=agent_setup status={status} model={model} topic_configured={topic_configured}",
+        status="enabled" if settings.agent_enabled else "disabled",
+        model=settings.agent_model,
+        topic_configured=str(topic_configured).lower(),
+    )
     if settings.agent_enabled:
         memory = await container.get(AgentMemoryPort)
         dp.include_router(create_agent_router(settings, memory))
