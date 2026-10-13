@@ -88,3 +88,52 @@ async def test_polza_usage_cost_is_preserved_as_provider_detail(agent_settings):
         "reasoning_tokens": 2,
         "cost_rub": "0.005",
     }
+
+
+@pytest.mark.asyncio
+async def test_deepseek_wire_omits_unsupported_parallel_parameter(agent_settings, monkeypatch):
+    import json
+
+    from pydantic_ai import models
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from pydantic_ai.models import ModelRequestParameters
+    from pydantic_ai.tools import ToolDefinition
+
+    monkeypatch.setattr(models, "ALLOW_MODEL_REQUESTS", True)
+    agent_settings.polza_api_key = SecretStr("synthetic-key")
+    agent_settings.agent_model = "deepseek/deepseek-v4.1-flash"
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx2.Response(
+            200,
+            json={
+                "id": "synthetic-completion",
+                "object": "chat.completion",
+                "created": 1,
+                "model": agent_settings.agent_model,
+                "choices": [
+                    {"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Готово"}}
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12},
+            },
+        )
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(respond)) as client:
+        model = PolzaAgentModel(agent_settings, client).get_model()
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("synthetic")])],
+            {"max_tokens": 1000, "parallel_tool_calls": False},
+            ModelRequestParameters(
+                function_tools=[
+                    ToolDefinition(
+                        name="get_my_profile",
+                        parameters_json_schema={"type": "object", "properties": {}},
+                    )
+                ]
+            ),
+        )
+    assert len(requests) == 1
+    assert "parallel_tool_calls" not in requests[0]
+    assert requests[0]["tools"][0]["function"]["name"] == "get_my_profile"

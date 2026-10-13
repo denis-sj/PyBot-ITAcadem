@@ -7,6 +7,7 @@ import httpx2
 from openai.types.chat import ChatCompletion
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from ...core.config import AppSettings
@@ -83,5 +84,10 @@ class PolzaAgentModel:
                 base_url=self.settings.polza_base_url,
                 api_key=key.get_secret_value(),
                 http_client=self.client,
+            ),
+            profile=(
+                OpenAIModelProfile(openai_unsupported_model_settings=("parallel_tool_calls",))
+                if self.settings.agent_model.startswith("deepseek/")
+                else None
             ),
         )
