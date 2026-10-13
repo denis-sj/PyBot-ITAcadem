@@ -482,7 +482,7 @@ async def test_action_preview_uses_the_same_canonical_arguments_as_execution(
             False,
         ),
         (
-            AgentUserSearchResult(name_query="Иванов", candidates=[], total_matches=0),
+            AgentUserSearchResult(name_query="@missing", candidates=[], total_matches=0),
             771234,
             False,
         ),
@@ -526,6 +526,7 @@ async def test_action_preview_requires_one_exact_candidate(
         academic_points=Points(value=10, point_type=PointsTypeEnum.ACADEMIC),
         reputation_points=Points(value=0, point_type=PointsTypeEnum.REPUTATION),
         join_date=date(2026, 1, 1),
+        telegram_username="petya",
     )
 
     def model(messages, info):
@@ -533,7 +534,7 @@ async def test_action_preview_requires_one_exact_candidate(
             parts=[
                 ToolCallPart(
                     "find_user_candidates",
-                    {"name_query": "Иванов"},
+                    {"name_query": search_result.name_query},
                     tool_call_id="candidate-search",
                 ),
                 ToolCallPart(
@@ -552,11 +553,11 @@ async def test_action_preview_requires_one_exact_candidate(
     )
     users.find_all_user_roles.return_value = {"Admin"}
 
-    result = await service.answer(conversation, "Выдай роль Иванову")
+    result = await service.answer(conversation, f"Выдай роль {search_result.name_query}")
 
     if should_preview:
         assert result.confirmation_id is not None
-        assert "Иванов Иван Иванович, Telegram ID 771234" in result.text
+        assert "Иванов Иван Иванович (@petya), Telegram ID 771234" in result.text
     else:
         assert result.confirmation_id is None
         assert "Уточните" in result.text

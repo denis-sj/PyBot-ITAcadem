@@ -1,8 +1,10 @@
 """Read existing use cases and expose only necessary evidence to the model."""
 
+import re
 from datetime import datetime, timedelta
 
 from ...core.constants import YEKATERINBURG_TZ, PointsTypeEnum
+from ...db.models import User
 from ...dto import ProfileViewDTO, UserReadDTO
 from ...dto.agent_read import AgentMonth, AgentUserCandidate, AgentUserSearchResult
 from ...dto.attendance import AttendanceMonthlyRankingItemDTO, AttendanceMonthlyReportDTO, AttendanceTopDTO
@@ -18,15 +20,19 @@ from ..user_services.users import UserService
 _MAX_REPORT_RANKING_ROWS = 25
 _MAX_REPORT_DETAIL_ROWS = 30
 _MAX_USER_CANDIDATES = 5
+_USERNAME_QUERY_PATTERN = re.compile(r"[A-Za-z0-9_]{5,32}")
 
 
 def format_user_candidates(result: AgentUserSearchResult) -> str:
     """Present exact candidate IDs and ask the administrator to resolve ambiguity."""
     if not result.candidates:
-        return "Совпадений не нашёл. Уточните полное имя или точный Telegram ID."
+        return "Совпадений не нашёл. Уточните полное имя, @username или точный Telegram ID."
 
     lines = [f"Кандидаты по запросу «{result.name_query}»: "]
-    lines.extend(f"{candidate.full_name} — Telegram ID {candidate.telegram_id}" for candidate in result.candidates)
+    for candidate in result.candidates:
+        full_name = candidate.full_name or "Имя не указано"
+        username = f" (@{candidate.telegram_username})" if candidate.telegram_username else ""
+        lines.append(f"{full_name}{username} — Telegram ID {candidate.telegram_id}")
     if result.total_matches > len(result.candidates):
         lines.append(
             f"Показаны первые {len(result.candidates)} из {result.total_matches} совпадений. "
@@ -101,32 +107,55 @@ class AgentReadService:
         )
 
     async def find_user_candidates(self, name_query: str) -> AgentUserSearchResult:
-        """Find a small set of participants by name for an administrator to disambiguate."""
-        search_terms = tuple(term.casefold() for term in name_query.split() if term)
-        if not search_terms:
+        """Find registered users by full name or exact Telegram username."""
+        query = name_query.strip()
+        if not query:
             return AgentUserSearchResult(name_query=name_query, candidates=[], total_matches=0)
 
         participants = await self.attendance.get_sorted_participants()
-        matches = []
-        for participant in participants:
-            full_name = " ".join(
-                part for part in (participant.last_name, participant.first_name, participant.patronymic) if part
-            )
-            normalized_name = full_name.casefold()
-            if all(term in normalized_name for term in search_terms):
-                matches.append((full_name, participant.telegram_id))
-
-        if not matches:
-            return AgentUserSearchResult(name_query=name_query, candidates=[], total_matches=0)
+        username_query = self._username_query(query)
+        matches: list[AgentUserCandidate] = []
+        if username_query is not None:
+            normalized_username_query = username_query.casefold()
+            for participant in participants:
+                username = participant.telegram_username
+                if username is None or username.removeprefix("@").casefold() != normalized_username_query:
+                    continue
+                matches.append(self._user_candidate(participant))
+        else:
+            search_terms = tuple(term.casefold() for term in query.split() if term)
+            for participant in participants:
+                full_name = self._full_name(participant.last_name, participant.first_name, participant.patronymic)
+                if all(term in full_name.casefold() for term in search_terms):
+                    matches.append(self._user_candidate(participant))
 
         return AgentUserSearchResult(
             name_query=name_query,
-            candidates=[
-                AgentUserCandidate(full_name=full_name, telegram_id=telegram_id)
-                for full_name, telegram_id in matches[:_MAX_USER_CANDIDATES]
-            ],
+            candidates=matches[:_MAX_USER_CANDIDATES],
             total_matches=len(matches),
         )
+
+    @staticmethod
+    def _username_query(query: str) -> str | None:
+        """Recognize an explicit @username or an unprefixed Telegram username."""
+        if query.startswith("@"):
+            return query[1:]
+        if _USERNAME_QUERY_PATTERN.fullmatch(query) is not None:
+            return query
+        return None
+
+    @classmethod
+    def _user_candidate(cls, user: User) -> AgentUserCandidate:
+        """Keep the persisted name, username, and Telegram identity together."""
+        return AgentUserCandidate(
+            full_name=cls._full_name(user.last_name, user.first_name, user.patronymic),
+            telegram_id=user.telegram_id,
+            telegram_username=user.telegram_username.removeprefix("@") if user.telegram_username else None,
+        )
+
+    @staticmethod
+    def _full_name(last_name: str | None, first_name: str | None, patronymic: str | None) -> str:
+        return " ".join(part for part in (last_name, first_name, patronymic) if part)
 
     @staticmethod
     def get_current_accounting_month() -> str:

@@ -91,7 +91,7 @@ async def get_user_profile(ctx: RunContext[AgentDependencies], telegram_id: int)
 
 
 async def find_user_candidates(ctx: RunContext[AgentDependencies], name_query: str) -> str:
-    """Найти участников по имени, чтобы администратор уточнил точный Telegram ID."""
+    """Найти зарегистрированных пользователей по ФИО или точному @username."""
     result = await ctx.deps.reads.find_user_candidates(name_query)
     ctx.deps.record_recipient_search(result)
     return format_user_candidates(result)

@@ -94,9 +94,15 @@ async def test_only_available_month_is_selected_automatically(reads):
 @pytest.mark.asyncio
 async def test_admin_name_search_lists_candidates_without_selecting_one(reads):
     reads.attendance.get_sorted_participants.return_value = [
-        SimpleNamespace(last_name="Иванов", first_name="Иван", patronymic=None, telegram_id=771),
-        SimpleNamespace(last_name="Иванова", first_name="Анна", patronymic=None, telegram_id=772),
-        SimpleNamespace(last_name="Петров", first_name="Пётр", patronymic=None, telegram_id=773),
+        SimpleNamespace(
+            last_name="Иванов", first_name="Иван", patronymic=None, telegram_id=771, telegram_username="ivanov"
+        ),
+        SimpleNamespace(
+            last_name="Иванова", first_name="Анна", patronymic=None, telegram_id=772, telegram_username=None
+        ),
+        SimpleNamespace(
+            last_name="Петров", first_name="Пётр", patronymic=None, telegram_id=773, telegram_username=None
+        ),
     ]
 
     result = await reads.find_user_candidates("иванов")
@@ -107,6 +113,47 @@ async def test_admin_name_search_lists_candidates_without_selecting_one(reads):
         ("Иванов Иван", 771),
         ("Иванова Анна", 772),
     ]
+    assert result.candidates[0].telegram_username == "ivanov"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["@petya", "petya", "PETYA"])
+async def test_admin_username_search_is_exact_and_case_insensitive_including_users_without_visits(reads, query):
+    registered_user_without_visits = SimpleNamespace(
+        last_name="Петров",
+        first_name="Пётр",
+        patronymic="Иванович",
+        telegram_id=771,
+        telegram_username="Petya",
+    )
+    reads.attendance.get_sorted_participants.return_value = [
+        registered_user_without_visits,
+        SimpleNamespace(
+            last_name="Петров", first_name="Павел", patronymic=None, telegram_id=772, telegram_username="petya2"
+        ),
+    ]
+
+    result = await reads.find_user_candidates(query)
+
+    reads.attendance.get_sorted_participants.assert_awaited_once_with()
+    assert result.total_matches == 1
+    assert result.candidates[0].full_name == "Петров Пётр Иванович"
+    assert result.candidates[0].telegram_id == 771
+    assert result.candidates[0].telegram_username == "Petya"
+
+
+@pytest.mark.asyncio
+async def test_admin_username_search_does_not_fall_back_to_name_when_username_is_missing(reads):
+    reads.attendance.get_sorted_participants.return_value = [
+        SimpleNamespace(
+            last_name="Petya", first_name="Person", patronymic=None, telegram_id=771, telegram_username="other"
+        )
+    ]
+
+    result = await reads.find_user_candidates("petya")
+
+    assert result.total_matches == 0
+    assert result.candidates == []
 
 
 @pytest.mark.asyncio

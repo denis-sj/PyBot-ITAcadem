@@ -123,7 +123,7 @@ async def test_candidate_search_formats_results_and_records_ambiguity(agent_sett
         return_value=AgentUserSearchResult(
             name_query="Иванов",
             candidates=[
-                AgentUserCandidate(full_name="Иванов Иван", telegram_id=771),
+                AgentUserCandidate(full_name="Иванов Иван", telegram_id=771, telegram_username="ivanov"),
                 AgentUserCandidate(full_name="Иванова Анна", telegram_id=772),
             ],
             total_matches=2,
@@ -134,7 +134,7 @@ async def test_candidate_search_formats_results_and_records_ambiguity(agent_sett
 
     result = await read_tools.find_user_candidates(Mock(deps=dependencies), "Иванов")
 
-    assert "Иванов Иван — Telegram ID 771" in result
+    assert "Иванов Иван (@ivanov) — Telegram ID 771" in result
     assert "Иванова Анна — Telegram ID 772" in result
     assert "Уточните Telegram ID" in result
     assert dependencies.ambiguous_recipient_search

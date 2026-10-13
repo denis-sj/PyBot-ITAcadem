@@ -1,6 +1,7 @@
 """Unit tests for AttendanceService orchestration and use cases."""
 
 from datetime import UTC, date, datetime, time, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
@@ -103,6 +104,27 @@ def service(
         settings=settings_obj,
         notification_service=mock_notification_service,
     )
+
+
+@pytest.mark.asyncio
+async def test_sorted_participants_uses_all_registered_users_without_requiring_visits(
+    service: AttendanceService,
+    mock_user_repo: AsyncMock,
+) -> None:
+    registered_user_without_visits = SimpleNamespace(
+        id=771,
+        last_name="Петров",
+        first_name="Пётр",
+        patronymic=None,
+        telegram_id=771234,
+        telegram_username="petya",
+    )
+    mock_user_repo.find_all_users.return_value = [registered_user_without_visits]
+
+    participants = await service.get_sorted_participants()
+
+    assert participants == [registered_user_without_visits]
+    mock_user_repo.find_all_users.assert_awaited_once()
 
 
 @pytest.mark.asyncio

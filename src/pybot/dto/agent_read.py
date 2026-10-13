@@ -30,10 +30,11 @@ class AgentMonth(BaseDTO):
 
 
 class AgentUserCandidate(BaseDTO):
-    """One exact user identity returned by an administrator's name search."""
+    """One user identity returned by an administrator's name or username search."""
 
     full_name: str
     telegram_id: int
+    telegram_username: str | None = None
 
 
 class AgentUserSearchResult(BaseDTO):
