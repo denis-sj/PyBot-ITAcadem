@@ -28,7 +28,7 @@ from ...dto.agent import AgentConversation, AgentReply, AgentReplyStatus
 from ..ports.agent import AgentActionsPort, AgentMemoryPort, AgentModelPort
 from ..user_services.users import UserService
 from .model_timeout import AgentTimeoutModel
-from .reads import AgentReadService
+from .reads import AgentReadService, format_user_candidates
 from .runtime import AgentRuntime, PendingAgentRequest
 from .tools import AgentDependencies, AgentToolRegistry
 
@@ -38,8 +38,9 @@ AGENT_INSTRUCTIONS = """Ты — помощник Telegram-бота ITAcadem. О
 Доступны мой профиль, мои посещения, мои роли и компетенции, публичные рейтинги и каталоги, информация о боте.
 Только администратору доступны текущий расчётный месяц и клубный отчёт,
 а также профиль или посещаемость участника по Telegram ID.
-Для чужих данных и действий используй только явно названный Telegram ID. Администратор может вызвать поиск кандидатов
-по имени; если совпадений несколько, попроси выбрать точный Telegram ID и не угадывай получателя.
+Для чужих данных и действий используй Telegram ID из сообщения пользователя или единственного результата поиска.
+Администратор может вызвать поиск кандидатов по имени; если совпадений нет или их несколько, попроси выбрать точный
+Telegram ID и не угадывай получателя.
 ID текущего чата доступен только администратору. Пользователь может подать заявку на роль Mentor
 после явного подтверждения.
 Администратор может после явного подтверждения изменить баллы, роли, компетенции и учёт посещений.
@@ -131,7 +132,9 @@ class AgentService:
         try:
             if await self.users.find_user_by_telegram_id(conversation.telegram_id) is None:
                 return AgentReply(status=AgentReplyStatus.REGISTRATION_REQUIRED)
-            dependencies = AgentDependencies(conversation, self.users, self.settings, self.reads, self.actions)
+            dependencies = AgentDependencies(
+                conversation, self.users, self.settings, self.reads, self.actions, question=request.question
+            )
             primary_call = request.requests.approvals[0]
             await dependencies.require_roles(self.registry.get_policy(primary_call.tool_name))
             return await self._execute_approved_action(request, dependencies)
@@ -151,7 +154,9 @@ class AgentService:
         deferred: DeferredToolResults | None = None,
         usage: RunUsage | None = None,
     ) -> AgentReply:
-        dependencies = AgentDependencies(conversation, self.users, self.settings, self.reads, self.actions)
+        dependencies = AgentDependencies(
+            conversation, self.users, self.settings, self.reads, self.actions, question=question
+        )
         roles = await dependencies.get_roles()
         model = AgentTimeoutModel(self.model.get_model(), self.settings.agent_timeout_s)
         agent = self._create_agent(model, roles)
@@ -170,7 +175,18 @@ class AgentService:
             descriptions: list[str] = []
             approval_calls = result.output.approvals
             if approval_calls:
-                canonical_call, description = await self.registry.describe_action(approval_calls[0], dependencies)
+                action_preview = await self.registry.describe_action(approval_calls[0], dependencies)
+                if action_preview is None:
+                    search_result = dependencies.last_recipient_search_result
+                    clarification = (
+                        format_user_candidates(search_result)
+                        if search_result is not None
+                        else "Не удалось однозначно определить участника. Уточните точный Telegram ID."
+                    )
+                    if search_result is not None and search_result.total_matches == 1:
+                        clarification += "\nУточните точный Telegram ID нужного участника."
+                    return AgentReply(text=clarification)
+                canonical_call, description = action_preview
                 canonical_calls.append(canonical_call)
                 descriptions.append(description)
                 canonical_calls.extend(approval_calls[1:])

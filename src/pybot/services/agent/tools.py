@@ -13,6 +13,7 @@ from pydantic_ai.toolsets.abstract import ToolsetTool
 from pydantic_core import to_json
 
 from ...domain.agent import AgentAccessDeniedError
+from ...domain.exceptions import UserNotFoundError
 from ...dto import UserReadDTO
 from .admin_action_tools import (
     add_manual_attendance_visit,
@@ -190,7 +191,9 @@ class AgentToolRegistry:
         if len(names) != len(set(names)):
             raise ValueError("Duplicate agent tool name")
 
-    async def describe_action(self, call: ToolCallPart, dependencies: AgentDependencies) -> tuple[ToolCallPart, str]:
+    async def describe_action(
+        self, call: ToolCallPart, dependencies: AgentDependencies
+    ) -> tuple[ToolCallPart, str] | None:
         """Validate, canonicalize, and describe one action using code-owned wording."""
         for entry in self.entries:
             if entry.tool.name == call.tool_name and entry.confirmation_summary is not None:
@@ -199,7 +202,7 @@ class AgentToolRegistry:
                 canonical_call = replace(call, args=canonical_args)
                 recipient = await self._recipient_label(canonical_args, dependencies)
                 if "telegram_id" in canonical_args and recipient is None:
-                    raise AgentAccessDeniedError
+                    return None
                 return canonical_call, entry.confirmation_summary(canonical_call, recipient)
         raise AgentAccessDeniedError
 
@@ -211,10 +214,15 @@ class AgentToolRegistry:
             return None
         if not isinstance(telegram_id, int) or isinstance(telegram_id, bool) or telegram_id <= 0:
             raise AgentAccessDeniedError
+        if not dependencies.can_resolve_action_recipient(telegram_id):
+            return None
 
-        recipient: UserReadDTO = await dependencies.actions.find_user(telegram_id)
+        try:
+            recipient: UserReadDTO = await dependencies.actions.find_user(telegram_id)
+        except UserNotFoundError:
+            return None
         if recipient.telegram_id != telegram_id:
-            raise AgentAccessDeniedError
+            return None
         full_name = " ".join(part for part in (recipient.last_name, recipient.first_name, recipient.patronymic) if part)
         full_name = full_name or "Имя не указано"
         username = f" (@{recipient.telegram_username})" if recipient.telegram_username else ""

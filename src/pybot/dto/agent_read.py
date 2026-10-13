@@ -27,3 +27,18 @@ class AgentMonth(BaseDTO):
         """Use the same business timezone as attendance commands."""
         current = datetime.now(YEKATERINBURG_TZ)
         return cls(year=current.year, month=current.month)
+
+
+class AgentUserCandidate(BaseDTO):
+    """One exact user identity returned by an administrator's name search."""
+
+    full_name: str
+    telegram_id: int
+
+
+class AgentUserSearchResult(BaseDTO):
+    """Structured candidates keep recipient disambiguation enforceable in code."""
+
+    name_query: str
+    candidates: list[AgentUserCandidate]
+    total_matches: int

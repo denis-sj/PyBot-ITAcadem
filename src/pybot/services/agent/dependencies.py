@@ -1,11 +1,13 @@
 """Authenticated request context shared by agent tools."""
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 
 from ...core.config import AppSettings
 from ...domain.agent import AgentAccessDeniedError
 from ...dto import UserReadDTO
 from ...dto.agent import AgentConversation
+from ...dto.agent_read import AgentUserSearchResult
 from ..ports.agent import AgentActionsPort
 from ..user_services.users import UserService
 from .reads import AgentReadService
@@ -20,6 +22,28 @@ class AgentDependencies:
     settings: AppSettings
     reads: AgentReadService
     actions: AgentActionsPort
+    question: str = ""
+    searched_recipient_ids: set[int] = field(default_factory=set)
+    ambiguous_recipient_search: bool = False
+    last_recipient_search_result: AgentUserSearchResult | None = None
+
+    def record_recipient_search(self, result: AgentUserSearchResult) -> None:
+        """Retain candidate identity and ambiguity instead of trusting generated arguments."""
+        self.last_recipient_search_result = result
+        if result.total_matches != 1 or len(result.candidates) != 1:
+            self.ambiguous_recipient_search = True
+            return
+        self.searched_recipient_ids.add(result.candidates[0].telegram_id)
+
+    def can_resolve_action_recipient(self, telegram_id: int) -> bool:
+        """Accept a unique search result or a Telegram ID stated in this user turn."""
+        if telegram_id <= 0 or self.ambiguous_recipient_search:
+            return False
+        if self.searched_recipient_ids:
+            return self.searched_recipient_ids == {telegram_id}
+        label = r"(?:telegram[\s_-]*id|(?:id|ид)[\s_-]*telegram|телеграм(?:а)?[\s_-]*ид)"
+        recipient_id = re.escape(str(telegram_id))
+        return re.search(rf"{label}\s*(?:[:=#№-]\s*)?{recipient_id}(?!\d)", self.question, re.IGNORECASE) is not None
 
     async def get_actor(self) -> UserReadDTO:
         """Re-check registration immediately before reading personal data."""

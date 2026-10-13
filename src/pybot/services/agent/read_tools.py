@@ -5,6 +5,7 @@ from pydantic_ai import RunContext
 from ...dto.agent_read import AgentMonth
 from ...presentation.texts.texts import INFO_GLOBAL
 from .dependencies import AgentDependencies
+from .reads import format_user_candidates
 
 ADMIN_AGENT_ROLES = frozenset({"Admin"})
 
@@ -91,7 +92,9 @@ async def get_user_profile(ctx: RunContext[AgentDependencies], telegram_id: int)
 
 async def find_user_candidates(ctx: RunContext[AgentDependencies], name_query: str) -> str:
     """Найти участников по имени, чтобы администратор уточнил точный Telegram ID."""
-    return await ctx.deps.reads.find_user_candidates(name_query)
+    result = await ctx.deps.reads.find_user_candidates(name_query)
+    ctx.deps.record_recipient_search(result)
+    return format_user_candidates(result)
 
 
 async def get_user_attendance(

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from ...core.constants import YEKATERINBURG_TZ, PointsTypeEnum
 from ...dto import ProfileViewDTO, UserReadDTO
-from ...dto.agent_read import AgentMonth
+from ...dto.agent_read import AgentMonth, AgentUserCandidate, AgentUserSearchResult
 from ...dto.attendance import AttendanceMonthlyRankingItemDTO, AttendanceMonthlyReportDTO, AttendanceTopDTO
 from ...presentation.texts.attendance import MONTH_NAMES_RU_CAPITALIZED
 from ..attendance_service import AttendanceService
@@ -18,6 +18,23 @@ from ..user_services.users import UserService
 _MAX_REPORT_RANKING_ROWS = 25
 _MAX_REPORT_DETAIL_ROWS = 30
 _MAX_USER_CANDIDATES = 5
+
+
+def format_user_candidates(result: AgentUserSearchResult) -> str:
+    """Present exact candidate IDs and ask the administrator to resolve ambiguity."""
+    if not result.candidates:
+        return "Совпадений не нашёл. Уточните полное имя или точный Telegram ID."
+
+    lines = [f"Кандидаты по запросу «{result.name_query}»: "]
+    lines.extend(f"{candidate.full_name} — Telegram ID {candidate.telegram_id}" for candidate in result.candidates)
+    if result.total_matches > len(result.candidates):
+        lines.append(
+            f"Показаны первые {len(result.candidates)} из {result.total_matches} совпадений. "
+            "Уточните фамилию или Telegram ID."
+        )
+    elif result.total_matches > 1:
+        lines.append("Уточните Telegram ID нужного участника; не выбирайте за пользователя.")
+    return "\n".join(lines)
 
 
 class AgentReadService:
@@ -83,11 +100,11 @@ class AgentReadService:
             f"место: {summary.rank}; участников: {summary.total_participants}"
         )
 
-    async def find_user_candidates(self, name_query: str) -> str:
+    async def find_user_candidates(self, name_query: str) -> AgentUserSearchResult:
         """Find a small set of participants by name for an administrator to disambiguate."""
         search_terms = tuple(term.casefold() for term in name_query.split() if term)
         if not search_terms:
-            return "Укажите имя или фамилию участника."
+            return AgentUserSearchResult(name_query=name_query, candidates=[], total_matches=0)
 
         participants = await self.attendance.get_sorted_participants()
         matches = []
@@ -100,20 +117,16 @@ class AgentReadService:
                 matches.append((full_name, participant.telegram_id))
 
         if not matches:
-            return "Совпадений не нашёл. Уточните полное имя или точный Telegram ID."
+            return AgentUserSearchResult(name_query=name_query, candidates=[], total_matches=0)
 
-        lines = [f"Кандидаты по запросу «{name_query}»: "]
-        lines.extend(
-            f"{full_name} — Telegram ID {telegram_id}" for full_name, telegram_id in matches[:_MAX_USER_CANDIDATES]
+        return AgentUserSearchResult(
+            name_query=name_query,
+            candidates=[
+                AgentUserCandidate(full_name=full_name, telegram_id=telegram_id)
+                for full_name, telegram_id in matches[:_MAX_USER_CANDIDATES]
+            ],
+            total_matches=len(matches),
         )
-        if len(matches) > _MAX_USER_CANDIDATES:
-            lines.append(
-                f"Показаны первые {_MAX_USER_CANDIDATES} из {len(matches)} совпадений. "
-                "Уточните фамилию или Telegram ID."
-            )
-        elif len(matches) > 1:
-            lines.append("Уточните Telegram ID нужного участника; не выбирайте за пользователя.")
-        return "\n".join(lines)
 
     @staticmethod
     def get_current_accounting_month() -> str:

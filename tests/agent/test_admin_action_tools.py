@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from pybot.core.constants import PointsTypeEnum, RoleEnum
 from pybot.dto.agent import AgentConversation, AgentReplyStatus
 from pybot.dto import UserReadDTO
+from pybot.dto.agent_read import AgentUserCandidate, AgentUserSearchResult
 from pybot.dto.value_objects import Points
 from pybot.services.agent.admin_action_tools import confirmation_summary
 from pybot.services.agent.tools import AgentToolRegistry
@@ -138,7 +139,8 @@ async def test_points_change_runs_only_after_confirmation(agent_settings, conver
     )
     users.find_all_user_roles.return_value = {"Admin"}
 
-    pending = await service.answer(conversation, "Начисли 10 академических баллов за доклад")
+    question = "Начисли 10 академических баллов участнику с Telegram ID 771234 за доклад"
+    pending = await service.answer(conversation, question)
 
     assert pending.confirmation_id is not None
     assert "Петров Пётр Петрович (@petrov), Telegram ID 771234" in pending.text
@@ -163,9 +165,7 @@ async def test_points_change_runs_only_after_confirmation(agent_settings, conver
     assert result.text == "Участнику Ивану начислено 10 баллов."
     actions.adjust_points.assert_awaited_once_with(42, 771234, PointsTypeEnum.ACADEMIC, 10, None)
     assert actions.validate_points_adjustment.await_count == 2
-    memory.append.assert_awaited_once_with(
-        conversation, "Начисли 10 академических баллов за доклад", "Участнику Ивану начислено 10 баллов."
-    )
+    memory.append.assert_awaited_once_with(conversation, question, "Участнику Ивану начислено 10 баллов.")
 
 
 @pytest.mark.asyncio
@@ -358,7 +358,8 @@ async def test_action_preview_uses_the_same_canonical_arguments_as_execution(
         AgentConversation(chat_id=11, topic_id=None, telegram_id=11) if tool_name == "send_broadcast" else conversation
     )
 
-    pending = await service.answer(action_conversation, "Подготовь действие")
+    question = "Подготовь действие для Telegram ID 771234"
+    pending = await service.answer(action_conversation, question)
 
     assert pending.confirmation_id is not None
     stored = service.runtime.pending[pending.confirmation_id]
@@ -385,3 +386,108 @@ async def test_action_preview_uses_the_same_canonical_arguments_as_execution(
             for argument in execution_arguments
         )
     getattr(actions, execution_name).assert_awaited_with(*execution_arguments)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("search_result", "action_telegram_id", "should_preview"),
+    [
+        (
+            AgentUserSearchResult(
+                name_query="Иванов",
+                candidates=[
+                    AgentUserCandidate(full_name="Иванов Иван", telegram_id=771234),
+                    AgentUserCandidate(full_name="Иванова Анна", telegram_id=771235),
+                ],
+                total_matches=2,
+            ),
+            771234,
+            False,
+        ),
+        (
+            AgentUserSearchResult(name_query="Иванов", candidates=[], total_matches=0),
+            771234,
+            False,
+        ),
+        (
+            AgentUserSearchResult(
+                name_query="Иванов",
+                candidates=[AgentUserCandidate(full_name="Иванов Иван", telegram_id=771234)],
+                total_matches=1,
+            ),
+            771234,
+            True,
+        ),
+        (
+            AgentUserSearchResult(
+                name_query="Иванов",
+                candidates=[AgentUserCandidate(full_name="Иванов Иван", telegram_id=771234)],
+                total_matches=1,
+            ),
+            771235,
+            False,
+        ),
+    ],
+)
+async def test_action_preview_requires_one_exact_candidate(
+    agent_settings, conversation, search_result, action_telegram_id, should_preview
+):
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from pybot.services.agent.reads import AgentReadService
+
+    reads = Mock(spec=AgentReadService)
+    reads.find_user_candidates.return_value = search_result
+    actions = Mock(spec=AgentActionsPort)
+    actions.find_user.return_value = UserReadDTO(
+        id=17,
+        first_name="Иван",
+        last_name="Иванов",
+        patronymic="Иванович",
+        telegram_id=action_telegram_id,
+        academic_points=Points(value=10, point_type=PointsTypeEnum.ACADEMIC),
+        reputation_points=Points(value=0, point_type=PointsTypeEnum.REPUTATION),
+        join_date=date(2026, 1, 1),
+    )
+
+    def model(messages, info):
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    "find_user_candidates",
+                    {"name_query": "Иванов"},
+                    tool_call_id="candidate-search",
+                ),
+                ToolCallPart(
+                    "change_user_role",
+                    {"telegram_id": action_telegram_id, "role": "Mentor", "add": True},
+                    tool_call_id="change-role",
+                ),
+            ]
+        )
+
+    service, users, _ = build_service(
+        agent_settings,
+        model=FunctionModel(model),
+        reads=reads,
+        actions=actions,
+    )
+    users.find_all_user_roles.return_value = {"Admin"}
+
+    result = await service.answer(conversation, "Выдай роль Иванову")
+
+    if should_preview:
+        assert result.confirmation_id is not None
+        assert "Иванов Иван Иванович, Telegram ID 771234" in result.text
+    else:
+        assert result.confirmation_id is None
+        assert "Уточните" in result.text
+        if search_result.total_matches == 0:
+            assert "Совпадений не нашёл" in result.text
+        elif search_result.total_matches > 1:
+            assert "Иванов Иван — Telegram ID 771234" in result.text
+            assert "Иванова Анна — Telegram ID 771235" in result.text
+        assert not service.runtime.pending
+        actions.find_user.assert_not_awaited()
+    actions.change_role.assert_not_awaited()

@@ -101,10 +101,12 @@ async def test_admin_name_search_lists_candidates_without_selecting_one(reads):
 
     result = await reads.find_user_candidates("иванов")
 
-    assert "Иванов Иван — Telegram ID 771" in result
-    assert "Иванова Анна — Telegram ID 772" in result
-    assert "Уточните Telegram ID" in result
-    assert "Пётр Петров" not in result
+    assert result.name_query == "иванов"
+    assert result.total_matches == 2
+    assert [(candidate.full_name, candidate.telegram_id) for candidate in result.candidates] == [
+        ("Иванов Иван", 771),
+        ("Иванова Анна", 772),
+    ]
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCall
 from pydantic_ai.models.function import FunctionModel
 
 from pybot.dto import UserReadDTO
+from pybot.dto.agent_read import AgentUserCandidate, AgentUserSearchResult
 from pybot.dto.attendance import (
     AttendanceMonthlyRankingItemDTO,
     AttendanceMonthlyReportDTO,
@@ -93,7 +94,11 @@ async def test_admin_reads_dispatch_to_existing_service(
     reads.get_club_attendance_report.return_value = "Отчёт за 2026-10."
     reads.get_profile_for_telegram_id.return_value = "Баллы: 75."
     reads.get_attendance_for_telegram_id.return_value = "Посещения: 2."
-    reads.find_user_candidates.return_value = "Кандидаты: Иванов Иван — Telegram ID 771."
+    reads.find_user_candidates.return_value = AgentUserSearchResult(
+        name_query="Иванов",
+        candidates=[AgentUserCandidate(full_name="Иванов Иван", telegram_id=771)],
+        total_matches=1,
+    )
     service, users, _ = build_service(agent_settings, model=model_call(tool_name, arguments), reads=reads)
     users.find_all_user_roles.return_value = {"Admin"}
     result = await service.answer(conversation, "Выполни чтение")
@@ -106,6 +111,34 @@ async def test_admin_reads_dispatch_to_existing_service(
         reads.get_profile_for_telegram_id.assert_awaited_once_with(771234)
     if tool_name == "get_user_attendance":
         reads.get_attendance_for_telegram_id.assert_awaited_once_with(771234, AgentMonth(year=2020, month=9))
+
+
+@pytest.mark.asyncio
+async def test_candidate_search_formats_results_and_records_ambiguity(agent_settings, conversation):
+    from pybot.services.agent import read_tools
+    from pybot.services.agent.tools import AgentDependencies
+
+    reads = Mock(spec=AgentReadService)
+    reads.find_user_candidates = AsyncMock(
+        return_value=AgentUserSearchResult(
+            name_query="Иванов",
+            candidates=[
+                AgentUserCandidate(full_name="Иванов Иван", telegram_id=771),
+                AgentUserCandidate(full_name="Иванова Анна", telegram_id=772),
+            ],
+            total_matches=2,
+        )
+    )
+    service, users, _ = build_service(agent_settings, reads=reads)
+    dependencies = AgentDependencies(conversation, users, agent_settings, reads, service.actions)
+
+    result = await read_tools.find_user_candidates(Mock(deps=dependencies), "Иванов")
+
+    assert "Иванов Иван — Telegram ID 771" in result
+    assert "Иванова Анна — Telegram ID 772" in result
+    assert "Уточните Telegram ID" in result
+    assert dependencies.ambiguous_recipient_search
+    assert not dependencies.searched_recipient_ids
 
 
 @pytest.mark.asyncio
