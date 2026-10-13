@@ -26,6 +26,7 @@ class PendingAgentRequest:
     model: Model
     usage: RunUsage
     expires_at: float
+    is_forwarded: bool = False
     message_id: int | None = None
 
 

@@ -86,7 +86,7 @@ class AgentService:
         self.reads = reads
         self.actions = actions
 
-    async def answer(self, conversation: AgentConversation, question: str) -> AgentReply:
+    async def answer(self, conversation: AgentConversation, question: str, *, is_forwarded: bool = False) -> AgentReply:
         """Run one question; the transport holds the per-user queue through delivery."""
         if not self.settings.agent_enabled:
             return AgentReply(status=AgentReplyStatus.UNAVAILABLE)
@@ -100,7 +100,7 @@ class AgentService:
                     history.append(ModelRequest(parts=[UserPromptPart(message.text)]))
                 else:
                     history.append(ModelResponse(parts=[TextPart(message.text)]))
-            return await self._run(conversation, question, history, prompt=question)
+            return await self._run(conversation, question, history, prompt=question, is_forwarded=is_forwarded)
         except AgentAccessDeniedError:
             return AgentReply(status=AgentReplyStatus.ACCESS_DENIED)
         except Exception as error:
@@ -133,7 +133,13 @@ class AgentService:
             if await self.users.find_user_by_telegram_id(conversation.telegram_id) is None:
                 return AgentReply(status=AgentReplyStatus.REGISTRATION_REQUIRED)
             dependencies = AgentDependencies(
-                conversation, self.users, self.settings, self.reads, self.actions, question=request.question
+                conversation,
+                self.users,
+                self.settings,
+                self.reads,
+                self.actions,
+                question=request.question,
+                is_forwarded=request.is_forwarded,
             )
             primary_call = request.requests.approvals[0]
             await dependencies.require_roles(self.registry.get_policy(primary_call.tool_name))
@@ -153,9 +159,16 @@ class AgentService:
         prompt: str | None = None,
         deferred: DeferredToolResults | None = None,
         usage: RunUsage | None = None,
+        is_forwarded: bool = False,
     ) -> AgentReply:
         dependencies = AgentDependencies(
-            conversation, self.users, self.settings, self.reads, self.actions, question=question
+            conversation,
+            self.users,
+            self.settings,
+            self.reads,
+            self.actions,
+            question=question,
+            is_forwarded=is_forwarded,
         )
         roles = await dependencies.get_roles()
         model = AgentTimeoutModel(self.model.get_model(), self.settings.agent_timeout_s)
@@ -181,7 +194,10 @@ class AgentService:
                     clarification = (
                         format_user_candidates(search_result)
                         if search_result is not None
-                        else "Не удалось однозначно определить участника. Уточните точный Telegram ID."
+                        else (
+                            "Для действия укажите @username или Telegram ID в своём сообщении. "
+                            "ID из пересылки, цитаты или сообщения, на которое вы ответили, не подходит."
+                        )
                     )
                     if search_result is not None and search_result.total_matches == 1:
                         clarification += "\nУточните точный Telegram ID нужного участника."
@@ -204,6 +220,7 @@ class AgentService:
                     model=model,
                     usage=result.usage,
                     expires_at=time.monotonic() + self.settings.agent_memory_ttl_s,
+                    is_forwarded=is_forwarded,
                 )
             )
             preview = "\n".join(descriptions)

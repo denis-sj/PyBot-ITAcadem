@@ -43,7 +43,7 @@ async def handle_agent_message(
         chat_id=message.chat.id, topic_id=message.message_thread_id, telegram_id=message.from_user.id
     )
     async with runtime.for_user(message.from_user.id):
-        result = await service.answer(conversation, message.text)
+        result = await service.answer(conversation, message.text, is_forwarded=message.forward_origin is not None)
         await _send_reply(message, result, runtime, memory)
 
 

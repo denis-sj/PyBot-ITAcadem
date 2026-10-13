@@ -23,6 +23,7 @@ class AgentDependencies:
     reads: AgentReadService
     actions: AgentActionsPort
     question: str = ""
+    is_forwarded: bool = False
     searched_recipient_ids: set[int] = field(default_factory=set)
     ambiguous_recipient_search: bool = False
     last_recipient_search_result: AgentUserSearchResult | None = None
@@ -41,6 +42,8 @@ class AgentDependencies:
             return False
         if self.searched_recipient_ids:
             return self.searched_recipient_ids == {telegram_id}
+        if self.is_forwarded:
+            return False
         label = r"(?:telegram[\s_-]*id|(?:id|ид)[\s_-]*telegram|телеграм(?:а)?[\s_-]*ид)"
         recipient_id = re.escape(str(telegram_id))
         return re.search(rf"{label}\s*(?:[:=#№-]\s*)?{recipient_id}(?!\d)", self.question, re.IGNORECASE) is not None

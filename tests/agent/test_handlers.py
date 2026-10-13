@@ -1,13 +1,19 @@
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from aiogram import Bot, Dispatcher, Router
+from aiogram.enums import MessageOriginType
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message, Update, User
+from aiogram.types import CallbackQuery, Message, MessageOriginUser, TextQuote, Update, User
 from dishka import Provider, Scope, make_async_container, provide
 from dishka.integrations.aiogram import AiogramProvider, setup_dishka
+from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart
+from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.test import TestModel
 
+from pybot.core.constants import RoleEnum
 from pybot.di.containers import setup_container
 from pybot.dto.agent import AgentReply
 from pybot.presentation.bot.handlers.agent.handlers import (
@@ -20,10 +26,122 @@ from pybot.presentation.bot.tg_bot_run import setup_agent_handler
 from pybot.services.agent.runtime import AgentRuntime
 from pybot.services.agent.service import AgentService
 from pybot.presentation.texts.agent import AGENT_EXPIRED
-from pybot.services.ports.agent import AgentMemoryPort
+from pybot.services.ports.agent import AgentActionsPort, AgentMemoryPort
 from pybot.presentation.bot.handlers.broadcast.states import BroadcastMenuSG
 
 from tests.agent.conftest import build_message, build_service
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("message_source", "question", "can_confirm"),
+    [
+        (
+            "forward",
+            "Выдай роль Mentor пользователю с Telegram ID 771234",
+            False,
+        ),
+        ("reply", "Выдай роль Mentor", False),
+        ("quote", "Выдай роль Mentor", False),
+        (
+            "authored_text",
+            "Выдай роль Mentor пользователю с Telegram ID 771234",
+            True,
+        ),
+    ],
+)
+async def test_action_telegram_id_must_come_from_authors_own_text(
+    agent_settings, monkeypatch, message_source, question, can_confirm
+):
+    def role_change_model(messages, info):
+        if any(
+            isinstance(model_message, ModelRequest)
+            and any(isinstance(part, RetryPromptPart) for part in model_message.parts)
+            for model_message in messages
+        ):
+            return ModelResponse(parts=[TextPart("Укажите @username или Telegram ID в своём сообщении.")])
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    "change_user_role",
+                    {"telegram_id": 771234, "role": RoleEnum.MENTOR.value, "add": True},
+                    tool_call_id="review-role-change",
+                )
+            ]
+        )
+
+    actions = Mock(spec=AgentActionsPort)
+    actions.find_user.return_value = Mock(
+        telegram_id=771234,
+        first_name="Иван",
+        last_name="Иванов",
+        patronymic="Иванович",
+        telegram_username="ivanov",
+    )
+    service, users, memory = build_service(
+        agent_settings,
+        model=FunctionModel(role_change_model),
+        actions=actions,
+    )
+    users.find_all_user_roles.return_value = {RoleEnum.ADMIN.value}
+    memory.mark_reply = AsyncMock()
+
+    message = build_message(question)
+    if message_source == "forward":
+        message = message.model_copy(
+            update={
+                "forward_origin": MessageOriginUser(
+                    type=MessageOriginType.USER,
+                    date=datetime.now(UTC),
+                    sender_user=User(id=22, is_bot=False, first_name="Источник"),
+                )
+            }
+        )
+    elif message_source == "reply":
+        message = message.model_copy(update={"reply_to_message": build_message("Telegram ID 771234")})
+    elif message_source == "quote":
+        message = message.model_copy(update={"quote": TextQuote(text="Telegram ID 771234", position=0)})
+
+    send_reply = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True))
+    monkeypatch.setattr(Message, "answer", send_reply)
+
+    await handle_agent_message(message, service, service.runtime, memory)
+
+    assert bool(service.runtime.pending) is can_confirm
+    if can_confirm:
+        actions.validate_role_change.assert_awaited_once_with(771234, RoleEnum.MENTOR, True)
+    else:
+        assert actions.find_user.await_count == 0
+        sent_call = send_reply.await_args
+        assert sent_call is not None
+        assert "@username или Telegram ID в своём сообщении" in sent_call.args[0]
+
+
+@pytest.mark.asyncio
+async def test_forwarded_message_still_runs_read_tools(agent_settings, monkeypatch):
+    service, users, memory = build_service(
+        agent_settings,
+        model=TestModel(call_tools=["get_my_profile"], custom_output_text="Профиль прочитан"),
+    )
+    get_profile = AsyncMock(return_value="Профиль доступен.")
+    monkeypatch.setattr(service.reads, "get_profile", get_profile)
+    memory.mark_reply = AsyncMock()
+    message = build_message(
+        "Покажи профиль из пересланного сообщения",
+    ).model_copy(
+        update={
+            "forward_origin": MessageOriginUser(
+                type=MessageOriginType.USER,
+                date=datetime.now(UTC),
+                sender_user=User(id=22, is_bot=False, first_name="Источник"),
+            )
+        }
+    )
+    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True)))
+
+    await handle_agent_message(message, service, service.runtime, memory)
+
+    get_profile.assert_awaited_once_with(users.find_user_by_telegram_id.return_value)
 
 
 @pytest.mark.asyncio
