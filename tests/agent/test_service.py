@@ -81,6 +81,46 @@ async def test_max_steps_stops_tool_loop(agent_settings, conversation):
 
 
 @pytest.mark.asyncio
+async def test_simultaneous_model_tools_run_sequentially(agent_settings, conversation):
+    active_tools = 0
+    maximum_active_tools = 0
+
+    async def track_action() -> str:
+        nonlocal active_tools, maximum_active_tools
+        active_tools += 1
+        maximum_active_tools = max(maximum_active_tools, active_tools)
+        await asyncio.sleep(0.02)
+        active_tools -= 1
+        return "Готово"
+
+    def model(messages, info):
+        if any(
+            isinstance(message, ModelRequest) and any(isinstance(part, ToolReturnPart) for part in message.parts)
+            for message in messages
+        ):
+            return ModelResponse(parts=[TextPart("Оба действия выполнены")])
+        return ModelResponse(
+            parts=[
+                ToolCallPart("first_action", {}, tool_call_id="first"),
+                ToolCallPart("second_action", {}, tool_call_id="second"),
+            ]
+        )
+
+    registry = AgentToolRegistry(
+        (
+            RegisteredAgentTool(Tool(track_action, name="first_action")),
+            RegisteredAgentTool(Tool(track_action, name="second_action")),
+        )
+    )
+    service, _, _ = build_service(agent_settings, model=FunctionModel(model), registry=registry)
+
+    result = await service.answer(conversation, "Выполни два чтения")
+
+    assert result.text == "Оба действия выполнены"
+    assert maximum_active_tools == 1
+
+
+@pytest.mark.asyncio
 async def test_fabricated_numbers_are_rejected(agent_settings, conversation):
     service, _, memory = build_service(
         agent_settings, model=TestModel(call_tools=["bot_capabilities"], custom_output_text="У вас 999 баллов")

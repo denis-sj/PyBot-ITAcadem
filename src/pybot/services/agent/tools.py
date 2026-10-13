@@ -183,6 +183,7 @@ class AgentToolRegistry:
         else:
             self.entries = entries
         for entry in self.entries:
+            entry.tool.sequential = True
             if entry.tool.requires_approval and entry.confirmation_summary is None:
                 raise ValueError("Action tools must define a user-facing confirmation summary")
         names = [entry.tool.name for entry in self.entries]
