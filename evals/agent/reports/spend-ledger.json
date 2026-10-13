@@ -1,10 +1,10 @@
 {
   "model": "deepseek/deepseek-v4.1-flash",
-  "total_cost_rub": "10.5622565560",
-  "request_count": 90,
+  "total_cost_rub": "14.6934433556",
+  "request_count": 331,
   "unpriced_requests": 0,
-  "estimated_records": 20,
-  "exact_records": 70,
+  "estimated_records": 21,
+  "exact_records": 310,
   "entries": [
     {
       "cost_rub": "1",
@@ -507,6 +507,1211 @@
     },
     {
       "cost_rub": "0.02600301",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.04047173",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.04705816",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02930372",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.04791493",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01226896",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.04486268",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02284366",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02393605",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00814147",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01273805",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01090884",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.020751",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00621588",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01112089",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02227605",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02915164",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00681561",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01075676",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00697626",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00903251",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00730826",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00955728",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00749032",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00964296",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00747961",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00973935",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00743677",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00953586",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00725471",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00965367",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00692271",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00961083",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00638723",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00882903",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00694413",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00881832",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00636581",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00821858",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00672994",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00820787",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00631226",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01641145",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00829355",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01296295",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02532187",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01554611",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01262238",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02942366",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01329709",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.03104082",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0107075",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02954147",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01338277",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01654211",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01251529",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02911309",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01233322",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01589096",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01233322",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01939087",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01406818",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01745243",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01335064",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01744172",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01538761",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01691695",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01905888",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01562536",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01030053",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01912313",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01160497",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01567677",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01385399",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01956223",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00628013",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01253456",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00966438",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0086898",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0160816",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0169705",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01741387",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00980789",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01645857",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01494852",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.021415",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01756167",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01338277",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01624224",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00656929",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00849703",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00594813",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01153857",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01090884",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02055822",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00628013",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01184915",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00754387",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01289869",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00640865",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01075676",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00650504",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00898967",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01116373",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00728684",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00749032",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00964296",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00747961",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01016773",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00700839",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00947161",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00674065",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01263095",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0073511",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00961083",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00638723",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00917174",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00647291",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0087969",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00683703",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00821858",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00687987",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00915032",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00631226",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01544758",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0101356",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01274876",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01220471",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01524624",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01210832",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01617798",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01063253",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01480929",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01036479",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01916597",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01274019",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01733462",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01170135",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0148607",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01022556",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01838417",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01248316",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01960507",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01449657",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01669419",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01444302",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01757024",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01636005",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01859836",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01249387",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01680128",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01173348",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01550542",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01501063",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01647999",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00621588",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01249172",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01127083",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01625081",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01336991",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01702404",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01991565",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01215116",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01850197",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01587811",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01770089",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01766876",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0123118",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01859836",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00656929",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00849703",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00594813",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01087457",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01090884",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02077242",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00628013",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01129224",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00683703",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01298437",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00640865",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0106925",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00650504",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00903251",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00865767",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00932167",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00749032",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00989999",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00747961",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00971793",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00700839",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00953586",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00674065",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01010347",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00649433",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00961083",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00638723",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00878619",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00647291",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0087969",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00636581",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00821858",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00672994",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00975006",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00631226",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01544758",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00827213",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01294153",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0116478",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01524624",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01251529",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01626366",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01108234",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01596593",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01053614",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01416671",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0129758",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0168634",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01249387",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01498921",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01013989",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01855552",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01226896",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01881255",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01396109",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01824494",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0134149",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01819139",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0165314",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01610516",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.9866073096",
+      "estimated": true,
+      "source": "request_error_upper_bound"
+    },
+    {
+      "cost_rub": "0.0116478",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01748456",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01402534",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01731535",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00638723",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.02793074",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01131366",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0086898",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0158674",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.0193052",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.00640865",
+      "estimated": false,
+      "source": "cost_rub"
+    },
+    {
+      "cost_rub": "0.01011418",
       "estimated": false,
       "source": "cost_rub"
     }
