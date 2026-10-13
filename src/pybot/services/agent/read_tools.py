@@ -22,7 +22,10 @@ async def get_my_attendance(ctx: RunContext[AgentDependencies]) -> str:
 
 
 async def get_my_visits(ctx: RunContext[AgentDependencies], period: AgentMonth | None = None) -> str:
-    """Мои посещения по датам (/visits). Без месяца предложит выбор, если месяцев несколько."""
+    """История моих посещений по датам и выбранному месяцу.
+
+    Для числа и часов за текущий месяц используй get_my_attendance.
+    """
     user = await ctx.deps.get_actor()
     return await ctx.deps.reads.get_visits(user.id, period)
 

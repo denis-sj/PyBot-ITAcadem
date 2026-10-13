@@ -12,6 +12,7 @@ from .....services.agent.runtime import AgentRuntime
 from .....services.agent.service import AgentService
 from .....services.ports.agent import AgentMemoryPort
 from ....texts.agent import AGENT_EXPIRED, render_agent_reply
+from .formatting import format_agent_text
 from .routing import AgentMessageFilter
 
 _TELEGRAM_TEXT_LIMIT = 4000
@@ -102,7 +103,7 @@ async def _send_reply(
                 ]
             ]
         )
-    text = render_agent_reply(result)
+    text = format_agent_text(render_agent_reply(result))
     chunk_starts = range(0, max(len(text), 1), _TELEGRAM_TEXT_LIMIT)
     for chunk_index, start in enumerate(chunk_starts):
         is_last_chunk = chunk_index == len(chunk_starts) - 1

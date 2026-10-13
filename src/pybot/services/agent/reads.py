@@ -186,7 +186,8 @@ class AgentReadService:
         """Follow /visits: ask for a month when several recorded months are available."""
         months = await self.attendance.get_user_visit_months(user_id)
         if not months:
-            return "Подтверждённых посещений пока нет."
+            period = period or AgentMonth.current()
+            return f"Мои посещения за {period.year}-{period.month:02}: 0; подтверждённых записей нет."
         available = ", ".join(f"{year}-{month:02}" for year, month in months)
         if period is None:
             if len(months) != 1:
@@ -194,7 +195,10 @@ class AgentReadService:
             year, month = months[0]
             period = AgentMonth(year=year, month=month)
         if (period.year, period.month) not in months:
-            return f"За выбранный месяц посещений нет. Доступные месяцы: {available}."
+            return (
+                f"Мои посещения за {period.year}-{period.month:02}: 0; подтверждённых записей нет. "
+                f"Доступные месяцы: {available}."
+            )
         summary = await self.attendance.get_user_monthly_summary(user_id, year=period.year, month=period.month)
         visits = await self.attendance.get_user_monthly_visits(user_id, year=period.year, month=period.month)
         lines = [

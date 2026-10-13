@@ -527,7 +527,15 @@ def test_approval_summary_mandatory_and_duplicate_tools_rejected():
 
 @pytest.mark.parametrize(
     ("answer", "evidence"),
-    [("9 минут; 1,50 балла", "09 минут; 1.5 балла"), ("-5 баллов", "−5 баллов"), ("2020-09-09", "2020-09-09")],
+    [
+        ("9 минут; 1,50 балла", "09 минут; 1.5 балла"),
+        ("-5 баллов", "−5 баллов"),
+        ("2020-09-09", "2020-09-09"),
+        (
+            "В октябре 2026 у вас было 0 посещений.",
+            "Мои посещения за 2026-10: 0; подтверждённых записей нет.",
+        ),
+    ],
 )
 def test_number_validation_accepts_equivalent_formats(answer, evidence):
     from pydantic_ai.messages import ModelRequest, ToolReturnPart

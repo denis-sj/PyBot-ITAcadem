@@ -190,6 +190,28 @@ async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings
 
 
 @pytest.mark.asyncio
+async def test_agent_answer_is_cleaned_before_sending(agent_settings, agent_bot, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    memory.mark_reply = AsyncMock()
+    monkeypatch.setattr(
+        service,
+        "answer",
+        AsyncMock(return_value=AgentReply(text="Привет, **ITAcadem**!\n\n### 📋 Для всех\n- **Профиль** — `/profile`")),
+    )
+    agent_bot.send_message = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=50))
+
+    await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
+
+    send_call = agent_bot.send_message.await_args
+    assert send_call is not None
+    sent_text = send_call.kwargs["text"]
+    assert sent_text == "Привет, ITAcadem!\n\n📋 Для всех\n• Профиль — /profile"
+    assert "**" not in sent_text
+    assert "###" not in sent_text
+    assert "`" not in sent_text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("chat_type", "chat_id", "topic_id"),
     [

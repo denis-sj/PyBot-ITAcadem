@@ -160,8 +160,23 @@ async def test_admin_username_search_does_not_fall_back_to_name_when_username_is
 @pytest.mark.parametrize("months", [[], [(2020, 8)]])
 async def test_empty_or_unavailable_month_does_not_read_other_month(reads, months):
     reads.attendance.get_user_visit_months.return_value = months
-    assert "нет" in await reads.get_visits(98765, AgentMonth(year=2020, month=9))
+    result = await reads.get_visits(98765, AgentMonth(year=2020, month=9))
+    assert "2020-09" in result and "0" in result and "нет" in result
     reads.attendance.get_user_monthly_visits.assert_not_awaited()
+    reads.attendance.get_user_monthly_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_no_visit_history_reports_zero_for_current_month(reads):
+    reads.attendance.get_user_visit_months.return_value = []
+    current_month = AgentMonth.current()
+
+    result = await reads.get_visits(98765)
+
+    assert f"{current_month.year}-{current_month.month:02}" in result
+    assert "0" in result and "нет" in result
+    reads.attendance.get_user_monthly_visits.assert_not_awaited()
+    reads.attendance.get_user_monthly_summary.assert_not_awaited()
 
 
 @pytest.mark.asyncio
