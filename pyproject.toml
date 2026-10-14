@@ -36,7 +36,6 @@ dependencies = [
     "httpx2>=2.13.1",
     "opencv-python-headless>=4.10.0.84,<5",
     "weasyprint>=70,<71",
-    "weasyprint>=70,<71",
 ]
 
 [project.scripts]
