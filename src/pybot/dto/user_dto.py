@@ -12,6 +12,7 @@ from ..domain.exceptions import InvalidPhoneNumberError, NameInputValidationErro
 from ..dto.value_objects import Points
 from ..utils import normalize_phone, progress_bar
 from .base_dto import BaseDTO
+from .community_achievements import AchievementAwardReadDTO
 from .competence_dto import CompetenceReadDTO
 from .level_dto import LevelReadDTO
 
@@ -175,6 +176,9 @@ class ProfileViewDTO(BaseDTO):
     roles_data: Sequence[str]
 
     competences: Sequence[CompetenceReadDTO]
+
+    current_attendance_streak: int = 0
+    achievements: Sequence[AchievementAwardReadDTO] = Field(default_factory=tuple)
 
     @computed_field
     @property

@@ -479,6 +479,31 @@ That service is attached to the `migration` profile, so:
 
 The active migration history begins with the PostgreSQL initial baseline. It is not connected to the removed SQLite migration history. Apply it only to a new PostgreSQL database or to a database already managed by this baseline.
 
+### Community achievements
+
+Revision `b17c4d8e6a21_add_community_achievement_awards` adds the one-time award table and the user bot-block marker.
+It does not rewrite existing attendance or user data. Upgrade and downgrade are limited to those additions.
+
+Public group posts are disabled by default. To enable them, set both variables in the production `.env`:
+
+- `ACHIEVEMENTS_CHAT_ID` — negative Telegram group ID;
+- `ACHIEVEMENTS_TOPIC_ID` — positive topic ID in that group.
+
+Leaving both blank keeps personal congratulations enabled and removes the two TaskIQ publication schedules. Supplying
+only one value makes application configuration invalid.
+
+On the first rollout, run the historical award backfill after the new image is available and migrations are applied,
+but before refreshing the `bot` and TaskIQ services. This prevents the first live attendance or Mentor event from
+sending congratulations for old history. The previous bot process can keep handling updates while the one-shot command
+runs. The command is idempotent and sends no personal or group messages; rerunning it inserts only missing awards.
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm bot python -m pybot.cli.community_achievements_backfill
+```
+
+The command uses the production `.env`, PostgreSQL service, and already deployed image. Verify its final count in the
+command output. The daily digest runs at 19:00 Yekaterinburg time; the weekly attendance top runs Monday at 12:00.
+
 ### Attendance Photo Accounting Rollout & Migration Safety
 
 The attendance photo accounting feature introduces revision `8d6ac9f0b6a0_add_attendance_tables`.

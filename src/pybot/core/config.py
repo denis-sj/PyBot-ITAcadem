@@ -211,6 +211,19 @@ class AppSettings(BaseSettings):
         ge=1,
     )
 
+    achievements_chat_id: int | None = Field(
+        None,
+        alias="ACHIEVEMENTS_CHAT_ID",
+        description="Optional Telegram group chat for community achievement publications",
+        lt=0,
+    )
+    achievements_topic_id: int | None = Field(
+        None,
+        alias="ACHIEVEMENTS_TOPIC_ID",
+        description="Optional Telegram topic for community achievement publications",
+        gt=0,
+    )
+
     # Middleware toggles
     enable_logging_middleware: bool = Field(
         True,
@@ -419,6 +432,17 @@ class AppSettings(BaseSettings):
             return int(normalized)
         return value
 
+    @field_validator("achievements_chat_id", "achievements_topic_id", mode="before")
+    @classmethod
+    def parse_optional_achievement_id(cls, value: int | str | None) -> int | None:
+        """Allow empty publication IDs in local and production environment files."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return int(normalized) if normalized else None
+        return value
+
     @field_validator("leaderboard_weekly_recipient_id", "leaderboard_weekly_thread_id")
     @classmethod
     def validate_weekly_ids(cls, value: int | None) -> int | None:
@@ -493,6 +517,17 @@ class AppSettings(BaseSettings):
                 "LEADERBOARD_WEEKLY_RETRY_MAX_DELAY_S must be greater than or equal to LEADERBOARD_WEEKLY_RETRY_DELAY_S"
             )
         return self
+
+    @model_validator(mode="after")
+    def validate_achievement_publication_config(self: Self) -> Self:
+        if (self.achievements_chat_id is None) != (self.achievements_topic_id is None):
+            raise ValueError("ACHIEVEMENTS_CHAT_ID and ACHIEVEMENTS_TOPIC_ID must be configured together")
+        return self
+
+    @property
+    def achievements_publication_enabled(self: Self) -> bool:
+        """Return whether the complete group publication destination is configured."""
+        return self.achievements_chat_id is not None and self.achievements_topic_id is not None
 
 
 @functools.lru_cache(maxsize=1)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import calendar
 import hashlib
 import re
@@ -48,7 +49,7 @@ from ..dto import (
 )
 from ..infrastructure import AttendanceRepository, UserRepository
 from ..presentation.texts.attendance import MONTH_NAMES_RU, format_import_notification
-from .ports import AttendanceRecognitionPort, NotificationPort
+from .ports import AttendanceRecognitionPort, CommunityAchievementDispatchPort, NotificationPort
 
 DRAFT_TTL_HOURS: int = 24
 CALENDAR_MONTHS_PER_YEAR: int = 12
@@ -69,6 +70,7 @@ class AttendanceService:
         settings: AppSettings,
         ranking_calculator: AttendanceRankingCalculator | None = None,
         notification_service: NotificationPort | None = None,
+        achievement_dispatch_port: CommunityAchievementDispatchPort | None = None,
     ) -> None:
         self._db = db
         self._attendance_repo = attendance_repo
@@ -77,6 +79,7 @@ class AttendanceService:
         self._settings = settings
         self._ranking_calculator = ranking_calculator or AttendanceRankingCalculator()
         self._notification_service = notification_service
+        self._achievement_dispatch_port = achievement_dispatch_port
 
     # ============ PUBLIC API (NEWSPAPER RULE: HIGH-LEVEL INTENT) ============
 
@@ -464,6 +467,11 @@ class AttendanceService:
 
         await self._db.commit()
 
+        affected_user_ids = {
+            row["user_id"] for _, rows in saved_dates for row in rows if isinstance(row.get("user_id"), int)
+        }
+        await self._queue_achievement_recalculations(affected_user_ids)
+
         if self._notification_service is not None and saved_dates:
             await self._send_import_notifications(draft_id, saved_dates)
 
@@ -792,6 +800,8 @@ class AttendanceService:
 
         await self._db.commit()
 
+        await self._queue_achievement_recalculations({record.user_id})
+
         # Notification (Section 3.2)
         if self._notification_service:
             try:
@@ -850,6 +860,8 @@ class AttendanceService:
 
         await self._attendance_repo.delete_record(self._db, record_id)
         await self._db.commit()
+
+        await self._queue_achievement_recalculations({user_id})
 
         # Notification (Section 3.2)
         if self._notification_service:
@@ -925,6 +937,8 @@ class AttendanceService:
 
         await self._db.commit()
 
+        await self._queue_achievement_recalculations({user_id})
+
         # Notification (Section 3.2)
         if self._notification_service:
             try:
@@ -956,6 +970,21 @@ class AttendanceService:
             bool: True if user already has visit on date.
         """
         return await self._attendance_repo.has_user_visit_on_date(self._db, user_id, visit_date)
+
+    async def _queue_achievement_recalculations(self, user_ids: set[int]) -> None:
+        """Queue recalculation after a committed attendance mutation without failing it."""
+        if self._achievement_dispatch_port is None:
+            return
+
+        try:
+            await asyncio.gather(
+                *(self._achievement_dispatch_port.recalculate_user_achievements(user_id) for user_id in user_ids)
+            )
+        except Exception:
+            logger.exception(
+                "Failed to dispatch community achievement recalculations | user_ids={user_ids}",
+                user_ids=sorted(user_ids),
+            )
 
     async def get_user_monthly_visits(
         self,

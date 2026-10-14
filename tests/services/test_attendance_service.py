@@ -41,7 +41,20 @@ from pybot.dto import (
 from pybot.infrastructure import AttendanceRepository, UserRepository
 from pybot.infrastructure.adapters import PolzaVisionAdapter
 from pybot.services.attendance_service import AttendanceService
-from pybot.services.ports import AttendanceRecognitionPort, NotificationPort
+from pybot.services.ports import (
+    AttendanceRecognitionPort,
+    CommunityAchievementDispatchPort,
+    NotificationPort,
+)
+
+
+class FailingAchievementDispatch(CommunityAchievementDispatchPort):
+    def __init__(self) -> None:
+        self.user_ids: list[int] = []
+
+    async def recalculate_user_achievements(self, user_id: int) -> None:
+        self.user_ids.append(user_id)
+        raise RuntimeError("TaskIQ is unavailable")
 
 
 @pytest.fixture
@@ -734,6 +747,8 @@ async def test_confirm_draft_happy_path(
     mock_attendance_repo.get_draft_by_id.return_value = mock_import
     mock_attendance_repo.is_date_processed.return_value = False
     mock_user_repo.find_user_by_id.return_value = User(id=1, telegram_id=999888, first_name="Иван")
+    achievement_dispatch = FailingAchievementDispatch()
+    service._achievement_dispatch_port = achievement_dispatch
 
     added_dates, added_records, skipped = await service.confirm_draft(draft_id=20, admin_tg_id=999)
 
@@ -753,6 +768,7 @@ async def test_confirm_draft_happy_path(
     assert rows[0]["duration_minutes"] == 120
 
     mock_db.commit.assert_awaited_once()
+    assert achievement_dispatch.user_ids == [1]
 
     # Verify notification was sent to user 1
     mock_notification_service.send_attendance_notification.assert_awaited_once()

@@ -15,6 +15,7 @@ from ..db.database import create_database_engine
 from ..domain.services import AttendanceRankingCalculator, LevelCalculator
 from ..infrastructure import (
     AttendanceRepository,
+    CommunityAchievementRepository,
     CompetenceRepository,
     LevelRepository,
     PointsTransactionRepository,
@@ -28,9 +29,11 @@ from ..infrastructure.adapters.agent_memory import RedisAgentMemory
 from ..infrastructure.adapters.polza_agent import PolzaAgentModel
 from ..infrastructure.health import RedisPingProbe, SessionExecutor
 from ..infrastructure.ports import LoggingNotificationService, TelegramNotificationService
+from ..infrastructure.taskiq.taskiq_community_achievement_dispatcher import TaskIQCommunityAchievementDispatcher
 from ..infrastructure.taskiq.taskiq_notification_dispatcher import TaskIQNotificationDispatcher
 from ..services import (
     AttendanceService,
+    CommunityAchievementService,
     LeaderboardService,
     SystemRuntimeAlertsService,
     UserCompetenceService,
@@ -51,7 +54,12 @@ from ..services.health import HealthService
 from ..services.levels import LevelService
 from ..services.notification_facade import NotificationFacade
 from ..services.points import PointsService
-from ..services.ports import AttendanceRecognitionPort, NotificationDispatchPort, NotificationPort
+from ..services.ports import (
+    AttendanceRecognitionPort,
+    CommunityAchievementDispatchPort,
+    NotificationDispatchPort,
+    NotificationPort,
+)
 from ..services.ports.agent import AgentMemoryPort, AgentModelPort
 from ..services.role_request import RoleRequestService
 
@@ -122,6 +130,10 @@ class RepositoryProvider(Provider):
     def attendance_repository(self) -> AttendanceRepository:
         return AttendanceRepository()
 
+    @provide(scope=Scope.APP)
+    def community_achievement_repository(self) -> CommunityAchievementRepository:
+        return CommunityAchievementRepository()
+
 
 class ServiceProvider(Provider):
     """Application services."""
@@ -135,13 +147,14 @@ class ServiceProvider(Provider):
         return UserService(db, user_repository)
 
     @provide(scope=Scope.REQUEST)
-    def user_roles_service(
+    def user_roles_service(  # noqa: PLR0913
         self,
         db: AsyncSession,
         user_repository: UserRepository,
         role_repository: RoleRepository,
         role_request_repository: RoleRequestRepository,
         notification_service: NotificationPort,
+        achievement_dispatch_port: CommunityAchievementDispatchPort,
     ) -> UserRolesService:
         return UserRolesService(
             db=db,
@@ -149,6 +162,7 @@ class ServiceProvider(Provider):
             role_repository=role_repository,
             role_request_repository=role_request_repository,
             notification_service=notification_service,
+            achievement_dispatch_port=achievement_dispatch_port,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -196,9 +210,16 @@ class ServiceProvider(Provider):
         role_request_repository: RoleRequestRepository,
         notification_service: NotificationPort,
         settings: AppSettings,
+        achievement_dispatch_port: CommunityAchievementDispatchPort,
     ) -> RoleRequestService:
         return RoleRequestService(
-            db, role_repository, user_repository, role_request_repository, notification_service, settings
+            db,
+            role_repository,
+            user_repository,
+            role_request_repository,
+            notification_service,
+            settings,
+            achievement_dispatch_port,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -229,8 +250,14 @@ class ServiceProvider(Provider):
         level_service: LevelService,
         user_competence_service: UserCompetenceService,
         user_roles_service: UserRolesService,
+        community_achievement_service: CommunityAchievementService,
     ) -> UserProfileService:
-        return UserProfileService(level_service, user_competence_service, user_roles_service)
+        return UserProfileService(
+            level_service,
+            user_competence_service,
+            user_roles_service,
+            community_achievement_service,
+        )
 
     @provide(scope=Scope.REQUEST)
     def user_registration_service(  # noqa: PLR0913
@@ -256,6 +283,7 @@ class ServiceProvider(Provider):
         settings: AppSettings,
         ranking_calculator: AttendanceRankingCalculator,
         notification_service: NotificationPort,
+        achievement_dispatch_port: CommunityAchievementDispatchPort,
     ) -> AttendanceService:
         return AttendanceService(
             db=db,
@@ -265,6 +293,28 @@ class ServiceProvider(Provider):
             settings=settings,
             ranking_calculator=ranking_calculator,
             notification_service=notification_service,
+            achievement_dispatch_port=achievement_dispatch_port,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def community_achievement_service(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        community_achievement_repository: CommunityAchievementRepository,
+        attendance_repository: AttendanceRepository,
+        attendance_service: AttendanceService,
+        user_repository: UserRepository,
+        notification_service: NotificationPort,
+        settings: AppSettings,
+    ) -> CommunityAchievementService:
+        return CommunityAchievementService(
+            db=db,
+            community_achievement_repository=community_achievement_repository,
+            attendance_repository=attendance_repository,
+            attendance_service=attendance_service,
+            user_repository=user_repository,
+            notification_service=notification_service,
+            settings=settings,
         )
 
 
@@ -296,8 +346,18 @@ class AgentProvider(Provider):
         user_competences: UserCompetenceService,
         competences: CompetenceService,
         users: UserService,
+        community_achievements: CommunityAchievementService,
     ) -> AgentReadService:
-        return AgentReadService(profiles, attendance, leaderboard, roles, user_competences, competences, users)
+        return AgentReadService(
+            profiles,
+            attendance,
+            leaderboard,
+            roles,
+            user_competences,
+            competences,
+            users,
+            community_achievements,
+        )
 
     @provide(scope=Scope.REQUEST)
     def actions(  # noqa: PLR0913
@@ -418,6 +478,10 @@ class PortsProvider(Provider):
     @provide(scope=Scope.APP)
     async def notification_dispatch_port(self) -> NotificationDispatchPort:
         return TaskIQNotificationDispatcher()
+
+    @provide(scope=Scope.APP)
+    def community_achievement_dispatch_port(self) -> CommunityAchievementDispatchPort:
+        return TaskIQCommunityAchievementDispatcher()
 
     @provide(scope=Scope.APP)
     def attendance_recognition_port(self, settings: AppSettings) -> AttendanceRecognitionPort:

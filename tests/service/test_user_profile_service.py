@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 from dishka import AsyncContainer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pybot.core.constants import PointsTypeEnum
+from pybot.core.constants import PointsTypeEnum, YEKATERINBURG_TZ
+from pybot.db.models import AttendanceRecord, UserAchievementAward
 from pybot.domain.exceptions import LevelNotFoundError
 from pybot.mappers.user_mappers import map_orm_user_to_user_read_dto
 from pybot.services import UserProfileService
@@ -56,6 +59,20 @@ async def test_build_profile_view_returns_profile_data_with_user_progress(
     )
     await attach_user_level(db_session, user=user, level=academic_current)
     await attach_user_level(db_session, user=user, level=reputation_current)
+
+    today = datetime.now(YEKATERINBURG_TZ).date()
+    current_monday = today - timedelta(days=today.weekday())
+    visit_dates = [current_monday - timedelta(days=14), current_monday - timedelta(days=7), current_monday]
+    db_session.add_all(
+        AttendanceRecord(user_id=user.id, date=visit_date, duration_minutes=90) for visit_date in visit_dates
+    )
+    db_session.add(
+        UserAchievementAward(
+            user_id=user.id,
+            code="first_step",
+            achieved_at=datetime.combine(visit_dates[0], datetime.min.time(), tzinfo=YEKATERINBURG_TZ),
+        )
+    )
     await db_session.commit()
 
     user_read = await map_orm_user_to_user_read_dto(user)
@@ -72,6 +89,8 @@ async def test_build_profile_view_returns_profile_data_with_user_progress(
     assert profile_view.academic_next_points.value == 100
     assert profile_view.reputation_current_points.value == 20
     assert profile_view.reputation_next_points.value == 60
+    assert profile_view.current_attendance_streak == 3
+    assert [achievement.code for achievement in profile_view.achievements] == ["first_step"]
     assert profile_view.academic_progress_bar
     assert profile_view.reputation_progress_bar
 

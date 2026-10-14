@@ -104,6 +104,7 @@ sequenceDiagram
 |---|---|---|
 | `bot_capabilities` | Что умеет бот (с учётом роли) | `/help` |
 | `get_my_profile` | Баллы, уровни, роли, компетенции | `/profile` |
+| `get_my_achievements` | Мои достижения и текущая серия посещений | достижения профиля |
 | `get_my_attendance` | Часы, число посещений и место за месяц | `/visits` |
 | `get_my_visits` | История моих посещений | `/visits` → «Мои посещения» |
 | `get_attendance_week_top` | Топ посещаемости недели | `/visits` → «Топ недели» |

@@ -520,6 +520,14 @@ class AttendanceRepository:
         result = await db.execute(stmt)
         return [(int(y), int(m)) for y, m in result.all()]
 
+    async def find_user_visit_dates(self, db: AsyncSession, user_id: int) -> list[dt.date]:
+        """Return all recorded visit dates for a participant in chronological order."""
+        statement = (
+            select(AttendanceRecord.date).where(AttendanceRecord.user_id == user_id).order_by(AttendanceRecord.date)
+        )
+        result = await db.execute(statement)
+        return list(result.scalars().all())
+
     async def get_user_monthly_summary(
         self,
         db: AsyncSession,

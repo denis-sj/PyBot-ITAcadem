@@ -11,6 +11,11 @@ from .level_dto import LevelReadDTO as LevelReadDTO
 
 from .health_dto import HealthCheckDTO as HealthCheckDTO
 from .health_dto import HealthStatusDTO as HealthStatusDTO
+from .community_achievements import (
+    AchievementAwardReadDTO as AchievementAwardReadDTO,
+    AchievementPublicationDTO as AchievementPublicationDTO,
+    CommunityAchievementSummaryDTO as CommunityAchievementSummaryDTO,
+)
 
 from .competence_dto import CompetenceByIdDTO as CompetenceByIdDTO
 from .competence_dto import CompetenceCreateDTO as CompetenceCreateDTO

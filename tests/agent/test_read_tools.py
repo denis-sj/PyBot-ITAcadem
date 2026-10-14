@@ -6,6 +6,7 @@ from pybot.services.agent.tools import AgentToolRegistry
 
 READ_TOOLS = {
     "get_my_profile",
+    "get_my_achievements",
     "get_my_attendance",
     "get_my_visits",
     "get_attendance_week_top",
@@ -45,6 +46,7 @@ def test_registered_user_sees_stage_one_read_tools_without_approval():
     ("tool_name", "method_name", "arguments"),
     [
         ("get_my_profile", "get_profile", "actor"),
+        ("get_my_achievements", "get_my_achievements", "id"),
         ("get_my_attendance", "get_attendance_summary", "id"),
         ("get_my_visits", "get_visits", "period"),
         ("get_attendance_week_top", "get_week_top", "id"),
@@ -120,7 +122,9 @@ async def test_each_read_rechecks_registration_before_service_call(agent_setting
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool_name", ["get_my_profile", "get_my_visits", "get_my_roles", "get_my_competences"])
+@pytest.mark.parametrize(
+    "tool_name", ["get_my_profile", "get_my_achievements", "get_my_visits", "get_my_roles", "get_my_competences"]
+)
 async def test_model_cannot_supply_another_user_id(agent_settings, conversation, tool_name):
     from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart
     from pydantic_ai.models.function import FunctionModel

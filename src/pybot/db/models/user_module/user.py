@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Text, func, text
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         Competence,
         PointsTransaction,
         UserAchievement,
+        UserAchievementAward,
         UserActivityStatus,
         Valuation,
     )
@@ -57,6 +58,7 @@ class User(Base):
         ForeignKey("user_activity_statuses.id"),
     )
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    bot_is_blocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     academic_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     reputation_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
@@ -90,6 +92,12 @@ class User(Base):
 
     achievements: Mapped[list[UserAchievement]] = relationship(
         "UserAchievement",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=True,
+    )
+    community_achievement_awards: Mapped[list[UserAchievementAward]] = relationship(
+        "UserAchievementAward",
         back_populates="user",
         cascade="all, delete-orphan",
         uselist=True,

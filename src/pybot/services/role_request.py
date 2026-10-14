@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core import logger
 from ..core.config import AppSettings
 from ..core.constants import RequestStatus, RoleEnum
 from ..db.models.role_module import RoleRequest
@@ -19,7 +20,7 @@ from ..dto import NotifyDTO
 from ..dto.role_dto import CreateRoleRequestDTO
 from ..infrastructure import RoleRepository, RoleRequestRepository, UserRepository
 from ..presentation.texts import ROLE_REQUEST_NO_ROLES_AVAILABLE, role_request_user_status
-from ..services.ports import NotificationPort
+from ..services.ports import CommunityAchievementDispatchPort, NotificationPort
 
 
 class RoleRequestService:
@@ -36,6 +37,7 @@ class RoleRequestService:
         role_request_repository: RoleRequestRepository,
         notification_service: NotificationPort,
         settings: AppSettings,
+        achievement_dispatch_port: CommunityAchievementDispatchPort | None = None,
     ) -> None:
         """Инициализирует сервис запросов ролей.
 
@@ -46,6 +48,7 @@ class RoleRequestService:
             role_request_repository: Репозиторий для работы с запросами ролей.
             notification_service: Сервис уведомлений.
             settings: Настройки бота.
+            achievement_dispatch_port: Порт постановки перерасчёта достижений после выдачи Mentor.
         """
         self.db: AsyncSession = db
         self.role_repository: RoleRepository = role_repository
@@ -53,6 +56,7 @@ class RoleRequestService:
         self.role_request_repository: RoleRequestRepository = role_request_repository
         self.notification_service: NotificationPort = notification_service
         self._settings = settings
+        self._achievement_dispatch_port = achievement_dispatch_port
 
     def get_time_since_last_reject(self, request_time: datetime, last_reject: RoleRequest) -> timedelta:
         """Возвращает время, прошедшее между созданием запроса и последним отклоненным запросом.
@@ -218,9 +222,23 @@ class RoleRequestService:
 
         self.db.add(request)
         await self.db.commit()
+        if new_status == RequestStatus.APPROVED and role_name == RoleEnum.MENTOR.value:
+            await self._queue_achievement_recalculation(user.id)
         await self.notification_service.send_message(
             NotifyDTO(
                 message=role_request_user_status(request.role.name, request.status),
                 recipient_id=user.telegram_id,
             )
         )
+
+    async def _queue_achievement_recalculation(self, user_id: int) -> None:
+        """Queue Mentor achievement calculation after request approval commits."""
+        if self._achievement_dispatch_port is None:
+            return
+        try:
+            await self._achievement_dispatch_port.recalculate_user_achievements(user_id)
+        except Exception:
+            logger.exception(
+                "Failed to dispatch Mentor achievement recalculation | user_id={user_id}",
+                user_id=user_id,
+            )

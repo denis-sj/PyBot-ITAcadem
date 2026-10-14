@@ -15,6 +15,12 @@ async def get_my_profile(ctx: RunContext[AgentDependencies]) -> str:
     return await ctx.deps.reads.get_profile(await ctx.deps.get_actor())
 
 
+async def get_my_achievements(ctx: RunContext[AgentDependencies]) -> str:
+    """Мои достижения, значки и текущая серия посещений."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_my_achievements(user.id)
+
+
 async def get_my_attendance(ctx: RunContext[AgentDependencies]) -> str:
     """Мои часы, количество посещений и место за текущий месяц (/visits)."""
     user = await ctx.deps.get_actor()

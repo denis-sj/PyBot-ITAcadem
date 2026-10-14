@@ -9,7 +9,9 @@ from ...dto import ProfileViewDTO, UserReadDTO
 from ...dto.agent_read import AgentMonth, AgentUserCandidate, AgentUserSearchResult
 from ...dto.attendance import AttendanceMonthlyRankingItemDTO, AttendanceMonthlyReportDTO, AttendanceTopDTO
 from ...presentation.texts.attendance import MONTH_NAMES_RU_CAPITALIZED
+from ...presentation.texts.community_achievements import render_achievement_profile_section
 from ..attendance_service import AttendanceService
+from ..community_achievements import CommunityAchievementService
 from ..competence import CompetenceService
 from ..leaderboard import LeaderboardService
 from ..user_services.user_competence import UserCompetenceService
@@ -55,6 +57,7 @@ class AgentReadService:
         user_competences: UserCompetenceService,
         competences: CompetenceService,
         users: UserService,
+        community_achievements: CommunityAchievementService | None = None,
     ) -> None:
         self.profiles = profiles
         self.attendance = attendance
@@ -63,6 +66,14 @@ class AgentReadService:
         self.user_competences = user_competences
         self.competences = competences
         self.users = users
+        self.community_achievements = community_achievements
+
+    async def get_my_achievements(self, user_id: int) -> str:
+        """Return the caller's current weekly streak and durable achievement history."""
+        if self.community_achievements is None:
+            return render_achievement_profile_section(0, ())
+        summary = await self.community_achievements.get_user_summary(user_id)
+        return render_achievement_profile_section(summary.current_streak, summary.achievements)
 
     async def get_profile(self, user: UserReadDTO) -> str:
         """Return the caller's profile and the already calculated level progress."""

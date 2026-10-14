@@ -5,6 +5,7 @@ from ...domain.exceptions import LevelNotFoundError
 from ...dto import CompetenceReadDTO, ProfileViewDTO, UserLevelReadDTO, UserProfileReadDTO, UserReadDTO
 from ...dto.value_objects import Points
 from ...mappers.level_mappers import map_orm_level_to_level_read_dto
+from ..community_achievements import CommunityAchievementService
 from ..levels import LevelService
 from .user_competence import UserCompetenceService
 from .user_roles import UserRolesService
@@ -21,6 +22,7 @@ class UserProfileService:
         level_service: LevelService,
         user_competence_service: UserCompetenceService,
         user_roles_service: UserRolesService,
+        community_achievement_service: CommunityAchievementService | None = None,
     ) -> None:
         """Инициализирует сервис профиля пользователя.
 
@@ -28,10 +30,12 @@ class UserProfileService:
             level_service: Сервис для работы с уровнями.
             user_competence_service: Сервис для работы с компетенциями пользователя.
             user_roles_service: Сервис для работы с ролями пользователя.
+            community_achievement_service: Сервис для чтения серий и достижений сообщества.
         """
         self.level_service = level_service
         self.user_competence_service = user_competence_service
         self.user_roles_service = user_roles_service
+        self.community_achievement_service = community_achievement_service
 
     async def build_profile_view(self, user_read: UserReadDTO) -> ProfileViewDTO:
         """Собирает и возвращает полные данные для отображения профиля пользователя.
@@ -60,6 +64,12 @@ class UserProfileService:
             reputation_next_points,
         ) = await self._handle_points_data(user_profile, PointsTypeEnum.REPUTATION)
 
+        achievement_summary = (
+            await self.community_achievement_service.get_user_summary(user_profile.user.id)
+            if self.community_achievement_service is not None
+            else None
+        )
+
         return ProfileViewDTO(
             user=user_profile.user,
             academic_progress=academic_progress,
@@ -72,6 +82,8 @@ class UserProfileService:
             reputation_next_points=reputation_next_points,
             roles_data=user_profile.roles,
             competences=user_profile.competences,
+            current_attendance_streak=achievement_summary.current_streak if achievement_summary is not None else 0,
+            achievements=achievement_summary.achievements if achievement_summary is not None else (),
         )
 
     async def _collect_user_profile(self, user_read_dto: UserReadDTO) -> UserProfileReadDTO:

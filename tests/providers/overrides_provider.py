@@ -6,7 +6,11 @@ from aiogram.types import InlineKeyboardMarkup
 from dishka import Provider, Scope, provide
 
 from pybot.dto import AttendanceRecognitionResultDTO, NotifyDTO
-from pybot.services.ports import AttendanceRecognitionPort, NotificationPort
+from pybot.services.ports import (
+    AttendanceRecognitionPort,
+    CommunityAchievementDispatchPort,
+    NotificationPort,
+)
 
 __test__ = False
 
@@ -21,6 +25,11 @@ class FakeAttendanceRecognitionPort:
         candidate_user_names: list[str],
     ) -> AttendanceRecognitionResultDTO:
         raise AssertionError("Photo recognition requires an explicit test result; network calls are forbidden")
+
+
+class FakeCommunityAchievementDispatchPort(CommunityAchievementDispatchPort):
+    async def recalculate_user_achievements(self, user_id: int) -> None:
+        return None
 
 
 class FakeNotificationPort(NotificationPort):
@@ -129,6 +138,10 @@ class TestOverridesProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_attendance_recognition_port(self) -> AttendanceRecognitionPort:
         return self._attendance_recognition_port
+
+    @provide(scope=Scope.APP)
+    def provide_community_achievement_dispatch_port(self) -> CommunityAchievementDispatchPort:
+        return FakeCommunityAchievementDispatchPort()
 
     @provide(scope=Scope.APP)
     def provide_fake_notification_port(self) -> FakeNotificationPort:

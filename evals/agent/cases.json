@@ -147,6 +147,14 @@
     "forbidden_phrases": []
   },
   {
+    "name": "my_achievements",
+    "question": "Мои достижения и текущая серия?",
+    "roles": ["Student"],
+    "expected_tools": ["get_my_achievements"],
+    "required_phrases": ["текущая серия", "3 недели", "Постоянство · 4 недели", "Десятка"],
+    "forbidden_phrases": []
+  },
+  {
     "name": "my_attendance",
     "question": "Сколько часов я посетил в этом месяце?",
     "roles": [

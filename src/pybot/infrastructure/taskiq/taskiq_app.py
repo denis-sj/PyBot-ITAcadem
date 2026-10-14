@@ -23,6 +23,9 @@ from .taskiq_attendance_schedule import (
 from .taskiq_attendance_schedule import (
     ensure_attendance_cleanup_schedule as ensure_attendance_cleanup_schedule_in_source,
 )
+from .taskiq_community_achievement_schedule import (
+    ensure_community_achievement_schedules as ensure_community_achievement_schedules_in_source,
+)
 from .taskiq_weekly_leaderboard_schedule import (
     LEADERBOARD_WEEKLY_SCHEDULE_ID,
     LEADERBOARD_WEEKLY_TASK_NAME,
@@ -33,6 +36,11 @@ from .taskiq_weekly_leaderboard_schedule import (
 )
 from .taskiq_weekly_leaderboard_wiring import register_weekly_leaderboard_wiring
 from .tasks import TaskRegistry, register_all_tasks
+from .tasks.community_achievements import (
+    PUBLISH_ACHIEVEMENT_DIGEST_TASK_NAME,
+    PUBLISH_TOP_WEEK_TASK_NAME,
+    RECALCULATE_ACHIEVEMENTS_TASK_NAME,
+)
 
 
 @dataclass(slots=True)
@@ -136,6 +144,13 @@ def get_taskiq_attendance_cleanup_task(
     return get_taskiq_task_registry(settings).attendance_cleanup_task
 
 
+def get_taskiq_achievement_recalculation_task(
+    settings: AppSettings | None = None,
+) -> AsyncTaskiqDecoratedTask[..., Any]:
+    """Return the registered post-commit award recalculation task."""
+    return get_taskiq_task_registry(settings).achievement_recalculation_task
+
+
 def _resolve_attendance_cleanup_kicker() -> AsyncKicker[Any, Any]:
     return get_taskiq_attendance_cleanup_task().kicker()
 
@@ -180,6 +195,41 @@ async def ensure_attendance_cleanup_schedule(
 async def _on_client_startup_attendance(_state: TaskiqState) -> None:
     """Обработчик события запуска клиента TaskIQ для настройки очистки черновиков."""
     await ensure_attendance_cleanup_schedule()
+
+
+def _resolve_achievement_kicker(task_name: str) -> AsyncKicker[Any, Any]:
+    task_registry = get_taskiq_task_registry()
+    if task_name == PUBLISH_ACHIEVEMENT_DIGEST_TASK_NAME:
+        return task_registry.achievement_digest_task.kicker()
+    if task_name == PUBLISH_TOP_WEEK_TASK_NAME:
+        return task_registry.achievement_top_week_task.kicker()
+    if task_name == RECALCULATE_ACHIEVEMENTS_TASK_NAME:
+        return task_registry.achievement_recalculation_task.kicker()
+    raise ValueError(f"Unknown community achievement task: {task_name}")
+
+
+async def ensure_community_achievement_schedules(
+    *,
+    broker: AsyncBroker | None = None,
+    schedule_source: ListRedisScheduleSource | None = None,
+    settings: AppSettings | None = None,
+) -> None:
+    """Ensure configured daily digest and weekly top schedules in the scheduler process."""
+    runtime_settings = settings or get_settings()
+    runtime_broker = broker or get_taskiq_broker(runtime_settings)
+    if not runtime_broker.is_scheduler_process:
+        return
+
+    await ensure_community_achievement_schedules_in_source(
+        source=schedule_source or get_taskiq_schedule_source(runtime_settings),
+        settings=runtime_settings,
+        resolve_kicker=_resolve_achievement_kicker,
+    )
+
+
+async def _on_client_startup_community_achievements(_state: TaskiqState) -> None:
+    """Configure community achievement schedules when TaskIQ starts as a scheduler."""
+    await ensure_community_achievement_schedules()
 
 
 def _resolve_publish_weekly_leaderboard_kicker() -> AsyncKicker[Any, Any]:
@@ -255,6 +305,7 @@ def get_taskiq_broker(settings: AppSettings | None = None) -> AsyncBroker:
     broker.add_event_handler(TaskiqEvents.WORKER_STARTUP, _on_worker_startup)
     broker.add_event_handler(TaskiqEvents.WORKER_SHUTDOWN, _on_worker_shutdown)
     broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_attendance)
+    broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_community_achievements)
     register_weekly_leaderboard_wiring(
         broker,
         ensure_weekly_leaderboard_schedule=ensure_weekly_leaderboard_schedule,

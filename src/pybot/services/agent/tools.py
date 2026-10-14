@@ -42,6 +42,7 @@ from .read_tools import (
     get_competences_catalog,
     get_current_chat_id,
     get_current_month,
+    get_my_achievements,
     get_my_attendance,
     get_my_competences,
     get_my_profile,
@@ -83,6 +84,7 @@ class AgentToolRegistry:
                 for function in (
                     bot_capabilities,
                     get_my_profile,
+                    get_my_achievements,
                     get_my_attendance,
                     get_my_visits,
                     get_attendance_week_top,

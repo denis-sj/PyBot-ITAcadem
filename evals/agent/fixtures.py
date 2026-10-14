@@ -15,6 +15,9 @@ class EvalReads(AgentReadService):
     async def get_profile(self, user: UserReadDTO) -> str:
         return "Мой профиль: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
 
+    async def get_my_achievements(self, user_id: int) -> str:
+        return "🔥 Текущая серия посещений: 3 недели\n🏅 Достижения: Постоянство · 4 недели, Десятка"
+
     async def get_profile_for_telegram_id(self, telegram_id: int) -> str:
         return "Профиль участника: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
 
