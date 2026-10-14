@@ -33,7 +33,10 @@ def test_agent_defaults_disabled_and_vision_unchanged():
     parsed = settings()
     assert not parsed.agent_enabled
     assert parsed.agent_model == "deepseek/deepseek-v4.1-flash"
-    assert parsed.agent_provider.only == ("decart/fp4",)
+    assert parsed.agent_provider.order == ("decart/fp4", "deepseek")
+    assert parsed.agent_provider.only == ("decart/fp4", "deepseek")
+    assert parsed.agent_provider.require_parameters is True
+    assert parsed.agent_provider.allow_fallbacks is True
     assert parsed.agent_memory_max_messages == 10
     assert parsed.agent_memory_ttl_s == 1800
     assert parsed.agent_reply_mark_ttl_s == 604800

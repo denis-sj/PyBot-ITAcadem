@@ -697,14 +697,15 @@ Optional agent settings:
   `reasoning_content` in subsequent tool requests.
 
 - `AGENT_PROVIDER`: routing JSON. The evaluated default is
-  `{"only":["decart/fp4"],"require_parameters":true,"allow_fallbacks":false}`.
+  `{"only":["decart/fp4","deepseek"],"order":["decart/fp4","deepseek"],"require_parameters":true,"allow_fallbacks":true}`.
   `order` and `only` accept unique non-empty provider IDs from Polza's catalog.
-  To use automatic routing, set
-  `{"only":[],"require_parameters":false,"allow_fallbacks":true}`.
-  Recheck provider capabilities and tariffs when changing the model.
-  Diagnostics dated 2026-10-13: both `decart/fp4` and `deepseek` passed all 16
-  minimal probes after omitting `parallel_tool_calls`; `decart/fp4` had lower
-  catalog prices (10.70964/21.41928 ₽ per million input/output tokens).
+  The default prefers `decart/fp4` and permits fallback to `deepseek` while
+  requiring compatible parameters. DeepSeek passed 12/12 tool probes without
+  `parallel_tool_calls`; Decart was retained first because its 2026-10-13 catalog
+  prices were lower (10.70964/21.41928 ₽ per million input/output tokens).
+  Evaluation metadata records the configured route and the serving provider when
+  Polza returns a catalog ID; exact Polza `cost_rub` remains the authoritative charge. Recheck
+  provider capabilities and tariffs when changing the model.
 
 - `AGENT_GROUP_CHAT_ID` and `AGENT_TOPIC_ID`: configure together (negative group ID,
   positive topic ID), or leave both blank. That topic accepts unaddressed text;

@@ -136,8 +136,10 @@ async def test_deepseek_wire_omits_unsupported_parallel_parameter(agent_settings
         )
     assert len(requests) == 1
     assert "parallel_tool_calls" not in requests[0]
-    assert requests[0]["provider"]["only"] == ["decart/fp4"]
+    assert requests[0]["provider"]["only"] == ["decart/fp4", "deepseek"]
+    assert requests[0]["provider"]["order"] == ["decart/fp4", "deepseek"]
     assert requests[0]["provider"]["require_parameters"] is True
+    assert requests[0]["provider"]["allow_fallbacks"] is True
     assert requests[0]["tools"][0]["function"]["name"] == "get_my_profile"
 
 
@@ -161,7 +163,9 @@ async def test_two_step_wire_preserves_reasoning_and_provider(agent_settings, mo
         body = json.loads(request.content)
         requests.append(body)
         assert body["reasoning"] == {"effort": effort}
-        assert body["provider"]["only"] == ["decart/fp4"]
+        assert body["provider"]["only"] == ["decart/fp4", "deepseek"]
+        assert body["provider"]["order"] == ["decart/fp4", "deepseek"]
+        assert body["provider"]["allow_fallbacks"] is True
         if len(requests) == 1:
             message = {
                 "role": "assistant",

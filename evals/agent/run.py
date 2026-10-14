@@ -7,6 +7,7 @@ import asyncio
 import json
 import math
 import re
+import socket
 import sys
 import time
 from collections import defaultdict
@@ -62,6 +63,30 @@ MAX_INPUT_TOKENS_PER_REQUEST = 32_000
 MAX_ESTIMATED_INPUT_TOKENS_PER_REQUEST = 16_000
 MAX_OUTPUT_TOKENS_PER_REQUEST = 1_000
 REQUEST_TOKEN_OVERHEAD = 256
+_EXCEPTION_REASONS: tuple[tuple[type[BaseException], str], ...] = (
+    (socket.gaierror, "dns_resolution"),
+    (httpx2.ConnectTimeout, "httpx_connect_timeout"),
+    (httpx2.ReadTimeout, "httpx_read_timeout"),
+    (httpx2.WriteTimeout, "httpx_write_timeout"),
+    (httpx2.PoolTimeout, "httpx_pool_timeout"),
+    (httpx2.TimeoutException, "httpx_timeout"),
+    (httpx2.RemoteProtocolError, "remote_protocol_error"),
+    (ConnectionResetError, "connection_reset"),
+    (ConnectionAbortedError, "connection_aborted"),
+    (ConnectionRefusedError, "connection_refused"),
+    (BrokenPipeError, "connection_broken_pipe"),
+    (httpx2.ConnectError, "httpx_connect_error"),
+    (httpx2.NetworkError, "httpx_network_error"),
+    (TimeoutError, "timeout_error_unclassified"),
+    (asyncio.CancelledError, "request_cancelled"),
+    (ModelHTTPError, "http_response_error"),
+    (ConnectionError, "connection_error"),
+)
+_EXCEPTION_REASON_NAMES = {
+    "APIConnectionError": "api_connection_error",
+    "APITimeoutError": "api_timeout",
+    "ModelAPIError": "model_api_error",
+}
 ACTION_EXECUTORS = {
     "request_mentor_role": "request_mentor_role",
     "adjust_user_points": "adjust_points",
@@ -132,7 +157,9 @@ class CaseRun:
     blocked_attempts: dict[str, int]
     executed_after_confirmation: int
     failure_reasons: tuple[str, ...] = ()
+    request_failures: tuple[dict[str, JsonValue], ...] = ()
     connection_failure: bool = False
+    connection_diagnostic: dict[str, JsonValue] | None = None
     finish_reason_length_responses: int = 0
 
 
@@ -195,13 +222,14 @@ class SpendLedger:
 class ObservedPolzaModel(WrapperModel):
     """Capture usage and reserve budget using exact charges or marked upper estimates."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         wrapped: Model,
         model_name: str,
         ledger: SpendLedger,
         budget: Decimal,
         tariff: ModelTariff | None = None,
+        timeout_seconds: int | None = None,
     ) -> None:
         super().__init__(wrapped)
         self.polza_model_name = model_name
@@ -209,6 +237,7 @@ class ObservedPolzaModel(WrapperModel):
         self.budget = budget
         self.tariff = tariff or ModelTariff()
         self.response_tariff = self.tariff
+        self.timeout_seconds = timeout_seconds
         self.request_count = 0
         self.responses: list[ModelResponse] = []
         self.request_latencies_s: list[float] = []
@@ -243,6 +272,7 @@ class ObservedPolzaModel(WrapperModel):
         try:
             response = await super().request(messages, model_settings, model_request_parameters)
         except BaseException as error:
+            elapsed_s = time.perf_counter() - started_at
             if isinstance(error, ModelHTTPError):
                 cost = Decimal("0")
                 self.ledger.record_cost(
@@ -259,7 +289,14 @@ class ObservedPolzaModel(WrapperModel):
                     source="request_error_upper_bound",
                 )
             self.run_cost_rub += cost
-            diagnostic: dict[str, JsonValue] = {"error_type": type(error).__name__, "usage_received": False}
+            diagnostic = _exception_diagnostic(error)
+            diagnostic["usage_received"] = False
+            diagnostic["elapsed_s"] = round(elapsed_s, 3)
+            if self.timeout_seconds is not None:
+                diagnostic["agent_timeout_s"] = self.timeout_seconds
+                diagnostic["http_client_timeout_s"] = self.timeout_seconds
+                if isinstance(error, asyncio.CancelledError) and elapsed_s >= self.timeout_seconds - 0.5:
+                    diagnostic["cause"] = "agent_timeout_s"
             if isinstance(error, ModelHTTPError):
                 diagnostic["http_status"] = error.status_code
                 body_text = str(error.body).casefold()
@@ -410,7 +447,12 @@ async def run_evals() -> int:
             for repetition in range(1, args.repeat + 1):
                 for case in cases:
                     observed_model = ObservedPolzaModel(
-                        base_model, args.model, ledger, MAX_BUDGET_RUB, catalog.tariff()
+                        base_model,
+                        args.model,
+                        ledger,
+                        MAX_BUDGET_RUB,
+                        catalog.tariff(),
+                        timeout_seconds=settings.agent_timeout_s,
                     )
                     try:
                         case_run = await _run_case(case, settings, observed_model)
@@ -450,7 +492,7 @@ async def _capture_eval_response(
 ) -> None:
     """Keep safe HTTP metadata and update only the serving-provider tariff."""
     await response.aread()
-    http_metadata.append(_safe_http_metadata(response))
+    http_metadata.append(_safe_http_metadata(response, {provider.name for provider in catalog.providers}))
     if model is not None:
         model.response_tariff = _response_provider_tariff(response, catalog)
 
@@ -551,6 +593,16 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         and "http_status" not in failure
         for failure in model.failures
     )
+    connection_diagnostic = next(
+        (
+            failure
+            for failure in reversed(model.failures)
+            if failure.get("error_type") == "ModelAPIError"
+            and failure.get("usage_received") is False
+            and "http_status" not in failure
+        ),
+        None,
+    )
     failure_reasons = (
         ("connection_failure=ModelAPIError_without_usage",)
         if connection_failure
@@ -592,7 +644,9 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         blocked_attempts=blocked_attempts,
         executed_after_confirmation=executions_after_confirmation,
         failure_reasons=failure_reasons,
+        request_failures=tuple(model.failures),
         connection_failure=connection_failure,
+        connection_diagnostic=connection_diagnostic,
         finish_reason_length_responses=sum(response.finish_reason == "length" for response in model.responses),
     )
 
@@ -795,7 +849,53 @@ def _response_provider_tariff(response: httpx2.Response, catalog: ProviderCatalo
     return catalog.tariff(provider_name if isinstance(provider_name, str) else None)
 
 
-def _safe_http_metadata(response: httpx2.Response) -> dict[str, JsonValue]:
+def _exception_diagnostic(error: BaseException) -> dict[str, JsonValue]:
+    """Keep exception types and fixed cause categories without serializing messages."""
+    exception_chain: list[dict[str, JsonValue]] = []
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        exception_type = type(current)
+        exception_chain.append(
+            {
+                "type": f"{exception_type.__module__}.{exception_type.__qualname__}",
+                "reason": _exception_reason(current),
+            }
+        )
+        current = current.__cause__ or current.__context__
+
+    cause = next(
+        (
+            entry["reason"]
+            for entry in reversed(exception_chain[1:])
+            if entry["reason"] not in {"other", "api_connection_error"}
+        ),
+        None,
+    )
+    if cause is None:
+        cause = exception_chain[-1]["reason"] if len(exception_chain) > 1 else "cause_unavailable"
+    return {
+        "error_type": type(error).__name__,
+        "cause": cause,
+        "exception_chain": exception_chain,
+    }
+
+
+def _exception_reason(error: BaseException) -> str:
+    """Map transport exceptions to fixed categories that cannot contain private text."""
+    for exception_type, reason in _EXCEPTION_REASONS:
+        if isinstance(error, exception_type):
+            return reason
+    exception_name = type(error).__name__
+    if exception_name in _EXCEPTION_REASON_NAMES:
+        return _EXCEPTION_REASON_NAMES[exception_name]
+    return "other"
+
+
+def _safe_http_metadata(
+    response: httpx2.Response, known_provider_names: set[str] | frozenset[str] = frozenset()
+) -> dict[str, JsonValue]:
     """Keep only field names, numeric billing data and fixed error categories."""
     metadata: dict[str, JsonValue] = {"status": response.status_code}
     request_body = json.loads(response.request.content)
@@ -803,6 +903,9 @@ def _safe_http_metadata(response: httpx2.Response) -> dict[str, JsonValue]:
     metadata["message_roles"] = [message.get("role") for message in request_body.get("messages", [])]
     metadata["tool_strict_flags"] = [tool.get("function", {}).get("strict") for tool in request_body.get("tools", [])]
     metadata["tool_choice"] = request_body.get("tool_choice")
+    provider_routing = _safe_provider_routing(request_body, known_provider_names)
+    if provider_routing is not None:
+        metadata["provider_routing"] = provider_routing
     try:
         body = response.json()
     except ValueError:
@@ -811,46 +914,77 @@ def _safe_http_metadata(response: httpx2.Response) -> dict[str, JsonValue]:
     if not isinstance(body, dict):
         return metadata
     metadata["fields"] = sorted(body)
+    serving_provider = body.get("provider")
+    if isinstance(serving_provider, str) and serving_provider in known_provider_names:
+        metadata["serving_provider"] = serving_provider
     usage = body.get("usage")
     if isinstance(usage, dict):
         metadata["usage_fields"] = sorted(usage)
         metadata["billing"] = _numeric_billing_fields(usage)
     error = body.get("error")
     if error is not None:
-        if isinstance(error, str) and re.fullmatch(r"[A-Z_]{1,80}", error):
-            metadata["error_code"] = error
-        elif isinstance(error, dict):
-            metadata["error_fields"] = sorted(error)
-            code = error.get("code")
-            if isinstance(code, str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", code):
-                metadata["error_code"] = code
-            details = error.get("metadata")
-            if isinstance(details, dict):
-                metadata["error_metadata_fields"] = sorted(details)
-        error_text = str(error).casefold()
-        metadata["error_categories"] = [
-            term
-            for term in (
-                "upstream",
-                "timeout",
-                "unavailable",
-                "unsupported",
-                "model",
-                "provider",
-                "credit",
-                "quota",
-                "bad gateway",
-                "empty",
-                "response",
-                "length",
-                "content",
-                "ошибка",
-                "ответ",
-                "пуст",
-                "лимит",
-            )
-            if term in error_text
-        ]
+        metadata.update(_safe_response_error_metadata(error))
+    return metadata
+
+
+def _safe_provider_routing(
+    request_body: dict[str, JsonValue], known_provider_names: set[str] | frozenset[str]
+) -> dict[str, JsonValue] | None:
+    """Keep only catalog IDs and booleans from the request's routing object."""
+    provider_route = request_body.get("provider")
+    if not isinstance(provider_route, dict):
+        return None
+    safe_route: dict[str, JsonValue] = {}
+    for name in ("only", "order"):
+        providers = provider_route.get(name)
+        if isinstance(providers, list) and all(
+            isinstance(provider, str) and provider in known_provider_names for provider in providers
+        ):
+            safe_route[name] = [provider for provider in providers if isinstance(provider, str)]
+    for name in ("require_parameters", "allow_fallbacks"):
+        value = provider_route.get(name)
+        if isinstance(value, bool):
+            safe_route[name] = value
+    return safe_route or None
+
+
+def _safe_response_error_metadata(error: JsonValue) -> dict[str, JsonValue]:
+    """Reduce an HTTP error to fixed categories and field names, never its message."""
+    metadata: dict[str, JsonValue] = {}
+    if isinstance(error, str) and re.fullmatch(r"[A-Z_]{1,80}", error):
+        metadata["error_code"] = error
+    elif isinstance(error, dict):
+        metadata["error_fields"] = sorted(error)
+        code = error.get("code")
+        if isinstance(code, str) and re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", code):
+            metadata["error_code"] = code
+        details = error.get("metadata")
+        if isinstance(details, dict):
+            metadata["error_metadata_fields"] = sorted(details)
+    error_text = str(error).casefold()
+    metadata["error_categories"] = [
+        term
+        for term in (
+            "upstream",
+            "timeout",
+            "unavailable",
+            "unsupported",
+            "model",
+            "provider",
+            "credit",
+            "quota",
+            "bad gateway",
+            "empty",
+            "response",
+            "length",
+            "content",
+            "ошибка",
+            "ответ",
+            "пуст",
+            "лимит",
+        )
+        if term in error_text
+    ]
     return metadata
 
 
@@ -860,6 +994,13 @@ def _numeric_billing_fields(usage: dict[str, JsonValue]) -> dict[str, JsonValue]
     for name, value in usage.items():
         if isinstance(value, int | float) and not isinstance(value, bool):
             result[name] = value
+        elif name in {"cost", "cost_rub"} and isinstance(value, str):
+            try:
+                cost = Decimal(value)
+            except InvalidOperation:
+                continue
+            if cost.is_finite() and cost >= 0:
+                result[name] = format(cost, "f")
         elif isinstance(value, dict):
             result[name] = _numeric_billing_fields(value)
     return result
@@ -1013,8 +1154,17 @@ def _build_report(
         "repetitions_requested": metadata.repeat,
         "question_runs": len(runs),
         "connection_failures": [
-            {"case": run.case_name, "error_type": "ModelAPIError", "usage_received": False}
+            {
+                "case": run.case_name,
+                **(
+                    run.connection_diagnostic
+                    or {"error_type": "ModelAPIError", "cause": "cause_unavailable", "usage_received": False}
+                ),
+            }
             for run in connection_failure_runs
+        ],
+        "model_request_failures": [
+            {"case": run.case_name, **failure} for run in runs for failure in run.request_failures
         ],
         "aborted": metadata.aborted,
         "abort_reason": metadata.abort_reason,

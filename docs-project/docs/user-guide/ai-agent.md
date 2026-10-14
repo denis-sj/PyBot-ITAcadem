@@ -219,9 +219,12 @@ sequenceDiagram
 ### Маршрутизация Polza
 
 `AGENT_PROVIDER` задаёт JSON с полями `order`, `only`, `require_parameters` и
-`allow_fallbacks`. Рекомендуемое значение по диагностике 13.10.2026:
-`{"only":["decart/fp4"],"require_parameters":true,"allow_fallbacks":false}`.
-Проверенные инструменты работают у `decart/fp4` и `deepseek`; выбран более дешёвый
-вариант. При смене модели нужно заново проверить ID исполнителей и их тарифы.
+`allow_fallbacks`. Значение по умолчанию предпочитает `decart/fp4` и допускает
+fallback на `deepseek`:
+`{"only":["decart/fp4","deepseek"],"order":["decart/fp4","deepseek"],"require_parameters":true,"allow_fallbacks":true}`.
+DeepSeek прошёл 12/12 проверок с tools без `parallel_tool_calls`; Decart оставлен
+первым по более низким тарифам каталога от 13.10.2026. Раннер сохраняет безопасную
+конфигурацию маршрута, имя фактического исполнителя при наличии в ответе и точный `cost_rub`.
+При смене модели нужно заново проверить ID исполнителей и их тарифы.
 Параметр `parallel_tool_calls` исключается из запросов DeepSeek; последовательность
 исполнения инструментов задаётся реестром PyBot.

@@ -1,9 +1,11 @@
 """Offline checks for the paid evaluation harness and its aggregate-only reports."""
 
 import json
+import socket
 from dataclasses import replace
 from decimal import Decimal
 
+import httpx2
 import pytest
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.models.function import FunctionModel
@@ -23,11 +25,39 @@ from evals.agent.run import (
     SpendLedger,
     _build_report,
     _estimate_request_input_tokens,
+    _exception_diagnostic,
     _load_cases,
     _maximum_request_cost,
     _response_cost,
     _role_prefix_token_counts,
+    _safe_http_metadata,
 )
+
+
+@pytest.mark.parametrize(
+    "cause,expected_reason",
+    [
+        (httpx2.ReadTimeout("Authorization: Bearer hidden-token"), "httpx_read_timeout"),
+        (socket.gaierror("private hostname lookup"), "dns_resolution"),
+        (ConnectionResetError("private connection details"), "connection_reset"),
+    ],
+)
+def test_exception_diagnostic_records_types_and_safe_reason_only(cause, expected_reason) -> None:
+    error = ModelAPIError(TARGET_MODEL, "private request body and hidden-token")
+    error.__cause__ = cause
+
+    diagnostic = _exception_diagnostic(error)
+
+    assert diagnostic["error_type"] == "ModelAPIError"
+    assert diagnostic["cause"] == expected_reason
+    exception_chain = diagnostic["exception_chain"]
+    assert isinstance(exception_chain, list)
+    assert len(exception_chain) == 2
+    serialized = json.dumps(diagnostic)
+    assert "hidden-token" not in serialized
+    assert "private request body" not in serialized
+    assert "private hostname lookup" not in serialized
+    assert "private connection details" not in serialized
 
 
 def test_eval_cases_cover_required_scenarios_and_have_unique_names() -> None:
@@ -87,6 +117,39 @@ def test_response_cost_requires_a_valid_polza_cost_field() -> None:
     assert _response_cost(unpriced_response) is None
 
 
+def test_http_metadata_keeps_provider_route_and_exact_cost_without_message_text() -> None:
+    request = httpx2.Request(
+        "POST",
+        "https://polza.example/v1/chat/completions",
+        json={
+            "messages": [{"role": "user", "content": "PRIVATE QUESTION"}],
+            "provider": {
+                "only": ["decart/fp4", "deepseek"],
+                "order": ["decart/fp4", "deepseek"],
+                "require_parameters": True,
+                "allow_fallbacks": True,
+            },
+        },
+    )
+    response = httpx2.Response(
+        200,
+        request=request,
+        json={"provider": "deepseek", "usage": {"cost_rub": "0.01234"}},
+    )
+
+    metadata = _safe_http_metadata(response, {"decart/fp4", "deepseek"})
+
+    assert metadata["provider_routing"] == {
+        "only": ["decart/fp4", "deepseek"],
+        "order": ["decart/fp4", "deepseek"],
+        "require_parameters": True,
+        "allow_fallbacks": True,
+    }
+    assert metadata["serving_provider"] == "deepseek"
+    assert metadata["billing"] == {"cost_rub": "0.01234"}
+    assert "PRIVATE QUESTION" not in json.dumps(metadata)
+
+
 def test_report_has_aggregate_metrics_without_case_text(tmp_path) -> None:
     ledger = SpendLedger(tmp_path / "ledger.json")
     run = CaseRun(
@@ -138,12 +201,23 @@ def test_report_has_aggregate_metrics_without_case_text(tmp_path) -> None:
     assert "question" not in report
     assert "answer" not in report
 
+    connection_diagnostic = {
+        "error_type": "ModelAPIError",
+        "cause": "httpx_read_timeout",
+        "exception_chain": [
+            {"type": "pydantic_ai.exceptions.ModelAPIError", "reason": "model_api_error"},
+            {"type": "httpx.ReadTimeout", "reason": "httpx_read_timeout"},
+        ],
+        "usage_received": False,
+    }
     connection_run = replace(
         run,
         case_name="connection_case",
         passed=False,
         tools_correct=False,
         connection_failure=True,
+        connection_diagnostic=connection_diagnostic,
+        request_failures=(connection_diagnostic,),
         failure_reasons=("connection_failure=ModelAPIError_without_usage",),
     )
     report_with_connection_failure = _build_report(metadata, [run, connection_run])
@@ -153,7 +227,19 @@ def test_report_has_aggregate_metrics_without_case_text(tmp_path) -> None:
     assert connection_metrics["connection_failure_question_runs"] == 1
     assert connection_metrics["correct_tools_pct"] == 100
     assert report_with_connection_failure["connection_failures"] == [
-        {"case": "connection_case", "error_type": "ModelAPIError", "usage_received": False}
+        {
+            "case": "connection_case",
+            "error_type": "ModelAPIError",
+            "cause": "httpx_read_timeout",
+            "exception_chain": [
+                {"type": "pydantic_ai.exceptions.ModelAPIError", "reason": "model_api_error"},
+                {"type": "httpx.ReadTimeout", "reason": "httpx_read_timeout"},
+            ],
+            "usage_received": False,
+        }
+    ]
+    assert report_with_connection_failure["model_request_failures"] == [
+        {"case": "connection_case", **connection_diagnostic}
     ]
 
 
@@ -218,13 +304,19 @@ async def test_model_api_error_without_usage_is_marked_as_connection_failure(tmp
     from evals.agent.run import _load_cases, _run_case
 
     def fail(messages, info):
-        raise ModelAPIError(TARGET_MODEL, "synthetic connection failure")
+        error = ModelAPIError(TARGET_MODEL, "synthetic connection failure")
+        error.__cause__ = httpx2.ReadTimeout("Authorization: Bearer should-not-be-logged")
+        raise error
 
     ledger = SpendLedger(tmp_path / "ledger.json")
     observed = ObservedPolzaModel(FunctionModel(fail), TARGET_MODEL, ledger, MAX_BUDGET_RUB)
     result = await _run_case(_load_cases(["my_profile"])[0], agent_settings, observed)
 
     assert result.connection_failure
+    assert result.connection_diagnostic is not None
+    assert result.connection_diagnostic["cause"] == "httpx_read_timeout"
+    assert "should-not-be-logged" not in json.dumps(result.connection_diagnostic)
+    assert result.request_failures == (result.connection_diagnostic,)
     assert result.failure_reasons == ("connection_failure=ModelAPIError_without_usage",)
     assert ledger.entries[0]["estimated"] is True
     assert ledger.entries[0]["source"] == "request_error_upper_bound"

@@ -24,10 +24,10 @@ class AgentProviderSettings(BaseModel):
     """Explicit Polza routing; provider IDs come from the evaluated catalog."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    order: tuple[str, ...] = ()
-    only: tuple[str, ...] = ("decart/fp4",)
+    order: tuple[str, ...] = ("decart/fp4", "deepseek")
+    only: tuple[str, ...] = ("decart/fp4", "deepseek")
     require_parameters: bool = Field(True, strict=True)
-    allow_fallbacks: bool = Field(False, strict=True)
+    allow_fallbacks: bool = Field(True, strict=True)
 
     @field_validator("order", "only")
     @classmethod
