@@ -1,12 +1,23 @@
 import asyncio
+import json
+from datetime import datetime
 from unittest.mock import Mock
 
 import pytest
 from pydantic_ai import RunContext, Tool, ToolDenied
-from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
+from pybot.core.constants import YEKATERINBURG_TZ
 from pybot.dto.agent import AgentReplyStatus
 from pybot.services.agent.tools import AgentDependencies, AgentToolRegistry, RegisteredAgentTool
 from tests.agent.conftest import build_service
@@ -20,6 +31,55 @@ async def test_capabilities_use_service_roles_and_persist_only_final_text(agent_
     assert result.confirmation_id is None
     users.find_all_user_roles.assert_awaited()
     memory.append.assert_awaited_once_with(conversation, "Что умеет бот?", result.text)
+
+
+@pytest.mark.asyncio
+async def test_role_prefix_is_stable_and_business_date_is_at_prompt_end(agent_settings, conversation):
+    serialized_prefixes = []
+    prompts = []
+    call_number = 0
+
+    def model(messages, info):
+        nonlocal call_number
+        call_number += 1
+        serialized_prefixes.append(
+            json.dumps(
+                {
+                    "instructions": info.instructions,
+                    "tools": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.parameters_json_schema,
+                            "strict": tool.strict,
+                        }
+                        for tool in info.function_tools
+                    ],
+                    "cache_key": info.model_settings.get("openai_prompt_cache_key"),
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+        )
+        prompts.append(
+            [part.content for message in messages for part in message.parts if isinstance(part, UserPromptPart)][-1]
+        )
+        if any(isinstance(part, ToolReturnPart) for message in messages for part in message.parts):
+            return ModelResponse(parts=[TextPart("Откройте /profile или /visits")])
+        return ModelResponse(parts=[ToolCallPart("bot_capabilities", {}, tool_call_id=f"call-{call_number}")])
+
+    service, _, _ = build_service(agent_settings, model=FunctionModel(model))
+
+    await service.answer(conversation, "Что умеет бот?")
+    await service.answer(conversation, "Какие у бота функции?")
+
+    assert len(serialized_prefixes) == 4
+    assert len(set(serialized_prefixes)) == 1
+    current_date = datetime.now(YEKATERINBURG_TZ).date().isoformat()
+    assert all(current_date not in prefix for prefix in serialized_prefixes)
+    assert all(prompt.startswith(("Что умеет бот?", "Какие у бота функции?")) for prompt in prompts)
+    assert all("Текущая дата (Екатеринбург):" in prompt for prompt in prompts)
+    assert all('"cache_key": null' in prefix for prefix in serialized_prefixes)
 
 
 @pytest.mark.asyncio
@@ -512,7 +572,7 @@ async def test_text_memory_replayed_without_tool_results(agent_settings, convers
     assert seen[1].parts[0].content == "прошлый ответ"
     assert isinstance(seen[2], ModelRequest)
     assert isinstance(seen[2].parts[0], UserPromptPart)
-    assert seen[2].parts[0].content == "новый вопрос"
+    assert seen[2].parts[0].content.startswith("новый вопрос\n\nТекущая дата (Екатеринбург): ")
 
 
 def test_approval_summary_mandatory_and_duplicate_tools_rejected():
