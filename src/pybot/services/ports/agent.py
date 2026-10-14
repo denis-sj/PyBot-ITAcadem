@@ -101,6 +101,22 @@ class AgentActionsPort(Protocol):
         """Remove one technology from the caller's stack after confirmation."""
         ...
 
+    async def validate_my_goal(self, text: str) -> None:
+        """Validate the caller's proposed goal before confirmation."""
+        ...
+
+    async def set_my_goal(self, user_id: int, text: str) -> str:
+        """Set the caller's active goal after confirmation."""
+        ...
+
+    async def validate_my_goal_completion(self, user_id: int) -> None:
+        """Check the caller has an active goal before confirmation."""
+        ...
+
+    async def complete_my_goal(self, user_id: int) -> str:
+        """Mark the caller's active goal complete after confirmation."""
+        ...
+
     async def validate_visit_update(self, telegram_id: int, visit_date: date, start_time: time, end_time: time) -> None:
         """Check an attendance edit before confirmation."""
         ...

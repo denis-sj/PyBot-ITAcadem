@@ -27,12 +27,15 @@ from .user_module import (
     Level,
     PointsTransaction,
     User,
+    UserGoal,
+    UserNotificationPreference,
     UserAchievement,
     UserAchievementAward,
     UserActivityStatus,
     UserCompetence,
     UserLevel,
     UserTechnologyStack,
+    WeeklyCheckin,
     Valuation,
 )
 
@@ -42,6 +45,9 @@ __all__ = [
     "Achievement",
     # user_module
     "User",
+    "UserGoal",
+    "UserNotificationPreference",
+    "WeeklyCheckin",
     "UserActivityStatus",
     "Level",
     "UserLevel",

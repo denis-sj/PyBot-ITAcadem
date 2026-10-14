@@ -13,6 +13,7 @@ from ...presentation.texts.community_achievements import render_achievement_prof
 from ...presentation.texts.technology_stack import render_helper_recommendation, render_stack_read
 from ..attendance_service import AttendanceService
 from ..community_achievements import CommunityAchievementService
+from ..community_goals import CommunityGoalService
 from ..competence import CompetenceService
 from ..leaderboard import LeaderboardService
 from ..technology_stack import TechnologyStackService
@@ -61,6 +62,7 @@ class AgentReadService:
         users: UserService,
         community_achievements: CommunityAchievementService | None = None,
         technology_stack: TechnologyStackService | None = None,
+        community_goals: CommunityGoalService | None = None,
     ) -> None:
         self.profiles = profiles
         self.attendance = attendance
@@ -71,6 +73,7 @@ class AgentReadService:
         self.users = users
         self.community_achievements = community_achievements
         self.technology_stack = technology_stack
+        self.community_goals = community_goals
 
     async def get_my_achievements(self, user_id: int) -> str:
         """Return the caller's current weekly streak and durable achievement history."""
@@ -78,6 +81,13 @@ class AgentReadService:
             return render_achievement_profile_section(0, ())
         summary = await self.community_achievements.get_user_summary(user_id)
         return render_achievement_profile_section(summary.current_streak, summary.achievements)
+
+    async def get_my_goal(self, user_id: int) -> str:
+        """Return only the caller's active goal and its current status."""
+        if self.community_goals is None:
+            return "Цели сейчас недоступны."
+        goal = await self.community_goals.get_active_goal(user_id)
+        return f"Моя активная цель: «{goal.text}»." if goal is not None else "Активная цель пока не задана."
 
     async def get_my_stack(self, user_id: int) -> str:
         """Return only the requesting participant's self-reported stack."""

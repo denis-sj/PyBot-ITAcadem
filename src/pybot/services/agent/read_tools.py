@@ -22,6 +22,12 @@ async def get_my_achievements(ctx: RunContext[AgentDependencies]) -> str:
     return await ctx.deps.reads.get_my_achievements(user.id)
 
 
+async def get_my_goal(ctx: RunContext[AgentDependencies]) -> str:
+    """Текущая цель участника и её статус."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_my_goal(user.id)
+
+
 async def get_my_technology_stack(ctx: RunContext[AgentDependencies]) -> str:
     """Мой стек технологий с уровнями «знаю» и «изучаю»."""
     user = await ctx.deps.get_actor()

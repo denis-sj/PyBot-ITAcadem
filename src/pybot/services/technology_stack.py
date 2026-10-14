@@ -15,6 +15,7 @@ from ..domain.services.technology_stack import (
     normalize_technology_stack,
     technology_identity,
 )
+from ..dto.community_checkins import PulseTechnologyDTO
 from ..dto.technology_stack import (
     TechnologyStackHelperDTO,
     TechnologyStackItemDTO,
@@ -36,6 +37,10 @@ class TechnologyStackService:
     async def get_user_stack(self, user_id: int) -> Sequence[TechnologyStackReadDTO]:
         """Read a participant's stack in canonical technology order."""
         return await self._repository.find_user_stack(self._db, user_id)
+
+    async def get_top_learning_technologies(self, limit: int = 5) -> Sequence[PulseTechnologyDTO]:
+        """Return the most common technologies that participants are learning."""
+        return await self._repository.find_top_learning_technologies(self._db, limit=limit)
 
     async def replace_user_stack(
         self,

@@ -8,6 +8,7 @@ from pybot.services.agent.tools import AgentToolRegistry
 READ_TOOLS = {
     "get_my_profile",
     "get_my_achievements",
+    "get_my_goal",
     "get_my_technology_stack",
     "find_technology_helpers",
     "get_my_attendance",
@@ -38,6 +39,8 @@ def test_registered_user_sees_stage_one_read_tools_without_approval():
         "request_mentor_role",
         "set_my_technology",
         "remove_my_technology",
+        "set_my_goal",
+        "mark_my_goal_achieved",
     }
     assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
     assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
@@ -56,6 +59,7 @@ def test_registered_user_sees_stage_one_read_tools_without_approval():
     [
         ("get_my_profile", "get_profile", "actor"),
         ("get_my_achievements", "get_my_achievements", "id"),
+        ("get_my_goal", "get_my_goal", "id"),
         ("get_my_technology_stack", "get_my_stack", "id"),
         ("get_my_attendance", "get_attendance_summary", "id"),
         ("get_my_visits", "get_visits", "period"),

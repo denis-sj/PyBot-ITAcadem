@@ -14,6 +14,7 @@ from ...domain.exceptions import (
     UserNotFoundError,
     ZeroPointsAdjustmentError,
 )
+from ...domain.services.community_checkins import normalize_goal_text
 from ...domain.services.technology_stack import TechnologyLevel
 from ...dto import (
     AdjustUserPointsDTO,
@@ -32,6 +33,7 @@ from ...presentation.texts.technology_stack import render_helper_recommendation
 from ...utils import normalize_message
 from ..attendance_service import AttendanceService
 from ..broadcast import BroadcastService
+from ..community_goals import CommunityGoalService
 from ..competence import CompetenceService
 from ..notification_facade import NotificationFacade
 from ..points import PointsService
@@ -59,6 +61,7 @@ class AgentActionService:
         broadcasts: BroadcastService,
         settings: AppSettings,
         technology_stack: TechnologyStackService | None = None,
+        community_goals: CommunityGoalService | None = None,
     ) -> None:
         self.role_requests = role_requests
         self.users = users
@@ -71,6 +74,7 @@ class AgentActionService:
         self.broadcasts = broadcasts
         self.settings = settings
         self.technology_stack = technology_stack
+        self.community_goals = community_goals
 
     async def validate_role_request(self, user_id: int) -> None:
         """Check current eligibility before asking the user to confirm a role request."""
@@ -218,6 +222,35 @@ class AgentActionService:
             raise DomainError("Стек участников сейчас недоступен.")
         await self.technology_stack.remove_user_technology(user_id, technology)
         return f"Технология {technology} удалена из вашего стека."
+
+    async def validate_my_goal(self, text: str) -> None:
+        """Validate a new goal before an author-owned approval is issued."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        normalize_goal_text(text)
+
+    async def set_my_goal(self, user_id: int, text: str) -> str:
+        """Replace the caller's active goal after the agent confirmation."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        goal = await self.community_goals.set_goal(user_id, text)
+        return f"Записал твою новую цель: «{goal.text}»."
+
+    async def validate_my_goal_completion(self, user_id: int) -> None:
+        """Require an active own goal before preparing a completion action."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        if await self.community_goals.get_active_goal(user_id) is None:
+            raise DomainError("Активной цели нет.")
+
+    async def complete_my_goal(self, user_id: int) -> str:
+        """Complete the caller's active goal and award its durable badge."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        goal = await self.community_goals.complete_active_goal(user_id)
+        if goal is None:
+            raise DomainError("Активной цели нет.")
+        return f"Цель «{goal.text}» отмечена достигнутой. Добавил достижение «Цель взята»."
 
     async def validate_visit_update(
         self,

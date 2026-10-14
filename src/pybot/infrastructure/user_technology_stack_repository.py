@@ -15,6 +15,7 @@ from ..domain.services.technology_stack import (
     TechnologyStackItem,
     TechnologyStackValidationError,
 )
+from ..dto.community_checkins import PulseTechnologyDTO
 from ..dto.technology_stack import (
     TechnologyStackHelperDTO,
     TechnologyStackMentorCompetenceDTO,
@@ -119,6 +120,29 @@ class UserTechnologyStackRepository:
             select(func.count()).select_from(UserTechnologyStack).where(UserTechnologyStack.user_id == user_id)
         )
         return count or 0
+
+    async def find_top_learning_technologies(
+        self,
+        db: AsyncSession,
+        *,
+        limit: int,
+    ) -> Sequence[PulseTechnologyDTO]:
+        """Aggregate the most common self-reported learning technologies."""
+        statement = (
+            select(UserTechnologyStack.technology, func.count(func.distinct(UserTechnologyStack.user_id)))
+            .where(UserTechnologyStack.level == TechnologyLevel.LEARNING.value)
+            .group_by(UserTechnologyStack.technology)
+            .order_by(
+                func.count(func.distinct(UserTechnologyStack.user_id)).desc(),
+                func.lower(UserTechnologyStack.technology),
+            )
+            .limit(limit)
+        )
+        result = await db.execute(statement)
+        return tuple(
+            PulseTechnologyDTO(technology=technology, participant_count=participant_count)
+            for technology, participant_count in result.all()
+        )
 
     async def find_mentor_competences(self, db: AsyncSession) -> Sequence[TechnologyStackMentorCompetenceDTO]:
         """Return visible mentor competence names and most recent attendance dates."""

@@ -63,6 +63,9 @@ HELP_PRIVATE = textwrap.dedent(
     /showroles [@user|id|reply] - показать роли пользователя
     /showcompetences [@user|id|reply] - показать компетенции пользователя
     /visits - моя посещаемость: часы, рейтинг и история
+    /notifications - настройки уведомлений и их переключатели
+    /pause_checkin - отключить еженедельные чекины
+    /resume_checkin - снова включить еженедельные чекины
     Подробная инструкция по использованию бота:
     {HELP_PAGE_URL}
 
@@ -108,6 +111,9 @@ HELP_PRIVATE_PUBLIC = textwrap.dedent(
     /showroles [@user|id|reply] - показать роли пользователя
     /showcompetences [@user|id|reply] - показать компетенции пользователя
     /visits - моя посещаемость: часы, рейтинг и история
+    /notifications - настройки уведомлений и их переключатели
+    /pause_checkin - отключить еженедельные чекины
+    /resume_checkin - снова включить еженедельные чекины
     Подробная инструкция по использованию бота:
     {HELP_PAGE_URL}
     """

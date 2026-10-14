@@ -1,4 +1,5 @@
 from ...base_class import Base
+from .community_checkins import UserGoal, UserNotificationPreference, WeeklyCheckin
 from .competence import Competence
 from .level import Level
 from .points_transaction import PointsTransaction
@@ -17,6 +18,9 @@ __all__ = [
     "Level",
     "PointsTransaction",
     "User",
+    "UserGoal",
+    "UserNotificationPreference",
+    "WeeklyCheckin",
     "UserAchievement",
     "UserAchievementAward",
     "UserActivityStatus",

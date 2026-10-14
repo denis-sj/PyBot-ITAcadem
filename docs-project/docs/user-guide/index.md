@@ -12,6 +12,8 @@
 - [Установка](installation.md)
 - [Конфигурация](configuration.md)
 - [Примеры использования](examples.md)
+- [ИИ-агент](ai-agent.md)
+- [Цели и еженедельный чекин](community-checkins.md)
 
 ## С чего начать
 

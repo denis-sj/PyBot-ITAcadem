@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: url("fonts/NotoSans-Variable-Latin-Cyrillic.ttf") format("truetype");
+      font-style: normal;
+      font-weight: 100 900;
+    }
+    @page {
+      size: A4; margin: 12mm 13mm 15mm;
+      @bottom-left {
+        content: "ITAcadem · Пульс сообщества";
+        color: #6b7080; font: 7pt "Noto Sans", sans-serif;
+      }
+      @bottom-right {
+        content: counter(page) " / " counter(pages);
+        color: #6b7080; font: 7pt "Noto Sans", sans-serif;
+      }
+    }
+    :root {
+      --ink: #14161c; --muted: #6b7080; --line: #e6e8ee; --bg: #f5f6f9;
+      --brand: #3b5bdb; --brand-soft: #e8edff; --ok: #2f9e44; --ok-soft: #e6f6ea;
+      --warn: #e8590c; --warn-soft: #fff0e6; --stuck: #c92a2a; --stuck-soft: #ffecec;
+      --gold: #b8860b; --gold-soft: #fff7dc; --card: #fff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); font: 9.5pt/1.4 "Noto Sans", sans-serif; }
+    header { color: white; padding: 17px 20px; border-radius: 14px; background: #263b8b; }
+    h1 { margin: 0; font-size: 23pt; line-height: 1.1; font-weight: 800; }
+    header p { margin: 5px 0 0; opacity: .88; }
+    .week { margin-top: 8px; font-size: 10pt; font-weight: 700; }
+    h2 { margin: 15px 0 7px; font-size: 12pt; line-height: 1.25; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+    .kpi, .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
+    .kpi .value { font-size: 17pt; line-height: 1; font-weight: 800; }
+    .kpi .label { margin-top: 5px; color: var(--muted); font-size: 7.7pt; }
+    .kpi .delta { margin-top: 3px; color: var(--muted); font-size: 7.3pt; font-weight: 600; }
+    .positive { color: var(--ok) !important; }
+    .negative { color: var(--stuck) !important; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .card { break-inside: avoid; margin-bottom: 7px; }
+    .card.stuck { border-left: 4px solid var(--stuck); }
+    .card.goal { border-left: 4px solid var(--ok); }
+    .card.progress { border-left: 4px solid var(--brand); }
+    .who { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+    .name { font-size: 10pt; font-weight: 700; }
+    .username { color: var(--muted); font-size: 8pt; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 999px; white-space: nowrap; font-size: 7pt; font-weight: 700; }
+    .badge.stuck { color: var(--stuck); background: var(--stuck-soft); }
+    .badge.goal { color: var(--ok); background: var(--ok-soft); }
+    .badge.progress { color: var(--brand); background: var(--brand-soft); }
+    .line { margin-top: 5px; font-size: 8.5pt; }
+    .muted { color: var(--muted); }
+    .summary { margin-top: 5px; padding: 6px 8px; border-radius: 7px; background: var(--bg); }
+    .help { margin-top: 6px; padding: 6px 8px; border-radius: 7px; color: #6b2c03; background: var(--warn-soft); }
+    .foot { margin-top: 6px; color: var(--muted); font-size: 7.6pt; }
+    .achievement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .achievement { text-align: center; background: var(--gold-soft); border-color: #f1e2a8; }
+    .icon { font-size: 18pt; line-height: 1.15; }
+    .ach-title { margin-top: 3px; font-weight: 800; }
+    .table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 8pt; }
+    .table th { background: #f0f1f5; text-align: left; color: var(--muted); font-size: 7.4pt; padding: 6px 7px; }
+    .table td { border-top: 1px solid var(--line); padding: 6px 7px; }
+    .silent { color: var(--stuck); font-weight: 700; }
+    .bars { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+    .bar { display: grid; grid-template-columns: 84px 1fr 24px; gap: 7px; align-items: center; font-size: 8pt; }
+    .track { height: 8px; border-radius: 5px; background: #eceef3; overflow: hidden; }
+    .fill { height: 100%; border-radius: 5px; background: var(--brand); }
+    .empty { padding: 10px; border-radius: 9px; background: var(--bg); color: var(--muted); }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Пульс сообщества</h1>
+    <p>Еженедельный отчёт по чекинам участников ITAcadem</p>
+    <div class="week">Неделя @@WEEK_LABEL@@</div>
+  </header>
+
+  <section class="kpis">
+    @@KPI_CARDS@@
+  </section>
+
+  <h2>Нужна помощь <span class="muted">@@NEEDS_HELP_COUNT@@</span></h2>
+  @@NEEDS_HELP@@
+
+  <h2>Цели взяты</h2>
+  @@GOALS_ACHIEVED@@
+
+  <h2>Кто чем занимается <span class="muted">@@ANSWERED_COUNT@@ ответили</span></h2>
+  @@ANSWERED_PARTICIPANTS@@
+
+  <h2>Достижения недели</h2>
+  @@ACHIEVEMENTS@@
+
+  <div class="two-col">
+    <div>
+      <h2>Не ответили <span class="muted">@@NON_RESPONDER_COUNT@@</span></h2>
+      @@NON_RESPONDERS@@
+    </div>
+    <div>
+      <h2>Что изучают сейчас</h2>
+      @@LEARNING_TECHNOLOGIES@@
+    </div>
+  </div>
+</body>
+</html>

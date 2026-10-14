@@ -13,6 +13,11 @@
 7. Отдельный backup-контейнер создаёт custom-format dump, migration-контейнер применяет миграции, а seed выполняется только на standard deploy path при явном `RUN_SEED_ON_DEPLOY=true`.
 8. После этого обновляется runtime и выполняется финальный post-deploy smoke-check с readiness gate.
 
+TaskIQ scheduler при запуске идемпотентно регистрирует расписания функций сообщества в часовом поясе
+`Asia/Yekaterinburg`: опрос в среду в 15:00, напоминание в четверг в 11:00, PDF-отчёт в четверг в 15:00
+и предупреждение о серии в субботу в 12:00. Для них не нужны дополнительные переменные окружения; индивидуальные
+переключатели хранятся в PostgreSQL и доступны в боте через `/notifications`.
+
 Production observability now also has a documented Loki retention path: the root `DEPLOYMENT.md` describes the 14-day retention target, the pinned `grafana/loki:3.5.0 -verify-config=true` validation command, the operator choice about preserving or recreating `pybot_loki_data_prod`, and the controlled rollout/rehearsal procedure.
 
 Workflow `CD - Build and Deploy` now also supports a manual rollback path via the optional `rollback_image_tag` input. The root `DEPLOYMENT.md` is the source of truth for operator steps, GHCR image validation, the schema-compatibility warning, and the separate database restore/recovery procedure to use when image rollback is not sufficient.

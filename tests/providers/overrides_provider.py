@@ -6,10 +6,13 @@ from aiogram.types import InlineKeyboardMarkup
 from dishka import Provider, Scope, provide
 
 from pybot.dto import AttendanceRecognitionResultDTO, NotifyDTO
+from pybot.dto.community_checkins import ParsedCheckinResponseDTO
 from pybot.services.ports import (
     AttendanceRecognitionPort,
+    CheckinResponseParserPort,
     CommunityAchievementDispatchPort,
     NotificationPort,
+    PulseReportDeliveryPort,
 )
 
 __test__ = False
@@ -30,6 +33,21 @@ class FakeAttendanceRecognitionPort:
 class FakeCommunityAchievementDispatchPort(CommunityAchievementDispatchPort):
     async def recalculate_user_achievements(self, user_id: int) -> None:
         return None
+
+
+class FakeCheckinResponseParserPort(CheckinResponseParserPort):
+    """Fail loudly if a test unexpectedly tries to invoke the model-backed parser."""
+
+    async def parse(self, text: str) -> ParsedCheckinResponseDTO:
+        del text
+        raise AssertionError("Weekly check-in parsing requires an explicit test result; model calls are forbidden")
+
+
+class FakePulseReportDeliveryPort(PulseReportDeliveryPort):
+    """Keep report delivery inside the test process."""
+
+    async def send_pdf(self, *, recipient_id: int, filename: str, content: bytes, caption: str) -> None:
+        del recipient_id, filename, content, caption
 
 
 class FakeNotificationPort(NotificationPort):
@@ -142,6 +160,14 @@ class TestOverridesProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_community_achievement_dispatch_port(self) -> CommunityAchievementDispatchPort:
         return FakeCommunityAchievementDispatchPort()
+
+    @provide(scope=Scope.APP)
+    def provide_checkin_response_parser(self) -> CheckinResponseParserPort:
+        return FakeCheckinResponseParserPort()
+
+    @provide(scope=Scope.APP)
+    def provide_pulse_report_delivery_port(self) -> PulseReportDeliveryPort:
+        return FakePulseReportDeliveryPort()
 
     @provide(scope=Scope.APP)
     def provide_fake_notification_port(self) -> FakeNotificationPort:

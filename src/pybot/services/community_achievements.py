@@ -22,6 +22,7 @@ from ..infrastructure import (
     CommunityAchievementRepository,
     UserRepository,
 )
+from ..infrastructure.user_notification_preference_repository import UserNotificationPreferenceRepository
 from ..presentation.texts.community_achievements import (
     render_achievement_congratulation,
     render_achievement_digest,
@@ -45,6 +46,7 @@ class CommunityAchievementService:
         user_repository: UserRepository,
         notification_service: NotificationPort | None,
         settings: AppSettings,
+        preference_repository: UserNotificationPreferenceRepository | None = None,
     ) -> None:
         self._db = db
         self._achievement_repository = community_achievement_repository
@@ -53,6 +55,7 @@ class CommunityAchievementService:
         self._user_repository = user_repository
         self._notification_service = notification_service
         self._settings = settings
+        self._preference_repository = preference_repository
 
     async def recalculate_user(self, user_id: int) -> int:
         """Award all current and historical attendance achievements for one user."""
@@ -264,6 +267,12 @@ class CommunityAchievementService:
             return
 
         award_ids = [award.id for award in awards]
+        if self._preference_repository is not None:
+            preferences = await self._preference_repository.find_preferences(self._db, user_id)
+            if not preferences.achievement_notifications_enabled:
+                await self._achievement_repository.mark_notified(self._db, award_ids)
+                await self._db.commit()
+                return
         if user.bot_is_blocked:
             await self._achievement_repository.mark_notified(self._db, award_ids)
             await self._db.commit()

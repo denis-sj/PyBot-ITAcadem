@@ -86,6 +86,84 @@ def test_stack_actions_are_available_to_registered_users_and_have_no_recipient_a
         assert properties.keys() == expected_arguments
 
 
+def test_goal_actions_are_available_to_registered_users_and_require_confirmation() -> None:
+    registry = AgentToolRegistry()
+    for name in ("set_my_goal", "mark_my_goal_achieved"):
+        entry = next(entry for entry in registry.entries if entry.tool.name == name)
+        assert entry.tool.requires_approval is True
+        assert entry.allowed_roles == frozenset()
+        assert name in registry.for_roles(frozenset({"Student"})).policies
+        assert name in registry.for_roles(frozenset({"Admin"})).policies
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    (
+        "tool_name",
+        "tool_args",
+        "validator",
+        "executor",
+        "expected_validator_args",
+        "expected_executor_args",
+        "preview",
+    ),
+    [
+        (
+            "set_my_goal",
+            {"text": "  пройти   собеседование "},
+            "validate_my_goal",
+            "set_my_goal",
+            ("  пройти   собеседование ",),
+            (42, "  пройти   собеседование "),
+            "пройти собеседование",
+        ),
+        (
+            "mark_my_goal_achieved",
+            {},
+            "validate_my_goal_completion",
+            "complete_my_goal",
+            (42,),
+            (42,),
+            "достигнутую",
+        ),
+    ],
+)
+async def test_goal_actions_require_confirmation_and_target_the_authenticated_actor(
+    agent_settings,
+    conversation,
+    tool_name,
+    tool_args,
+    validator,
+    executor,
+    expected_validator_args,
+    expected_executor_args,
+    preview,
+) -> None:
+    actions = Mock(spec=AgentActionsPort)
+    getattr(actions, validator).return_value = None
+    getattr(actions, executor).return_value = "Цель обновлена от имени участника."
+    model = FunctionModel(
+        lambda messages, info: ModelResponse(parts=[ToolCallPart(tool_name, tool_args, tool_call_id="goal-action")])
+    )
+    service, users, memory = build_service(agent_settings, model=model, actions=actions)
+    users.find_all_user_roles.return_value = {"Student"}
+
+    pending = await service.answer(conversation, "Обнови мою цель")
+
+    assert pending.status == AgentReplyStatus.SUCCESS
+    assert pending.confirmation_id is not None
+    assert preview in pending.text.casefold()
+    getattr(actions, validator).assert_awaited_once_with(*expected_validator_args)
+    getattr(actions, executor).assert_not_awaited()
+
+    service.runtime.bind_message(pending.confirmation_id, 56)
+    result = await service.confirm(pending.confirmation_id, conversation, 56, approved=True)
+
+    assert result.text == "Цель обновлена от имени участника."
+    getattr(actions, executor).assert_awaited_once_with(*expected_executor_args)
+    memory.append.assert_awaited_once_with(conversation, "Обнови мою цель", result.text)
+
+
 @pytest.mark.asyncio
 async def test_stack_read_tools_are_public_to_registered_actor(agent_settings, conversation) -> None:
     from pydantic_ai.models.test import TestModel

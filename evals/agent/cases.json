@@ -1,5 +1,20 @@
 [
   {
+    "name": "student_read_my_goal",
+    "question": "Какая у меня сейчас цель?",
+    "roles": [
+      "Student"
+    ],
+    "expected_tools": [
+      "get_my_goal"
+    ],
+    "required_phrases": [
+      "активная цель"
+    ],
+    "forbidden_phrases": [],
+    "private_chat": true
+  },
+  {
     "name": "admin_broadcast_confirmation",
     "question": "Подготовь рассылку всем: встреча в субботу в 14:00",
     "roles": [
