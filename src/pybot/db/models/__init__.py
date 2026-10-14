@@ -2,7 +2,6 @@ from ..base_class import Base
 
 # Shared (общие) модели
 from .achievement import Achievement
-
 from .attendance import (
     AttendanceChangeHistory,
     AttendanceDate,
@@ -10,32 +9,31 @@ from .attendance import (
     AttendanceImportStatus,
     AttendanceRecord,
 )
-
-# Доменные подпакеты
-from .user_module import (
-    User,
-    UserLevel,
-    UserActivityStatus,
-    Level,
-    Competence,
-    UserCompetence,
-    UserAchievement,
-    UserAchievementAward,
-    PointsTransaction,
-    Valuation,
+from .role_module import (
+    Role,
+    RoleEvent,
+    RoleRequest,
+    UserRole,
 )
-
 from .task_module import (
     Task,
     TaskSolution,
     TaskSolutionStatus,
 )
 
-from .role_module import (
-    Role,
-    UserRole,
-    RoleEvent,
-    RoleRequest,
+# Доменные подпакеты
+from .user_module import (
+    Competence,
+    Level,
+    PointsTransaction,
+    User,
+    UserAchievement,
+    UserAchievementAward,
+    UserActivityStatus,
+    UserCompetence,
+    UserLevel,
+    UserTechnologyStack,
+    Valuation,
 )
 
 __all__ = [
@@ -51,6 +49,7 @@ __all__ = [
     "UserCompetence",
     "UserAchievement",
     "UserAchievementAward",
+    "UserTechnologyStack",
     "PointsTransaction",
     "Valuation",
     # role_module

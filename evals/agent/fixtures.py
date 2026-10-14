@@ -18,6 +18,14 @@ class EvalReads(AgentReadService):
     async def get_my_achievements(self, user_id: int) -> str:
         return "🔥 Текущая серия посещений: 3 недели\n🏅 Достижения: Постоянство · 4 недели, Десятка"
 
+    async def get_my_stack(self, user_id: int) -> str:
+        del user_id
+        return "Твой стек:\nЗнаю: Python, SQL.\nИзучаю: Docker."
+
+    async def find_stack_helpers(self, user_id: int, technology: str) -> str:
+        del user_id, technology
+        return "Кстати, в Python у нас разбираются: @mentor_python (ментор), Иван Петров. Можешь написать им."
+
     async def get_profile_for_telegram_id(self, telegram_id: int) -> str:
         return "Профиль участника: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
 

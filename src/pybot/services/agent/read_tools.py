@@ -3,6 +3,7 @@
 from pydantic_ai import RunContext
 
 from ...dto.agent_read import AgentMonth
+from ...dto.technology_stack import TechnologyName
 from ...presentation.texts.texts import INFO_GLOBAL
 from .dependencies import AgentDependencies
 from .reads import format_user_candidates
@@ -19,6 +20,21 @@ async def get_my_achievements(ctx: RunContext[AgentDependencies]) -> str:
     """Мои достижения, значки и текущая серия посещений."""
     user = await ctx.deps.get_actor()
     return await ctx.deps.reads.get_my_achievements(user.id)
+
+
+async def get_my_technology_stack(ctx: RunContext[AgentDependencies]) -> str:
+    """Мой стек технологий с уровнями «знаю» и «изучаю»."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_my_stack(user.id)
+
+
+async def find_technology_helpers(
+    ctx: RunContext[AgentDependencies],
+    technology: TechnologyName,
+) -> str:
+    """Кто поможет с указанной технологией: сначала подходящие менторы, затем участники."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.find_stack_helpers(user.id, technology)
 
 
 async def get_my_attendance(ctx: RunContext[AgentDependencies]) -> str:

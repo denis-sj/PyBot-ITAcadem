@@ -96,8 +96,14 @@ ACTION_EXECUTORS = {
     "delete_attendance_visit": "delete_visit",
     "add_manual_attendance_visit": "create_manual_visit",
     "send_broadcast": "broadcast",
+    "set_my_technology": "set_my_stack_item",
+    "remove_my_technology": "remove_my_stack_item",
 }
-ADMIN_ACTIONS = frozenset(ACTION_EXECUTORS) - {"request_mentor_role"}
+ADMIN_ACTIONS = frozenset(ACTION_EXECUTORS) - {
+    "request_mentor_role",
+    "set_my_technology",
+    "remove_my_technology",
+}
 REPORTS_DIR = Path(__file__).with_name("reports")
 LEDGER_PATH = REPORTS_DIR / "spend-ledger.json"
 
@@ -175,6 +181,7 @@ class ReportMetadata:
     aborted: bool
     abort_reason: str | None
     initial_cost_rub: Decimal | None = None
+    budget_limit_rub: Decimal = MAX_BUDGET_RUB
 
 
 class BudgetStopError(RuntimeError):
@@ -414,6 +421,7 @@ async def run_evals() -> int:
     catalog = ProviderCatalog.load(REPORTS_DIR / "provider-catalog.json")
     _validate_ledger_budget(ledger)
     initial_cost_rub = ledger.total_cost_rub
+    run_budget = _run_budget(getattr(args, "max_run_cost_rub", None), initial_cost_rub)
     prefix_tokens = _role_prefix_token_counts()
     forecast = _forecast_max_batch_cost(len(cases), args.repeat, settings.agent_max_steps, catalog.tariff())
 
@@ -429,7 +437,15 @@ async def run_evals() -> int:
         return _write_eval_report(
             report_path,
             ReportMetadata(
-                args.model, args.repeat, prefix_tokens, forecast, ledger, aborted, abort_reason, initial_cost_rub
+                args.model,
+                args.repeat,
+                prefix_tokens,
+                forecast,
+                ledger,
+                aborted,
+                abort_reason,
+                initial_cost_rub,
+                run_budget,
             ),
             runs,
             http_metadata,
@@ -450,7 +466,7 @@ async def run_evals() -> int:
                         base_model,
                         args.model,
                         ledger,
-                        MAX_BUDGET_RUB,
+                        run_budget,
                         catalog.tariff(),
                         timeout_seconds=settings.agent_timeout_s,
                     )
@@ -1171,7 +1187,7 @@ def _build_report(
         "tokenizer": "cl100k_base (proxy estimate; not a DeepSeek tokenizer)",
         "fixed_prefix_tokens": metadata.prefix_tokens,
         "budget": {
-            "limit_rub": format(MAX_BUDGET_RUB, "f"),
+            "limit_rub": format(metadata.budget_limit_rub, "f"),
             "forecast_max_batch_rub": format(metadata.forecast, "f"),
             "run_cost_rub": None if run_cost is None else format(run_cost, "f"),
             "completed_question_cost_rub": None if completed_cost is None else format(completed_cost, "f"),
@@ -1244,12 +1260,28 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default=TARGET_MODEL)
     parser.add_argument("--repeat", type=int, choices=(1, 2, 3), default=1)
     parser.add_argument("--case", action="append", dest="case", help="Limit the run to a case name; repeatable.")
+    parser.add_argument(
+        "--max-run-cost-rub",
+        type=Decimal,
+        help="Stop before a request if its conservative reserve would exceed this run's ledger increase.",
+    )
     parser.add_argument("--report", type=Path, help="Write aggregate-only JSON to this path.")
     argv = sys.argv[1:]
     args = parser.parse_args(argv[1:] if argv[:1] == ["--"] else argv)
     if args.model != TARGET_MODEL:
         parser.error(f"This budget-controlled harness only prices {TARGET_MODEL}")
+    if args.max_run_cost_rub is not None and args.max_run_cost_rub <= 0:
+        parser.error("--max-run-cost-rub must be greater than zero")
     return args
+
+
+def _run_budget(requested_run_cost_rub: Decimal | None, ledger_cost_rub: Decimal) -> Decimal:
+    """Resolve a per-invocation cap without weakening the global ledger limit."""
+    if requested_run_cost_rub is None:
+        return MAX_BUDGET_RUB
+    if requested_run_cost_rub <= 0:
+        raise ValueError("--max-run-cost-rub must be greater than zero")
+    return min(MAX_BUDGET_RUB, ledger_cost_rub + requested_run_cost_rub)
 
 
 if __name__ == "__main__":

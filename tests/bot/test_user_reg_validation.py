@@ -284,7 +284,7 @@ async def test_competence_submit_registers_user_and_shows_profile_on_success(moc
     user_registration_service_state = _build_user_registration_service(mocker)
     user_profile_service_state = _build_user_profile_service(mocker)
     user_dto = SimpleNamespace()
-    created_user = SimpleNamespace(id=1, first_name="Иван")
+    created_user = SimpleNamespace(id=1, first_name="Иван", telegram_id=100_001)
     answer_mock = mocker.patch.object(Message, "answer", new=mocker.AsyncMock())
     render_mock = mocker.patch.object(
         registration_handlers_module,
@@ -311,7 +311,10 @@ async def test_competence_submit_registers_user_and_shows_profile_on_success(moc
     assert answer_mock.await_count == 2
     answer_mock.assert_any_await(registration_profile_created("Иван"))
     answer_mock.assert_any_await("profile text", parse_mode="HTML", reply_markup=get_main_menu_keyboard())
-    manager_state.done_mock.assert_awaited_once()
+    manager_state.next_mock.assert_awaited_once()
+    assert manager_state.manager.dialog_data["registered_user_id"] == 1
+    assert manager_state.manager.dialog_data["stack_owner_telegram_id"] == 100_001
+    assert manager_state.manager.dialog_data["technology_stack_saved"] is False
 
 
 @pytest.mark.asyncio
@@ -331,7 +334,7 @@ async def test_competence_skip_clears_selection_and_registers_user(mocker: Mocke
     user_registration_service_state = _build_user_registration_service(mocker)
     user_profile_service_state = _build_user_profile_service(mocker)
     user_dto = SimpleNamespace()
-    created_user = SimpleNamespace(id=1, first_name="Иван")
+    created_user = SimpleNamespace(id=1, first_name="Иван", telegram_id=100_001)
     answer_mock = mocker.patch.object(Message, "answer", new=mocker.AsyncMock())
     render_mock = mocker.patch.object(
         registration_handlers_module,
@@ -359,7 +362,7 @@ async def test_competence_skip_clears_selection_and_registers_user(mocker: Mocke
     assert answer_mock.await_count == 2
     answer_mock.assert_any_await(registration_profile_created("Иван"))
     answer_mock.assert_any_await("profile text", parse_mode="HTML", reply_markup=get_main_menu_keyboard())
-    manager_state.done_mock.assert_awaited_once()
+    manager_state.next_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio

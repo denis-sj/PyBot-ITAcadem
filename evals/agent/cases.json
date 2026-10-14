@@ -155,6 +155,48 @@
     "forbidden_phrases": []
   },
   {
+    "name": "my_technology_stack",
+    "question": "Покажи мой стек технологий",
+    "roles": ["Student"],
+    "expected_tools": ["get_my_technology_stack"],
+    "required_phrases": ["знаю: python", "изучаю: docker"],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "technology_helpers",
+    "question": "Кто поможет с Python?",
+    "roles": ["Student"],
+    "expected_tools": ["find_technology_helpers"],
+    "required_phrases": ["@mentor_python", "иван петров"],
+    "forbidden_phrases": []
+  },
+  {
+    "name": "set_my_technology_confirmation",
+    "question": "Добавь в мой стек Docker, я его изучаю",
+    "roles": ["Student"],
+    "expected_tools": ["set_my_technology"],
+    "expected_confirmation": true,
+    "expected_call_args": [
+      {"tool_name": "set_my_technology", "args": {"technology": "Docker", "level": "learning"}}
+    ],
+    "required_phrases": ["docker", "learning"],
+    "forbidden_phrases": [],
+    "confirm_after_preview": true
+  },
+  {
+    "name": "remove_my_technology_confirmation",
+    "question": "Убери JavaScript из моего стека",
+    "roles": ["Student"],
+    "expected_tools": ["remove_my_technology"],
+    "expected_confirmation": true,
+    "expected_call_args": [
+      {"tool_name": "remove_my_technology", "args": {"technology": "JavaScript"}}
+    ],
+    "required_phrases": ["javascript"],
+    "forbidden_phrases": [],
+    "confirm_after_preview": true
+  },
+  {
     "name": "my_attendance",
     "question": "Сколько часов я посетил в этом месяце?",
     "roles": [

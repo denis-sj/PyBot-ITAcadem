@@ -1,12 +1,15 @@
-from unittest.mock import Mock
-from pybot.services.agent.reads import AgentReadService
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
+from pybot.services.agent.reads import AgentReadService
 from pybot.services.agent.tools import AgentToolRegistry
 
 READ_TOOLS = {
     "get_my_profile",
     "get_my_achievements",
+    "get_my_technology_stack",
+    "find_technology_helpers",
     "get_my_attendance",
     "get_my_visits",
     "get_attendance_week_top",
@@ -33,12 +36,18 @@ def test_registered_user_sees_stage_one_read_tools_without_approval():
     assert set(registry.for_roles(frozenset({"Student"})).policies) == READ_TOOLS | {
         "bot_capabilities",
         "request_mentor_role",
+        "set_my_technology",
+        "remove_my_technology",
     }
     assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
     assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
     role_request = next(entry for entry in registry.entries if entry.tool.name == "request_mentor_role")
     assert role_request.tool.requires_approval
     assert role_request.allowed_roles == frozenset({"Student"})
+    for tool_name in ("set_my_technology", "remove_my_technology"):
+        entry = next(entry for entry in registry.entries if entry.tool.name == tool_name)
+        assert entry.tool.requires_approval
+        assert entry.allowed_roles == frozenset()
 
 
 @pytest.mark.asyncio
@@ -47,6 +56,7 @@ def test_registered_user_sees_stage_one_read_tools_without_approval():
     [
         ("get_my_profile", "get_profile", "actor"),
         ("get_my_achievements", "get_my_achievements", "id"),
+        ("get_my_technology_stack", "get_my_stack", "id"),
         ("get_my_attendance", "get_attendance_summary", "id"),
         ("get_my_visits", "get_visits", "period"),
         ("get_attendance_week_top", "get_week_top", "id"),
@@ -117,13 +127,24 @@ async def test_each_read_rechecks_registration_before_service_call(agent_setting
     users.find_user_by_telegram_id.return_value = None
     ctx = Mock(deps=AgentDependencies(conversation, users, agent_settings, service.reads, service.actions))
     with pytest.raises(AgentAccessDeniedError):
-        await getattr(read_tools, tool_name)(ctx)
+        if tool_name == "find_technology_helpers":
+            await read_tools.find_technology_helpers(ctx, "Python")
+        else:
+            await getattr(read_tools, tool_name)(ctx)
     assert reads.mock_calls == []
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "tool_name", ["get_my_profile", "get_my_achievements", "get_my_visits", "get_my_roles", "get_my_competences"]
+    "tool_name",
+    [
+        "get_my_profile",
+        "get_my_achievements",
+        "get_my_technology_stack",
+        "get_my_visits",
+        "get_my_roles",
+        "get_my_competences",
+    ],
 )
 async def test_model_cannot_supply_another_user_id(agent_settings, conversation, tool_name):
     from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart
@@ -180,6 +201,33 @@ async def test_domain_error_does_not_leak_into_reply_or_memory(agent_settings, c
     assert reply.status == AgentReplyStatus.UNAVAILABLE
     assert reply.text == ""
     memory.append.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_helper_read_uses_authenticated_actor_and_model_technology(agent_settings, conversation):
+    from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from tests.agent.conftest import build_service
+
+    def helper_model(messages, info):
+        if any(
+            isinstance(message, ModelRequest) and any(isinstance(part, ToolReturnPart) for part in message.parts)
+            for message in messages
+        ):
+            return ModelResponse(parts=[TextPart("Помогут с Python")])
+        return ModelResponse(
+            parts=[ToolCallPart("find_technology_helpers", {"technology": "питон"}, tool_call_id="helpers")]
+        )
+
+    reads = Mock(spec=AgentReadService)
+    reads.find_stack_helpers = AsyncMock(return_value="Помогут с Python")
+    service, _, _ = build_service(agent_settings, reads=reads, model=FunctionModel(helper_model))
+
+    reply = await service.answer(conversation, "Кто поможет с питоном?")
+
+    assert reply.text == "Помогут с Python"
+    reads.find_stack_helpers.assert_awaited_once_with(42, "питон")
 
 
 @pytest.mark.asyncio

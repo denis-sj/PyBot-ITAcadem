@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         UserAchievement,
         UserAchievementAward,
         UserActivityStatus,
+        UserTechnologyStack,
         Valuation,
     )
     from .level import Level
@@ -98,6 +99,12 @@ class User(Base):
     )
     community_achievement_awards: Mapped[list[UserAchievementAward]] = relationship(
         "UserAchievementAward",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=True,
+    )
+    technology_stack: Mapped[list[UserTechnologyStack]] = relationship(
+        "UserTechnologyStack",
         back_populates="user",
         cascade="all, delete-orphan",
         uselist=True,

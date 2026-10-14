@@ -21,7 +21,13 @@ from ....texts import (
     button_cancel,
     button_skip,
 )
-from .getters import get_registration_competencies
+from ....texts.technology_stack import (
+    STACK_EDIT_BUTTON,
+    STACK_ONBOARDING_PROMPT,
+    STACK_SAVE_BUTTON,
+    STACK_SKIP_BUTTON,
+)
+from .getters import get_registration_competencies, get_stack_confirmation
 from .handlers import (
     on_competence_selection_changed,
     on_competence_skip,
@@ -32,6 +38,10 @@ from .handlers import (
     on_other_messages,
     on_patronymic_input,
     on_patronymic_skip,
+    on_technology_stack_edit,
+    on_technology_stack_input,
+    on_technology_stack_save,
+    on_technology_stack_skip,
     request_contact_prompt,
 )
 from .states import CreateProfileSG
@@ -109,5 +119,35 @@ profile_create_dialog = Dialog(
         ),
         getter=get_registration_competencies,
         state=CreateProfileSG.competencies,
+    ),
+    Window(
+        Const(STACK_ONBOARDING_PROMPT),
+        MessageInput(
+            on_technology_stack_input,  # ty:ignore[invalid-argument-type]
+            content_types=ContentType.TEXT,
+        ),
+        Button(
+            Const(STACK_SKIP_BUTTON),
+            id="skip_technology_stack",
+            on_click=on_technology_stack_skip,
+        ),
+        state=CreateProfileSG.technology_stack,
+    ),
+    Window(
+        Format("{technology_stack_confirmation}"),
+        Row(
+            Button(
+                Const(STACK_SAVE_BUTTON),
+                id="save_technology_stack",
+                on_click=on_technology_stack_save,  # ty:ignore[invalid-argument-type]
+            ),
+            Button(
+                Const(STACK_EDIT_BUTTON),
+                id="edit_technology_stack",
+                on_click=on_technology_stack_edit,
+            ),
+        ),
+        getter=get_stack_confirmation,
+        state=CreateProfileSG.technology_stack_confirmation,
     ),
 )

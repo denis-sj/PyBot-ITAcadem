@@ -22,9 +22,10 @@ from ..infrastructure import (
     RoleRepository,
     RoleRequestRepository,
     UserRepository,
+    UserTechnologyStackRepository,
     ValuationRepository,
 )
-from ..infrastructure.adapters import PolzaVisionAdapter
+from ..infrastructure.adapters import PolzaVisionAdapter, PydanticAITechnologyStackParser
 from ..infrastructure.adapters.agent_memory import RedisAgentMemory
 from ..infrastructure.adapters.polza_agent import PolzaAgentModel
 from ..infrastructure.health import RedisPingProbe, SessionExecutor
@@ -36,6 +37,8 @@ from ..services import (
     CommunityAchievementService,
     LeaderboardService,
     SystemRuntimeAlertsService,
+    TechnologyStackParsingService,
+    TechnologyStackService,
     UserCompetenceService,
     UserProfileService,
     UserRegistrationService,
@@ -59,6 +62,7 @@ from ..services.ports import (
     CommunityAchievementDispatchPort,
     NotificationDispatchPort,
     NotificationPort,
+    TechnologyStackParserPort,
 )
 from ..services.ports.agent import AgentMemoryPort, AgentModelPort
 from ..services.role_request import RoleRequestService
@@ -133,6 +137,10 @@ class RepositoryProvider(Provider):
     @provide(scope=Scope.APP)
     def community_achievement_repository(self) -> CommunityAchievementRepository:
         return CommunityAchievementRepository()
+
+    @provide(scope=Scope.APP)
+    def user_technology_stack_repository(self) -> UserTechnologyStackRepository:
+        return UserTechnologyStackRepository()
 
 
 class ServiceProvider(Provider):
@@ -317,6 +325,14 @@ class ServiceProvider(Provider):
             settings=settings,
         )
 
+    @provide(scope=Scope.REQUEST)
+    def technology_stack_service(
+        self,
+        db: AsyncSession,
+        user_technology_stack_repository: UserTechnologyStackRepository,
+    ) -> TechnologyStackService:
+        return TechnologyStackService(db, user_technology_stack_repository)
+
 
 class AgentProvider(Provider):
     """Agent dependencies exist only in the bot runtime; no network at construction."""
@@ -325,6 +341,17 @@ class AgentProvider(Provider):
     async def model(self, settings: AppSettings) -> AsyncGenerator[AgentModelPort]:
         async with httpx2.AsyncClient(timeout=settings.agent_timeout_s) as client:
             yield PolzaAgentModel(settings, client)
+
+    @provide(scope=Scope.APP)
+    def technology_stack_parser(self, model: AgentModelPort) -> TechnologyStackParserPort:
+        return PydanticAITechnologyStackParser(model)
+
+    @provide(scope=Scope.REQUEST)
+    def technology_stack_parsing_service(
+        self,
+        parser: TechnologyStackParserPort,
+    ) -> TechnologyStackParsingService:
+        return TechnologyStackParsingService(parser)
 
     @provide(scope=Scope.APP)
     def memory(self, redis_client: Redis, settings: AppSettings) -> AgentMemoryPort:
@@ -347,6 +374,7 @@ class AgentProvider(Provider):
         competences: CompetenceService,
         users: UserService,
         community_achievements: CommunityAchievementService,
+        technology_stack: TechnologyStackService,
     ) -> AgentReadService:
         return AgentReadService(
             profiles,
@@ -357,6 +385,7 @@ class AgentProvider(Provider):
             competences,
             users,
             community_achievements,
+            technology_stack,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -371,6 +400,7 @@ class AgentProvider(Provider):
         attendance: AttendanceService,
         notifications: NotificationFacade,
         broadcasts: BroadcastService,
+        technology_stack: TechnologyStackService,
         settings: AppSettings,
     ) -> AgentActionService:
         return AgentActionService(
@@ -384,6 +414,7 @@ class AgentProvider(Provider):
             notifications,
             broadcasts,
             settings,
+            technology_stack,
         )
 
     @provide(scope=Scope.REQUEST)

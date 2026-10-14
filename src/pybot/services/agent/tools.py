@@ -34,6 +34,7 @@ from .broadcast_tools import broadcast_confirmation_summary, send_broadcast, val
 from .dependencies import AgentDependencies
 from .read_tools import (
     ADMIN_AGENT_ROLES,
+    find_technology_helpers,
     find_user_candidates,
     get_attendance_month_top,
     get_attendance_week_top,
@@ -47,6 +48,7 @@ from .read_tools import (
     get_my_competences,
     get_my_profile,
     get_my_roles,
+    get_my_technology_stack,
     get_my_visits,
     get_points_leaderboard,
     get_roles_catalog,
@@ -54,6 +56,13 @@ from .read_tools import (
     get_user_profile,
 )
 from .role_tools import request_mentor_role, validate_mentor_request
+from .stack_action_tools import (
+    remove_my_technology,
+    set_my_technology,
+    stack_confirmation_summary,
+    validate_my_technology_removal,
+    validate_my_technology_update,
+)
 
 _ACTION_ARGUMENTS_ADAPTER = TypeAdapter(dict[str, JsonValue])
 
@@ -85,6 +94,8 @@ class AgentToolRegistry:
                     bot_capabilities,
                     get_my_profile,
                     get_my_achievements,
+                    get_my_technology_stack,
+                    find_technology_helpers,
                     get_my_attendance,
                     get_my_visits,
                     get_attendance_week_top,
@@ -173,6 +184,24 @@ class AgentToolRegistry:
                 frozenset({"Student"}),
                 _role_request_summary,
             )
+            stack_action_tools = (
+                RegisteredAgentTool(
+                    Tool(
+                        set_my_technology,
+                        args_validator=validate_my_technology_update,
+                        requires_approval=True,
+                    ),
+                    confirmation_summary=stack_confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        remove_my_technology,
+                        args_validator=validate_my_technology_removal,
+                        requires_approval=True,
+                    ),
+                    confirmation_summary=stack_confirmation_summary,
+                ),
+            )
             broadcast_tool = RegisteredAgentTool(
                 Tool(
                     send_broadcast,
@@ -182,7 +211,14 @@ class AgentToolRegistry:
                 confirmation_summary=broadcast_confirmation_summary,
                 uses_broadcast_roles=True,
             )
-            self.entries = (*public_tools, role_request_tool, *admin_tools, *admin_action_tools, broadcast_tool)
+            self.entries = (
+                *public_tools,
+                role_request_tool,
+                *admin_tools,
+                *admin_action_tools,
+                *stack_action_tools,
+                broadcast_tool,
+            )
         else:
             self.entries = entries
         for entry in self.entries:
@@ -300,9 +336,10 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
     if roles.intersection(ctx.deps.settings.broadcast_allowed_roles):
         commands += " Рассылка — /broadcast или кнопка рассылки в меню."
     introduction = (
-        "Через агента доступны мой профиль и баллы, мои посещения, топ посещаемости недели и месяца, "
+        "Через агента доступны мой профиль и баллы, мои посещения, мой стек технологий и поиск помощников, "
+        "топ посещаемости недели и месяца, "
         "лидерборд баллов, каталоги ролей и компетенций, мои роли и компетенции, информация о боте. "
-        "Инструменты чтения и изменения для администратора доступны только его роли. "
+        "Инструменты администратора доступны только его роли, а изменение собственного стека требует подтверждения. "
         "Подать заявку на роль Mentor можно через агента после подтверждения. "
     )
     return introduction + commands

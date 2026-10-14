@@ -6,6 +6,7 @@ from typing import Literal, Protocol
 from pydantic_ai.models import Model
 
 from ...core.constants import PointsTypeEnum, RoleEnum
+from ...domain.services.technology_stack import TechnologyLevel
 from ...dto import UserReadDTO
 from ...dto.agent import AgentConversation, AgentMemoryMessage
 from ...dto.role_dto import CreateRoleRequestDTO
@@ -82,6 +83,22 @@ class AgentActionsPort(Protocol):
 
     async def change_competence(self, telegram_id: int, competence_name: str, add: bool) -> str:
         """Change a competence after confirmation."""
+        ...
+
+    async def validate_my_stack_item(self, user_id: int, technology: str, level: TechnologyLevel) -> None:
+        """Check the caller's technology stack update before confirmation."""
+        ...
+
+    async def set_my_stack_item(self, user_id: int, technology: str, level: TechnologyLevel) -> str:
+        """Add or update one technology in the caller's stack after confirmation."""
+        ...
+
+    async def validate_my_stack_item_removal(self, user_id: int, technology: str) -> None:
+        """Check the caller's stack removal before confirmation."""
+        ...
+
+    async def remove_my_stack_item(self, user_id: int, technology: str) -> str:
+        """Remove one technology from the caller's stack after confirmation."""
         ...
 
     async def validate_visit_update(self, telegram_id: int, visit_date: date, start_time: time, end_time: time) -> None:
