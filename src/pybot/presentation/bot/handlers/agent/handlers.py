@@ -14,6 +14,7 @@ from .....services.ports.agent import AgentMemoryPort
 from ....texts.agent import AGENT_EXPIRED, render_agent_reply
 from .formatting import format_agent_text
 from .routing import AgentMessageFilter
+from .typing import agent_typing_status
 
 _TELEGRAM_TEXT_LIMIT = 4000
 
@@ -47,7 +48,17 @@ async def handle_agent_message(
         chat_id=message.chat.id, topic_id=message.message_thread_id, telegram_id=message.from_user.id
     )
     async with runtime.for_user(message.from_user.id):
-        result = await service.answer(conversation, message.text, is_forwarded=message.forward_origin is not None)
+        try:
+            has_registered_user = await service.has_registered_user(conversation)
+        except Exception:
+            has_registered_user = False
+        if has_registered_user:
+            async with agent_typing_status(bot, message.chat.id, message.message_thread_id):
+                result = await service.answer(
+                    conversation, message.text, is_forwarded=message.forward_origin is not None
+                )
+        else:
+            result = await service.answer(conversation, message.text, is_forwarded=message.forward_origin is not None)
         await _send_reply(bot, message, result, runtime, memory)
 
 
@@ -67,9 +78,15 @@ async def handle_agent_confirmation(  # noqa: PLR0913
         chat_id=message.chat.id, topic_id=message.message_thread_id, telegram_id=callback.from_user.id
     )
     async with runtime.for_user(callback.from_user.id):
-        result = await service.confirm(
-            callback_data.confirmation_id, conversation, message.message_id, approved=callback_data.approved
-        )
+        if callback_data.approved:
+            async with agent_typing_status(bot, message.chat.id, message.message_thread_id):
+                result = await service.confirm(
+                    callback_data.confirmation_id, conversation, message.message_id, approved=True
+                )
+        else:
+            result = await service.confirm(
+                callback_data.confirmation_id, conversation, message.message_id, approved=False
+            )
         if result.alert:
             await callback.answer(render_agent_reply(result), show_alert=True)
             return

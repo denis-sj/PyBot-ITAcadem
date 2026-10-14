@@ -6,7 +6,7 @@ import pytest
 from aiogram import Bot, Dispatcher, Router
 from aiogram.enums import MessageOriginType
 from aiogram.filters import Command
-from aiogram.methods import SendMessage
+from aiogram.methods import SendChatAction, SendMessage
 from aiogram.types import CallbackQuery, Message, MessageOriginUser, TextQuote, Update, User
 from dishka import Provider, Scope, make_async_container, provide
 from dishka.integrations.aiogram import AiogramProvider, setup_dishka
@@ -19,6 +19,7 @@ from pybot.di.containers import setup_container
 from pybot.dto.agent import AgentReply
 from pybot.presentation.bot import tg_bot_run
 from pybot.presentation.bot.handlers.agent import handlers as agent_handlers
+from pybot.presentation.bot.handlers.agent import typing as agent_typing
 from pybot.presentation.bot.handlers.agent.handlers import (
     AgentConfirmation,
     create_agent_router,
@@ -190,6 +191,158 @@ async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings
 
 
 @pytest.mark.asyncio
+async def test_accepted_registered_message_shows_typing_in_its_topic_and_stops_after_reply(
+    agent_settings, agent_bot, monkeypatch
+):
+    service, users, memory = build_service(agent_settings)
+    memory.mark_reply = AsyncMock()
+    action_started = asyncio.Event()
+    answer_started = asyncio.Event()
+    finish_answer = asyncio.Event()
+
+    async def send_chat_action(**kwargs):
+        action_started.set()
+
+    async def answer(*args, **kwargs):
+        answer_started.set()
+        await finish_answer.wait()
+        return AgentReply(text="Готово")
+
+    agent_bot.send_chat_action = AsyncMock(side_effect=send_chat_action)
+    monkeypatch.setattr(service, "answer", answer)
+    agent_bot.send_message = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=50))
+
+    task = asyncio.create_task(handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot))
+    await asyncio.wait_for(answer_started.wait(), timeout=1)
+    await asyncio.wait_for(action_started.wait(), timeout=1)
+    finish_answer.set()
+    await task
+    await asyncio.sleep(0)
+
+    users.find_user_by_telegram_id.assert_awaited_once()
+    agent_bot.send_chat_action.assert_awaited_once_with(chat_id=-100, action="typing", message_thread_id=3)
+    assert not any(task.get_name() == "agent-typing-status" for task in asyncio.all_tasks())
+
+
+@pytest.mark.asyncio
+async def test_unregistered_message_does_not_show_typing(agent_settings, agent_bot):
+    service, users, memory = build_service(agent_settings)
+    users.find_user_by_telegram_id.return_value = None
+    memory.mark_reply = AsyncMock()
+    agent_bot.send_chat_action = AsyncMock()
+
+    await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
+
+    assert agent_bot.send_chat_action.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_typing_stops_when_agent_raises(agent_settings, agent_bot, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    action_started = asyncio.Event()
+
+    async def send_chat_action(**kwargs):
+        action_started.set()
+
+    async def fail_after_typing(*args, **kwargs):
+        await action_started.wait()
+        raise RuntimeError("private failure")
+
+    agent_bot.send_chat_action = AsyncMock(side_effect=send_chat_action)
+    monkeypatch.setattr(service, "answer", fail_after_typing)
+
+    with pytest.raises(RuntimeError, match="private failure"):
+        await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
+
+    assert agent_bot.send_chat_action.await_count == 1
+    await asyncio.sleep(0)
+    assert agent_bot.send_chat_action.await_count == 1
+    assert not any(task.get_name() == "agent-typing-status" for task in asyncio.all_tasks())
+
+
+@pytest.mark.asyncio
+async def test_typing_repeats_during_long_agent_run(agent_settings, agent_bot, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    action_started = asyncio.Event()
+
+    async def send_chat_action(**kwargs):
+        action_started.set()
+
+    async def answer(*args, **kwargs):
+        await action_started.wait()
+        await asyncio.sleep(0.035)
+        return AgentReply(text="Готово")
+
+    monkeypatch.setattr(agent_typing, "_TYPING_INTERVAL_S", 0.01)
+    monkeypatch.setattr(service, "answer", answer)
+    agent_bot.send_chat_action = AsyncMock(side_effect=send_chat_action)
+    agent_bot.send_message = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=50))
+
+    await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
+
+    assert agent_bot.send_chat_action.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_typing_api_failure_does_not_break_agent_reply(agent_settings, agent_bot, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    memory.mark_reply = AsyncMock()
+    agent_bot.send_chat_action = AsyncMock(side_effect=RuntimeError("Telegram private failure"))
+    agent_bot.send_message = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=50))
+
+    await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
+
+    agent_bot.send_chat_action.assert_awaited()
+    agent_bot.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_approved_confirmation_shows_typing_until_action_finishes(agent_settings, agent_bot, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    action_started = asyncio.Event()
+    finish_action = asyncio.Event()
+    callback_message = build_message(sender_id=99, sender_is_bot=True, message_id=50)
+    callback = CallbackQuery(
+        id="confirm-typing",
+        from_user=User(id=11, is_bot=False, first_name="Tester"),
+        chat_instance="c",
+        message=callback_message,
+    )
+
+    async def send_chat_action(**kwargs):
+        action_started.set()
+
+    async def confirm(*args, **kwargs):
+        await action_started.wait()
+        await finish_action.wait()
+        return AgentReply(text="Действие выполнено")
+
+    agent_bot.send_chat_action = AsyncMock(side_effect=send_chat_action)
+    agent_bot.send_message = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=51))
+    monkeypatch.setattr(service, "confirm", confirm)
+    monkeypatch.setattr(CallbackQuery, "answer", AsyncMock())
+    monkeypatch.setattr(Message, "edit_reply_markup", AsyncMock())
+
+    task = asyncio.create_task(
+        handle_agent_confirmation(
+            callback,
+            AgentConfirmation(confirmation_id="confirm-typing", approved=True),
+            service,
+            service.runtime,
+            memory,
+            bot=agent_bot,
+        )
+    )
+    await asyncio.wait_for(action_started.wait(), timeout=1)
+    finish_action.set()
+    await task
+    await asyncio.sleep(0)
+
+    agent_bot.send_chat_action.assert_awaited_once_with(chat_id=-100, action="typing", message_thread_id=3)
+    assert not any(task.get_name() == "agent-typing-status" for task in asyncio.all_tasks())
+
+
+@pytest.mark.asyncio
 async def test_agent_answer_is_cleaned_before_sending(agent_settings, agent_bot, monkeypatch):
     service, _, memory = build_service(agent_settings)
     memory.mark_reply = AsyncMock()
@@ -240,7 +393,7 @@ async def test_real_aiogram_message_sends_reply_to_private_group_and_topic(
     assert send.reply_parameters is not None
     assert send.reply_parameters.message_id == message.message_id
     assert send.parse_mode is None
-    memory.mark_reply.assert_awaited_once_with(chat_id, topic_id, 51)
+    memory.mark_reply.assert_awaited_once_with(chat_id, topic_id, 52)
 
 
 @pytest.mark.asyncio
@@ -534,7 +687,7 @@ async def test_real_dispatcher_command_priority_and_fsm(agent_settings, monkeypa
     dispatcher.include_router(create_agent_router(agent_settings, memory))
     setup_dishka(container, dispatcher, auto_inject=True)
     bot = Bot("99:test-token")
-    patch_telegram_api(bot, monkeypatch)
+    methods = patch_telegram_api(bot, monkeypatch)
     start_log = Mock()
     monkeypatch.setattr(agent_handlers, "logger", start_log)
     try:
@@ -543,6 +696,7 @@ async def test_real_dispatcher_command_priority_and_fsm(agent_settings, monkeypa
         await dispatcher.feed_update(bot, Update(update_id=1, message=private))
         handled_command.assert_awaited_once()
         answer_service.assert_not_awaited()
+        assert not any(isinstance(method, SendChatAction) for method in methods)
         state = dispatcher.fsm.get_context(bot, chat_id=11, user_id=11)
         for update_id, broadcast_state in enumerate(
             (BroadcastMenuSG.waiting_for_text, BroadcastMenuSG.waiting_for_confirmation, BroadcastMenuSG.sending),
@@ -553,6 +707,7 @@ async def test_real_dispatcher_command_priority_and_fsm(agent_settings, monkeypa
                 bot, Update(update_id=update_id, message=private.model_copy(update={"text": "Справка"}))
             )
             answer_service.assert_not_awaited()
+        assert not any(isinstance(method, SendChatAction) for method in methods)
         await state.clear()
         await dispatcher.feed_update(bot, Update(update_id=5, message=private.model_copy(update={"text": "Справка"})))
         answer_service.assert_awaited_once()

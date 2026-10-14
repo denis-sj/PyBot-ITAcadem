@@ -117,6 +117,10 @@ class AgentService:
         self.reads = reads
         self.actions = actions
 
+    async def has_registered_user(self, conversation: AgentConversation) -> bool:
+        """Check registration before the Telegram layer starts showing activity."""
+        return await self.users.find_user_by_telegram_id(conversation.telegram_id) is not None
+
     async def answer(self, conversation: AgentConversation, question: str, *, is_forwarded: bool = False) -> AgentReply:
         """Run one question; the transport holds the per-user queue through delivery."""
         if not self.settings.agent_enabled:
