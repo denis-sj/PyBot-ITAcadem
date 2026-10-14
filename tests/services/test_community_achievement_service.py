@@ -92,11 +92,26 @@ class MemoryAchievementRepository(CommunityAchievementRepository):
 
     async def find_unpublished_public_awards(self, db: AsyncSession) -> Sequence[AchievementPublicationDTO]:
         _ = db
-        return []
+        return [
+            AchievementPublicationDTO(
+                id=award.id,
+                user_id=award.user_id,
+                first_name="Тестовый участник",
+                last_name=None,
+                telegram_username=None,
+                code=award.code,
+                achieved_at=award.achieved_at,
+            )
+            for award in self.awards.values()
+            if not award.is_published and award.code not in {"first_step", "top_week"}
+        ]
 
     async def mark_published(self, db: AsyncSession, award_ids: Sequence[int]) -> None:
         _ = db
         self.published_ids.extend(award_ids)
+        for award in self.awards.values():
+            if award.id in award_ids:
+                award.is_published = True
 
     async def mark_user_awards_published(
         self,
@@ -110,6 +125,9 @@ class MemoryAchievementRepository(CommunityAchievementRepository):
             for (user_id, award_code), award in self.awards.items()
             if user_id in user_ids and award_code == code
         )
+        for (user_id, award_code), award in self.awards.items():
+            if user_id in user_ids and award_code == code:
+                award.is_published = True
 
 
 def make_service(settings_obj, *, visit_dates=None, mentor=False, notifications=None, rankings=None):
@@ -258,6 +276,41 @@ async def test_silent_history_backfill_sends_no_messages_or_publications(setting
     assert existing_pending_award.is_published is False
     attendance_service.get_rankings_for_period.assert_awaited_once_with(old_visit, old_visit + timedelta(days=5))
     notification_service.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_backfilled_awards_are_not_published_by_digest_or_weekly_top(settings_obj) -> None:
+    settings_obj.achievements_chat_id = -1001234567890
+    settings_obj.achievements_topic_id = 32
+    old_visit = date(2020, 1, 6)
+    historical_winner = AttendanceMonthlyRankingItemDTO(
+        rank=1,
+        user_id=17,
+        user_full_name="Тестовый участник",
+        total_minutes=90,
+        visits_count=1,
+    )
+    notifications = Mock()
+    notifications.send_message = AsyncMock()
+    service, _, _, _, _, attendance_service, repository = make_service(
+        settings_obj,
+        visit_dates=[old_visit],
+        notifications=notifications,
+    )
+    attendance_service.get_rankings_for_period.side_effect = [[historical_winner], []]
+
+    backfilled_count = await service.backfill_history_silently()
+    digest_count = await service.publish_daily_digest()
+    top_week_count = await service.publish_top_week(today=date(2026, 10, 19))
+
+    assert backfilled_count == 2
+    assert repository.awards[(17, AchievementCode.FIRST_STEP.value)].is_published is True
+    assert repository.awards[(17, AchievementCode.FIRST_STEP.value)].is_notified is True
+    assert repository.awards[(17, AchievementCode.TOP_WEEK.value)].is_published is True
+    assert repository.awards[(17, AchievementCode.TOP_WEEK.value)].is_notified is True
+    assert digest_count == 0
+    assert top_week_count == 0
+    notifications.send_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio

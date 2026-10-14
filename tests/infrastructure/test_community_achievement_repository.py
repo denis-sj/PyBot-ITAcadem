@@ -21,6 +21,7 @@ async def test_award_code_is_unique_per_user_and_preserves_first_award(db_sessio
         db_session,
         user_id=user.id,
         awards={"first_step": first_earned_at},
+        silent=True,
     )
     await db_session.commit()
     duplicate_count = await repository.add_missing_awards(
@@ -41,3 +42,5 @@ async def test_award_code_is_unique_per_user_and_preserves_first_award(db_sessio
     assert duplicate_count == 0
     assert len(rows) == 1
     assert rows[0].achieved_at == first_earned_at
+    assert rows[0].is_published is True
+    assert rows[0].is_notified is True

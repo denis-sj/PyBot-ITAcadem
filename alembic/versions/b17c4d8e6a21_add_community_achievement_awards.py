@@ -1,7 +1,7 @@
 """Add community achievement awards and bot availability state.
 
 Revision ID: b17c4d8e6a21
-Revises: c5e9a4f21d30
+Revises: a17c3d9b2e45
 Create Date: 2026-10-14
 
 """
