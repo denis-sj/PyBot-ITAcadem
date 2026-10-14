@@ -1,10 +1,10 @@
 {
   "model": "deepseek/deepseek-v4.1-flash",
-  "total_cost_rub": "27.9028606668",
+  "total_cost_rub": "20.2872741164",
   "request_count": 828,
   "unpriced_requests": 0,
-  "estimated_records": 30,
-  "exact_records": 798,
+  "estimated_records": 14,
+  "exact_records": 814,
   "entries": [
     {
       "cost_rub": "1",
@@ -26,9 +26,9 @@
       "output_token_upper_bound": 1000
     },
     {
-      "cost_rub": "0.7166023752",
-      "estimated": true,
-      "source": "request_error_upper_bound",
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
       "original_estimate_rub": "0.04589546",
       "tariff": {
         "provider": "unknown_provider_catalog_upper_bound",
@@ -37,7 +37,9 @@
         "cached_input_price": null
       },
       "input_token_upper_bound": 4674,
-      "output_token_upper_bound": 1000
+      "output_token_upper_bound": 1000,
+      "http_status": 502,
+      "previous_upper_bound_rub": "0.7166023752"
     },
     {
       "cost_rub": "0.00514777",
@@ -55,9 +57,9 @@
       "source": "cost_rub"
     },
     {
-      "cost_rub": "0.715311368",
-      "estimated": true,
-      "source": "request_error_upper_bound",
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
       "original_estimate_rub": "0.0458214",
       "tariff": {
         "provider": "unknown_provider_catalog_upper_bound",
@@ -66,7 +68,9 @@
         "cached_input_price": null
       },
       "input_token_upper_bound": 4660,
-      "output_token_upper_bound": 1000
+      "output_token_upper_bound": 1000,
+      "http_status": 502,
+      "previous_upper_bound_rub": "0.715311368"
     },
     {
       "cost_rub": "0.02908857",
@@ -79,9 +83,9 @@
       "source": "cost_rub"
     },
     {
-      "cost_rub": "0.7166023752",
-      "estimated": true,
-      "source": "request_error_upper_bound",
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
       "original_estimate_rub": "0.04589546",
       "tariff": {
         "provider": "unknown_provider_catalog_upper_bound",
@@ -90,7 +94,9 @@
         "cached_input_price": null
       },
       "input_token_upper_bound": 4674,
-      "output_token_upper_bound": 1000
+      "output_token_upper_bound": 1000,
+      "http_status": 502,
+      "previous_upper_bound_rub": "0.7166023752"
     },
     {
       "cost_rub": "0.7062743176",
@@ -221,64 +227,88 @@
       "source": "cost_rub"
     },
     {
-      "cost_rub": "0.1605555376",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.1605555376"
     },
     {
-      "cost_rub": "0.1605555376",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.1605555376"
     },
     {
-      "cost_rub": "0.1605555376",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.1605555376"
     },
     {
-      "cost_rub": "0.1605555376",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.1605555376"
     },
     {
-      "cost_rub": "0.3276487552",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.3276487552"
     },
     {
-      "cost_rub": "0.3276487552",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.3276487552"
     },
     {
-      "cost_rub": "0.3276487552",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.3276487552"
     },
     {
-      "cost_rub": "0.3276487552",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.3276487552"
     },
     {
-      "cost_rub": "0.5959938232",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.5959938232"
     },
     {
-      "cost_rub": "0.5959938232",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.5959938232"
     },
     {
-      "cost_rub": "0.5959938232",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.5959938232"
     },
     {
-      "cost_rub": "0.5959938232",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 400,
+      "previous_upper_bound_rub": "0.5959938232"
     },
     {
       "cost_rub": "0.00439095",
@@ -3821,9 +3851,11 @@
       "source": "cost_rub"
     },
     {
-      "cost_rub": "1.130277968",
-      "estimated": true,
-      "source": "request_error_upper_bound"
+      "cost_rub": "0",
+      "estimated": false,
+      "source": "http_error_no_charge_polza_docs",
+      "http_status": 429,
+      "previous_upper_bound_rub": "1.130277968"
     },
     {
       "cost_rub": "0.02409669",

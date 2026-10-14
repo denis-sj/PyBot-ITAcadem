@@ -49,7 +49,7 @@ from .fixtures import EvalReads
 from .pricing import ModelTariff, ProviderCatalog
 
 TARGET_MODEL = "deepseek/deepseek-v4.1-flash"
-MAX_BUDGET_RUB = Decimal("30")
+MAX_BUDGET_RUB = Decimal("40")
 PERCENTAGE_MULTIPLIER = 100
 MINIMUM_CASE_COUNT = 30
 ACTOR_TELEGRAM_ID = 1
@@ -132,6 +132,8 @@ class CaseRun:
     blocked_attempts: dict[str, int]
     executed_after_confirmation: int
     failure_reasons: tuple[str, ...] = ()
+    connection_failure: bool = False
+    finish_reason_length_responses: int = 0
 
 
 @dataclass(frozen=True)
@@ -241,9 +243,21 @@ class ObservedPolzaModel(WrapperModel):
         try:
             response = await super().request(messages, model_settings, model_request_parameters)
         except BaseException as error:
-            # The caller requested conservative accounting whenever usage is absent, including HTTP errors.
-            cost = _estimated_request_cost(estimated_input_tokens, output_limit, self.response_tariff)
-            self.ledger.record_cost(self.polza_model_name, cost, estimated=True, source="request_error_upper_bound")
+            if isinstance(error, ModelHTTPError):
+                cost = Decimal("0")
+                self.ledger.record_cost(
+                    self.polza_model_name,
+                    cost,
+                    source="http_error_no_charge_polza_docs",
+                )
+            else:
+                cost = _estimated_request_cost(estimated_input_tokens, output_limit, self.response_tariff)
+                self.ledger.record_cost(
+                    self.polza_model_name,
+                    cost,
+                    estimated=True,
+                    source="request_error_upper_bound",
+                )
             self.run_cost_rub += cost
             diagnostic: dict[str, JsonValue] = {"error_type": type(error).__name__, "usage_received": False}
             if isinstance(error, ModelHTTPError):
@@ -531,14 +545,24 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
     all_args_correct = all(_has_matching_call(expected, calls) for expected in case.expected_call_args)
     status_correct = reply.status.value == "success"
     passed = tools_correct and confirmation_correct and phrases_correct and all_args_correct and status_correct
-    failure_reasons = _failure_reasons(
-        case,
-        actual_tools,
-        confirmation_correct=confirmation_correct,
-        reply_text=reply_text,
-        all_args_correct=all_args_correct,
-        calls=calls,
-        status=reply.status.value,
+    connection_failure = any(
+        failure.get("error_type") == "ModelAPIError"
+        and failure.get("usage_received") is False
+        and "http_status" not in failure
+        for failure in model.failures
+    )
+    failure_reasons = (
+        ("connection_failure=ModelAPIError_without_usage",)
+        if connection_failure
+        else _failure_reasons(
+            case,
+            actual_tools,
+            confirmation_correct=confirmation_correct,
+            reply_text=reply_text,
+            all_args_correct=all_args_correct,
+            calls=calls,
+            status=reply.status.value,
+        )
     )
 
     blocked_attempts, security_errors = _security_counts(
@@ -568,6 +592,8 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         blocked_attempts=blocked_attempts,
         executed_after_confirmation=executions_after_confirmation,
         failure_reasons=failure_reasons,
+        connection_failure=connection_failure,
+        finish_reason_length_responses=sum(response.finish_reason == "length" for response in model.responses),
     )
 
 
@@ -931,6 +957,8 @@ def _build_report(
     metadata: ReportMetadata,
     runs: list[CaseRun],
 ) -> dict[str, JsonValue]:
+    quality_runs = [run for run in runs if not run.connection_failure]
+    connection_failure_runs = [run for run in runs if run.connection_failure]
     latencies = [run.latency_s for run in runs]
     costs = [run.cost_rub for run in runs]
     priced_costs = [cost for cost in costs if cost is not None]
@@ -960,12 +988,15 @@ def _build_report(
         {
             "name": name,
             "runs": len(case_runs),
-            "passed": sum(run.passed for run in case_runs),
-            "tools_correct": sum(run.tools_correct for run in case_runs),
-            "confirmations_correct": sum(run.confirmation_correct for run in case_runs),
-            "phrases_correct": sum(run.phrases_correct for run in case_runs),
-            "action_args_correct": sum(run.action_args_correct for run in case_runs),
-            "action_args_expected": sum(run.action_args_expected for run in case_runs),
+            "quality_evaluable_runs": sum(not run.connection_failure for run in case_runs),
+            "connection_failures": sum(run.connection_failure for run in case_runs),
+            "passed": sum(run.passed for run in case_runs if not run.connection_failure),
+            "tools_correct": sum(run.tools_correct for run in case_runs if not run.connection_failure),
+            "confirmations_correct": sum(run.confirmation_correct for run in case_runs if not run.connection_failure),
+            "phrases_correct": sum(run.phrases_correct for run in case_runs if not run.connection_failure),
+            "action_args_correct": sum(run.action_args_correct for run in case_runs if not run.connection_failure),
+            "action_args_expected": sum(run.action_args_expected for run in case_runs if not run.connection_failure),
+            "finish_reason_length_responses": sum(run.finish_reason_length_responses for run in case_runs),
             "blocked_attempts": {
                 "action_outside_rights": sum(run.blocked_attempts["action_outside_rights"] for run in case_runs),
                 "wrong_recipient": sum(run.blocked_attempts["wrong_recipient"] for run in case_runs),
@@ -981,6 +1012,10 @@ def _build_report(
         "model": metadata.model,
         "repetitions_requested": metadata.repeat,
         "question_runs": len(runs),
+        "connection_failures": [
+            {"case": run.case_name, "error_type": "ModelAPIError", "usage_received": False}
+            for run in connection_failure_runs
+        ],
         "aborted": metadata.aborted,
         "abort_reason": metadata.abort_reason,
         "tokenizer": "cl100k_base (proxy estimate; not a DeepSeek tokenizer)",
@@ -996,10 +1031,16 @@ def _build_report(
             "exact_records": sum(entry.get("estimated") is False for entry in metadata.ledger.entries),
         },
         "metrics": {
-            "correct_tools_pct": _percentage(sum(run.tools_correct for run in runs), len(runs)),
-            "correct_confirmation_pct": _percentage(sum(run.confirmation_correct for run in runs), len(runs)),
+            "quality_evaluable_question_runs": len(quality_runs),
+            "connection_failure_question_runs": len(connection_failure_runs),
+            "finish_reason_length_responses": sum(run.finish_reason_length_responses for run in runs),
+            "correct_tools_pct": _percentage(sum(run.tools_correct for run in quality_runs), len(quality_runs)),
+            "correct_confirmation_pct": _percentage(
+                sum(run.confirmation_correct for run in quality_runs), len(quality_runs)
+            ),
             "correct_action_args_pct": _percentage(
-                sum(run.action_args_correct for run in runs), sum(run.action_args_expected for run in runs)
+                sum(run.action_args_correct for run in quality_runs),
+                sum(run.action_args_expected for run in quality_runs),
             ),
             "security_errors": security_errors,
             "blocked_attempts": {

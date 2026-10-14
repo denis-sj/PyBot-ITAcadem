@@ -1,10 +1,11 @@
 """Offline checks for the paid evaluation harness and its aggregate-only reports."""
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
-from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import RequestUsage
 
@@ -48,6 +49,9 @@ def test_eval_cases_cover_required_scenarios_and_have_unique_names() -> None:
         "student_followup_previous_month",
         "off_topic",
     } <= names
+    previous_month_case = next(case for case in cases if case.name == "student_followup_previous_month")
+    assert "2020-09" in previous_month_case.history[-1].text
+    assert previous_month_case.expected_call_args[0].args == {"period": {"year": 2020, "month": 8}}
 
 
 def test_request_cost_guard_reserves_forecast_maximum() -> None:
@@ -103,19 +107,18 @@ def test_report_has_aggregate_metrics_without_case_text(tmp_path) -> None:
         security_errors={"action_outside_rights": 0, "wrong_recipient": 0, "without_confirmation": 0},
         blocked_attempts={"action_outside_rights": 0, "wrong_recipient": 0},
         executed_after_confirmation=1,
+        finish_reason_length_responses=1,
     )
-    report = _build_report(
-        ReportMetadata(
-            model="deepseek/deepseek-v4.1-flash",
-            repeat=1,
-            prefix_tokens=_role_prefix_token_counts(),
-            forecast=Decimal("1"),
-            ledger=ledger,
-            aborted=False,
-            abort_reason=None,
-        ),
-        [run],
+    metadata = ReportMetadata(
+        model="deepseek/deepseek-v4.1-flash",
+        repeat=1,
+        prefix_tokens=_role_prefix_token_counts(),
+        forecast=Decimal("1"),
+        ledger=ledger,
+        aborted=False,
+        abort_reason=None,
     )
+    report = _build_report(metadata, [run])
     serialized_report = json.dumps(report, ensure_ascii=False)
 
     metrics = report["metrics"]
@@ -126,12 +129,32 @@ def test_report_has_aggregate_metrics_without_case_text(tmp_path) -> None:
     assert isinstance(security_errors, dict)
     assert metrics["correct_tools_pct"] == 100
     assert metrics["correct_action_args_pct"] == 100
+    assert metrics["quality_evaluable_question_runs"] == 1
+    assert metrics["finish_reason_length_responses"] == 1
     assert security_errors["without_confirmation"] == 0
     assert budget["run_cost_rub"] == "0.01"
-    assert budget["limit_rub"] == "30"
+    assert budget["limit_rub"] == "40"
     assert "synthetic evaluation" not in serialized_report
     assert "question" not in report
     assert "answer" not in report
+
+    connection_run = replace(
+        run,
+        case_name="connection_case",
+        passed=False,
+        tools_correct=False,
+        connection_failure=True,
+        failure_reasons=("connection_failure=ModelAPIError_without_usage",),
+    )
+    report_with_connection_failure = _build_report(metadata, [run, connection_run])
+    connection_metrics = report_with_connection_failure["metrics"]
+    assert isinstance(connection_metrics, dict)
+    assert connection_metrics["quality_evaluable_question_runs"] == 1
+    assert connection_metrics["connection_failure_question_runs"] == 1
+    assert connection_metrics["correct_tools_pct"] == 100
+    assert report_with_connection_failure["connection_failures"] == [
+        {"case": "connection_case", "error_type": "ModelAPIError", "usage_received": False}
+    ]
 
 
 @pytest.mark.asyncio
@@ -152,7 +175,7 @@ async def test_missing_cost_prices_usage_tokens_and_marks_estimate(tmp_path) -> 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status_code", [400, 429, 502, 503, 504])
-async def test_http_error_without_usage_records_upper_estimate(tmp_path, status_code: int) -> None:
+async def test_http_error_without_usage_records_exact_zero_cost(tmp_path, status_code: int) -> None:
     def fail(messages, info):
         raise ModelHTTPError(status_code, TARGET_MODEL, {"error": {"metadata": {"provider_name": "synthetic"}}})
 
@@ -162,10 +185,9 @@ async def test_http_error_without_usage_records_upper_estimate(tmp_path, status_
     with pytest.raises(ModelHTTPError):
         await model.request(messages, {"max_tokens": 1000}, ModelRequestParameters())
 
-    estimated_cost = _estimated_request_cost(_estimate_request_input_tokens(messages, ModelRequestParameters()), 1000)
-    assert ledger.total_cost_rub == estimated_cost
-    assert ledger.entries[0]["estimated"] is True
-    assert ledger.entries[0]["source"] == "request_error_upper_bound"
+    assert ledger.total_cost_rub == Decimal("0")
+    assert ledger.entries[0]["estimated"] is False
+    assert ledger.entries[0]["source"] == "http_error_no_charge_polza_docs"
     assert model.failures[0]["http_status"] == status_code
     terms = model.failures[0]["recognized_error_terms"]
     assert isinstance(terms, list)
@@ -189,6 +211,23 @@ async def test_error_without_http_answer_records_upper_estimate_before_reraising
     assert ledger.entries[0]["estimated"] is True
     assert ledger.entries[0]["source"] == "request_error_upper_bound"
     assert ledger.request_count == 1
+
+
+@pytest.mark.asyncio
+async def test_model_api_error_without_usage_is_marked_as_connection_failure(tmp_path, agent_settings) -> None:
+    from evals.agent.run import _load_cases, _run_case
+
+    def fail(messages, info):
+        raise ModelAPIError(TARGET_MODEL, "synthetic connection failure")
+
+    ledger = SpendLedger(tmp_path / "ledger.json")
+    observed = ObservedPolzaModel(FunctionModel(fail), TARGET_MODEL, ledger, MAX_BUDGET_RUB)
+    result = await _run_case(_load_cases(["my_profile"])[0], agent_settings, observed)
+
+    assert result.connection_failure
+    assert result.failure_reasons == ("connection_failure=ModelAPIError_without_usage",)
+    assert ledger.entries[0]["estimated"] is True
+    assert ledger.entries[0]["source"] == "request_error_upper_bound"
 
 
 def test_failure_reasons_name_wrong_tools_and_missing_phrases_without_reply_text() -> None:
@@ -252,7 +291,7 @@ def test_checked_tariffs_use_provider_cache_price_or_unknown_upper_bound() -> No
     )
     assert catalog.tariff("cheap").estimate(1000, 100, 500) == Decimal("0.0075")
     assert catalog.tariff(None).estimate(1000, 100, 500) == Decimal("0.12")
-    assert MAX_BUDGET_RUB == Decimal("30")
+    assert MAX_BUDGET_RUB == Decimal("40")
 
 
 def test_provider_matrix_redacts_key_and_bearer_error_body() -> None:
