@@ -27,6 +27,7 @@ from ...domain.agent import AgentAccessDeniedError
 from ...dto.agent import AgentConversation, AgentReply, AgentReplyStatus
 from ..ports.agent import AgentActionsPort, AgentMemoryPort, AgentModelPort
 from ..user_services.users import UserService
+from .diagnostics import AgentNumbersGuardError, diagnose_agent_failure
 from .model_timeout import AgentTimeoutModel
 from .reads import AgentReadService, format_user_candidates
 from .runtime import AgentRuntime, PendingAgentRequest
@@ -389,7 +390,7 @@ class AgentService:
                     if isinstance(part, ToolReturnPart) and isinstance(part.content, str):
                         numbers.update(AgentService._numbers(part.content))
         if not AgentService._numbers(answer).issubset(numbers):
-            raise ValueError("Model returned numbers absent from tool results")
+            raise AgentNumbersGuardError("Model returned numbers absent from tool results")
         return answer
 
     @staticmethod
@@ -404,5 +405,25 @@ class AgentService:
 
     @staticmethod
     def _log_failure(error: Exception) -> None:
-        # Provider errors may contain credentials, prompts or personal data: log only the class.
-        logger.error("event=agent_run status=failed error_type={error_type}", error_type=type(error).__name__)
+        """Log safe exception metadata without exception text, requests, or credentials."""
+        diagnostic = diagnose_agent_failure(error)
+        if isinstance(error, AgentNumbersGuardError):
+            logger.warning("event=agent_numbers_guard_rejected")
+        log_fields = {
+            "error_type": type(error).__name__,
+            "category": diagnostic.category,
+            "root_exception": diagnostic.root_exception,
+        }
+        if diagnostic.http_status is None:
+            logger.error(
+                "event=agent_run status=failed error_type={error_type} category={category} "
+                "root_exception={root_exception}",
+                **log_fields,
+            )
+            return
+        logger.error(
+            "event=agent_run status=failed error_type={error_type} category={category} "
+            "root_exception={root_exception} http_status={http_status}",
+            **log_fields,
+            http_status=diagnostic.http_status,
+        )

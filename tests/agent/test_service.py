@@ -3,8 +3,10 @@ import json
 from datetime import datetime
 from unittest.mock import Mock
 
+import httpx2
 import pytest
 from pydantic_ai import RunContext, Tool, ToolDenied
+from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -19,6 +21,7 @@ from pydantic_ai.models.test import TestModel
 
 from pybot.core.constants import YEKATERINBURG_TZ
 from pybot.dto.agent import AgentReplyStatus
+from pybot.services.agent import service as agent_service_module
 from pybot.services.agent.service import build_agent_instructions
 from pybot.services.agent.tools import AgentDependencies, AgentToolRegistry, RegisteredAgentTool
 from tests.agent.conftest import build_service
@@ -112,6 +115,76 @@ async def test_provider_failure_is_safe(agent_settings, conversation, error, mon
     monkeypatch.setattr(service.model, "get_model", Mock(side_effect=error))
     assert (await service.answer(conversation, "help")).status == AgentReplyStatus.UNAVAILABLE
     memory.append.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_category", "expected_root", "expected_http_status"),
+    [
+        (httpx2.ReadTimeout("private timeout"), "timeout", "ReadTimeout", None),
+        (httpx2.ConnectError("private connection"), "connection", "ConnectError", None),
+        (ModelHTTPError(503, "private-model", {"message": "private response"}), "http", "ModelHTTPError", 503),
+        (ValueError("private validation data"), "validation", "ValueError", None),
+        (RuntimeError("private detail"), "other", "RuntimeError", None),
+    ],
+)
+def test_failure_log_has_safe_diagnostic_fields(
+    error, expected_category, expected_root, expected_http_status, monkeypatch
+):
+    log = Mock()
+    monkeypatch.setattr(agent_service_module, "logger", log)
+
+    agent_service_module.AgentService._log_failure(error)
+
+    log.error.assert_called_once()
+    message = log.error.call_args.args[0]
+    fields = log.error.call_args.kwargs
+    assert "event=agent_run status=failed" in message
+    assert fields["error_type"] == type(error).__name__
+    assert fields["category"] == expected_category
+    assert fields["root_exception"] == expected_root
+    if expected_http_status is None:
+        assert "http_status" not in message
+        assert "http_status" not in fields
+    else:
+        assert fields["http_status"] == expected_http_status
+    assert "private" not in repr(log.error.call_args)
+
+
+def test_failure_log_preserves_wrapped_transport_cause_without_its_text(monkeypatch):
+    error = ModelAPIError("private-model", "private API detail")
+    error.__cause__ = httpx2.ReadTimeout("private transport detail")
+    log = Mock()
+    monkeypatch.setattr(agent_service_module, "logger", log)
+
+    agent_service_module.AgentService._log_failure(error)
+
+    assert log.error.call_args.kwargs == {
+        "error_type": "ModelAPIError",
+        "category": "timeout",
+        "root_exception": "ReadTimeout",
+    }
+    assert "http_status" not in log.error.call_args.args[0]
+    assert "private" not in repr(log.error.call_args)
+
+
+@pytest.mark.asyncio
+async def test_numbers_guard_has_separate_safe_event(agent_settings, conversation, monkeypatch):
+    service, _, _ = build_service(
+        agent_settings,
+        model=TestModel(call_tools=[], custom_output_text="У пользователя 991337 баллов"),
+    )
+    log = Mock()
+    monkeypatch.setattr(agent_service_module, "logger", log)
+
+    result = await service.answer(conversation, "Покажи мои баллы")
+
+    assert result.status == AgentReplyStatus.UNAVAILABLE
+    log.warning.assert_called_once_with("event=agent_numbers_guard_rejected")
+    failure_call = log.error.call_args
+    assert failure_call is not None
+    assert failure_call.kwargs["category"] == "numbers_guard"
+    assert failure_call.kwargs["root_exception"] == "AgentNumbersGuardError"
+    assert "991337" not in repr(log.mock_calls)
 
 
 @pytest.mark.asyncio
