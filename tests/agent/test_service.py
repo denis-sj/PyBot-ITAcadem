@@ -19,8 +19,17 @@ from pydantic_ai.models.test import TestModel
 
 from pybot.core.constants import YEKATERINBURG_TZ
 from pybot.dto.agent import AgentReplyStatus
+from pybot.services.agent.service import build_agent_instructions
 from pybot.services.agent.tools import AgentDependencies, AgentToolRegistry, RegisteredAgentTool
 from tests.agent.conftest import build_service
+
+
+def test_relative_month_instruction_anchors_followup_to_last_assistant_answer():
+    instructions = build_agent_instructions()
+
+    assert "месяца, обсуждавшегося в последнем ответе истории" in instructions
+    assert "если в том ответе месяц не назван, считай от текущей даты" in instructions
+    assert "«позапрошлый» — два месяца до него" in instructions
 
 
 @pytest.mark.asyncio
