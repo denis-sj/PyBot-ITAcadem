@@ -150,9 +150,10 @@ async def test_missing_cost_prices_usage_tokens_and_marks_estimate(tmp_path) -> 
 
 
 @pytest.mark.asyncio
-async def test_http_error_is_not_billed_but_is_recorded_and_diagnosed(tmp_path) -> None:
+@pytest.mark.parametrize("status_code", [400, 429, 502, 503, 504])
+async def test_http_error_without_usage_records_upper_estimate(tmp_path, status_code: int) -> None:
     def fail(messages, info):
-        raise ModelHTTPError(429, TARGET_MODEL, {"error": {"metadata": {"provider_name": "synthetic"}}})
+        raise ModelHTTPError(status_code, TARGET_MODEL, {"error": {"metadata": {"provider_name": "synthetic"}}})
 
     ledger = SpendLedger(tmp_path / "ledger.json")
     model = ObservedPolzaModel(FunctionModel(fail), TARGET_MODEL, ledger, MAX_BUDGET_RUB)
@@ -160,10 +161,11 @@ async def test_http_error_is_not_billed_but_is_recorded_and_diagnosed(tmp_path) 
     with pytest.raises(ModelHTTPError):
         await model.request(messages, {"max_tokens": 1000}, ModelRequestParameters())
 
-    assert ledger.total_cost_rub == 0
+    estimated_cost = _estimated_request_cost(_estimate_request_input_tokens(messages, ModelRequestParameters()), 1000)
+    assert ledger.total_cost_rub == estimated_cost
     assert ledger.entries[0]["estimated"] is True
-    assert ledger.entries[0]["source"] == "http_error_not_billed_per_polza_docs"
-    assert model.failures[0]["http_status"] == 429
+    assert ledger.entries[0]["source"] == "request_error_upper_bound"
+    assert model.failures[0]["http_status"] == status_code
     terms = model.failures[0]["recognized_error_terms"]
     assert isinstance(terms, list)
     assert "provider_name" in terms

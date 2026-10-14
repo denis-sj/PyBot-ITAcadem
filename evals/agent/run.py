@@ -241,15 +241,9 @@ class ObservedPolzaModel(WrapperModel):
         try:
             response = await super().request(messages, model_settings, model_request_parameters)
         except BaseException as error:
-            if isinstance(error, ModelHTTPError):
-                # Polza docs: a request that ended with an HTTP error is not billed. Timeouts and cancellations
-                # (no HTTP answer) keep the conservative upper bound because partial output may be billed.
-                cost = Decimal(0)
-                source = "http_error_not_billed_per_polza_docs"
-            else:
-                cost = _estimated_request_cost(estimated_input_tokens, output_limit, self.response_tariff)
-                source = "request_error_upper_bound"
-            self.ledger.record_cost(self.polza_model_name, cost, estimated=True, source=source)
+            # The caller requested conservative accounting whenever usage is absent, including HTTP errors.
+            cost = _estimated_request_cost(estimated_input_tokens, output_limit, self.response_tariff)
+            self.ledger.record_cost(self.polza_model_name, cost, estimated=True, source="request_error_upper_bound")
             self.run_cost_rub += cost
             diagnostic: dict[str, JsonValue] = {"error_type": type(error).__name__, "usage_received": False}
             if isinstance(error, ModelHTTPError):
