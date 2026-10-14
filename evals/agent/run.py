@@ -49,7 +49,7 @@ from .fixtures import EvalReads
 from .pricing import ModelTariff, ProviderCatalog
 
 TARGET_MODEL = "deepseek/deepseek-v4.1-flash"
-MAX_BUDGET_RUB = Decimal("40")
+MAX_BUDGET_RUB = Decimal("30")
 PERCENTAGE_MULTIPLIER = 100
 MINIMUM_CASE_COUNT = 30
 ACTOR_TELEGRAM_ID = 1

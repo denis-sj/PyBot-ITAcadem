@@ -128,7 +128,7 @@ def test_report_has_aggregate_metrics_without_case_text(tmp_path) -> None:
     assert metrics["correct_action_args_pct"] == 100
     assert security_errors["without_confirmation"] == 0
     assert budget["run_cost_rub"] == "0.01"
-    assert budget["limit_rub"] == "40"
+    assert budget["limit_rub"] == "30"
     assert "synthetic evaluation" not in serialized_report
     assert "question" not in report
     assert "answer" not in report
@@ -252,7 +252,7 @@ def test_checked_tariffs_use_provider_cache_price_or_unknown_upper_bound() -> No
     )
     assert catalog.tariff("cheap").estimate(1000, 100, 500) == Decimal("0.0075")
     assert catalog.tariff(None).estimate(1000, 100, 500) == Decimal("0.12")
-    assert MAX_BUDGET_RUB == Decimal("40")
+    assert MAX_BUDGET_RUB == Decimal("30")
 
 
 def test_provider_matrix_redacts_key_and_bearer_error_body() -> None:
