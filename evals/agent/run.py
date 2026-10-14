@@ -49,7 +49,7 @@ from .fixtures import EvalReads
 from .pricing import ModelTariff, ProviderCatalog
 
 TARGET_MODEL = "deepseek/deepseek-v4.1-flash"
-MAX_BUDGET_RUB = Decimal("30")
+MAX_BUDGET_RUB = Decimal("40")
 PERCENTAGE_MULTIPLIER = 100
 MINIMUM_CASE_COUNT = 30
 ACTOR_TELEGRAM_ID = 1
@@ -754,7 +754,9 @@ def _validate_ledger_budget(ledger: SpendLedger) -> None:
     if ledger.unpriced_requests:
         raise BudgetStopError("The spend ledger contains an earlier request with unknown cost")
     if ledger.total_cost_rub + _maximum_request_cost(MAX_OUTPUT_TOKENS_PER_REQUEST) > MAX_BUDGET_RUB:
-        raise BudgetStopError("Recorded spend leaves less than the maximum cost of one request under the 30 ₽ limit")
+        raise BudgetStopError(
+            f"Recorded spend leaves less than the maximum cost of one request under the {MAX_BUDGET_RUB} ₽ limit"
+        )
 
 
 def _response_provider_tariff(response: httpx2.Response, catalog: ProviderCatalog) -> ModelTariff:
