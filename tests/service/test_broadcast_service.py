@@ -143,6 +143,24 @@ async def test_broadcast_for_all_happy_path(
 
 
 @pytest.mark.asyncio
+async def test_broadcast_skips_users_who_have_blocked_the_bot(settings_obj: AppSettings) -> None:
+    _configure_broadcast_settings(settings_obj)
+    available_user = _mk_user(11)
+    blocked_user = _mk_user(12)
+    blocked_user.bot_is_blocked = True
+    user_repository = FakeUserRepository(users=[available_user, blocked_user], role_users={})
+    notification_port = ScriptedNotificationPort()
+    service = BroadcastService(AsyncMock(spec=AsyncSession), user_repository, notification_port, settings_obj)
+
+    result = await service.broadcast_for_all(BroadcastDTO(broadcast_message="hello"))
+
+    assert result.attempted == 1
+    assert result.sent == 1
+    assert notification_port.call_counts == {11: 1}
+    assert notification_port.messages_by_user == {11: ["hello"]}
+
+
+@pytest.mark.asyncio
 async def test_broadcast_for_all_handles_partial_permanent_failure(settings_obj: AppSettings) -> None:
     _configure_broadcast_settings(settings_obj, bulk_size=3, max_concurrency=3, retry_attempts=2)
     users = [_mk_user(10), _mk_user(20), _mk_user(30)]

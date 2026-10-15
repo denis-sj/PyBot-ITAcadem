@@ -151,7 +151,8 @@ class BroadcastService:
 
         async with broadcast_lock:
             normalized_message = normalize_message(message, max_length=self._settings.broadcast_max_text_length)
-            result = await self._broadcast_users(users, normalized_message)
+            available_users = tuple(user for user in users if not user.bot_is_blocked)
+            result = await self._broadcast_users(available_users, normalized_message)
             logger.info(
                 summary_message,
                 attempted=result.attempted,
