@@ -14,7 +14,7 @@ from ..domain.exceptions import BroadcastAlreadyRunningError
 from ..dto import BroadcastDTO, BroadcastResult, CompetenceBroadcastDTO, NotifyDTO, RoleBroadcastDTO
 from ..infrastructure.user_repository import UserRepository
 from ..utils import normalize_message
-from .ports import NotificationPermanentError, NotificationPort, NotificationTemporaryError
+from .ports import NotificationBlockedError, NotificationPermanentError, NotificationPort, NotificationTemporaryError
 
 
 class BroadcastService:
@@ -84,46 +84,56 @@ class BroadcastService:
             with attempt:
                 await self.notification_service.send_message(NotifyDTO(message=message, recipient_id=recipient_id))
 
-    async def _send_one_user(self, recipient_id: int, message: str, result: BroadcastResult) -> None:
+    async def _send_one_user(self, user: User, message: str, result: BroadcastResult) -> bool:
+        recipient_id = user.telegram_id
         result.attempted += 1
         if recipient_id <= 0:
             result.skipped_invalid_user += 1
-            logger.warning("Broadcast skipped invalid telegram recipient id: {recipient_id}", recipient_id=recipient_id)
-            return
+            logger.warning("event=broadcast_delivery status=skipped reason=invalid_recipient")
+            return False
 
         try:
             await self._send_with_retry(recipient_id=recipient_id, message=message)
+        except NotificationBlockedError:
+            result.failed_permanent += 1
+            return True
         except NotificationTemporaryError:
             result.failed_temporary += 1
-            logger.warning(
-                "Broadcast temporary delivery failure for recipient_id={recipient_id}", recipient_id=recipient_id
-            )
+            logger.warning("event=broadcast_delivery status=failed category=temporary")
         except NotificationPermanentError:
             result.failed_permanent += 1
-            logger.warning(
-                "Broadcast permanent delivery failure for recipient_id={recipient_id}", recipient_id=recipient_id
-            )
-        except Exception:
+            logger.warning("event=broadcast_delivery status=failed category=permanent")
+        except Exception as error:
             result.failed_permanent += 1
-            logger.exception(
-                "Broadcast unexpected delivery failure for recipient_id={recipient_id}",
-                recipient_id=recipient_id,
+            logger.warning(
+                "event=broadcast_delivery status=failed category=unexpected error_type={error_type}",
+                error_type=type(error).__name__,
             )
         else:
             result.sent += 1
+        return False
 
     async def _send_batch(self, users: Sequence[User], message: str, result: BroadcastResult) -> None:
         semaphore = asyncio.Semaphore(self._settings.broadcast_max_concurrency)
 
-        async def worker(user: User) -> None:
+        async def worker(user: User) -> bool:
             async with semaphore:
-                await self._send_one_user(user.telegram_id, message, result)
+                return await self._send_one_user(user, message, result)
 
         worker_tasks = [worker(user) for user in users]
         outcomes = await asyncio.gather(*worker_tasks, return_exceptions=True)
-        for outcome in outcomes:
+        blocked_users = []
+        for user, outcome in zip(users, outcomes, strict=True):
             if isinstance(outcome, Exception):
-                logger.exception("Broadcast worker failed outside guarded flow: {error}", error=str(outcome))
+                logger.warning(
+                    "event=broadcast_worker status=failed error_type={error_type}",
+                    error_type=type(outcome).__name__,
+                )
+            elif outcome:
+                user.bot_is_blocked = True
+                blocked_users.append(user)
+        if blocked_users:
+            await self.db.commit()
 
     async def _broadcast_users(self, users: Sequence[User], message: str) -> BroadcastResult:
         result = BroadcastResult()
@@ -151,7 +161,8 @@ class BroadcastService:
 
         async with broadcast_lock:
             normalized_message = normalize_message(message, max_length=self._settings.broadcast_max_text_length)
-            result = await self._broadcast_users(users, normalized_message)
+            available_users = tuple(user for user in users if not user.bot_is_blocked)
+            result = await self._broadcast_users(available_users, normalized_message)
             logger.info(
                 summary_message,
                 attempted=result.attempted,

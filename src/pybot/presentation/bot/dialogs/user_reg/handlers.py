@@ -269,8 +269,11 @@ async def _on_competence_submit_impl(
 ) -> None:
     try:
         user = await _register_user_from_dialog(manager, user_reg_service)
-    except Exception:
-        logger.exception("event=registration phase=completion status=failed")
+    except Exception as error:
+        logger.warning(
+            "event=registration phase=completion status=failed error_type={error_type}",
+            error_type=type(error).__name__,
+        )
         if callback.message is not None:
             await callback.message.answer(REGISTRATION_INTERNAL_ERROR)
         await manager.done()
@@ -282,7 +285,7 @@ async def _on_competence_submit_impl(
         await manager.done()
         return
 
-    logger.info("User created: {user}", user=user.id)
+    logger.info("event=registration phase=completion status=created")
     if callback.message is not None:
         await callback.message.answer(registration_profile_created(user.first_name))
         user_profile_dto = await user_profile_service.build_profile_view(user)
@@ -381,8 +384,11 @@ async def _on_technology_stack_input_impl(
     except TechnologyStackValidationError as error:
         await message.answer(error.message)
         return
-    except Exception:
-        logger.exception("event=technology_stack phase=parse status=failed")
+    except Exception as error:
+        logger.warning(
+            "event=technology_stack phase=parse status=failed error_type={error_type}",
+            error_type=type(error).__name__,
+        )
         await message.answer(STACK_PARSE_RETRY)
         return
 
@@ -447,8 +453,11 @@ async def _on_technology_stack_save_impl(
         return
     try:
         saved_items = await technology_stack_service.replace_user_stack(owner_id, draft)
-    except Exception:
-        logger.exception("event=technology_stack phase=save status=failed")
+    except Exception as error:
+        logger.warning(
+            "event=technology_stack phase=save status=failed error_type={error_type}",
+            error_type=type(error).__name__,
+        )
         await callback.answer(STACK_SAVE_FAILED, show_alert=True)
         return
 
@@ -458,10 +467,13 @@ async def _on_technology_stack_save_impl(
         try:
             recommendations = await technology_stack_service.recommend_for_learning_items(owner_id, saved_items)
             response_text = render_stack_saved_recommendations(recommendations)
-        except Exception:
-            logger.exception("event=technology_stack phase=recommendations status=failed")
+        except Exception as error:
+            logger.warning(
+                "event=technology_stack phase=recommendations status=failed error_type={error_type}",
+                error_type=type(error).__name__,
+            )
             response_text = "Твой стек сохранён. Не получилось подобрать помощников сейчас — попробуй позже."
-        await callback.message.edit_text(response_text, reply_markup=None)
+        await callback.message.edit_text(response_text, reply_markup=None, parse_mode=None)
     await manager.done()
 
 

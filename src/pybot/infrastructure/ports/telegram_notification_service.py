@@ -147,8 +147,7 @@ class TelegramNotificationService(NotificationPort):
 
         except TelegramRetryAfter as exc:
             logger.warning(
-                "Telegram retry-after while sending message | recipient_id={recipient_id} retry_after={retry_after}",
-                recipient_id=recipient_id,
+                "event=direct_notification status=failed category=rate_limited retry_after={retry_after}",
                 retry_after=exc.retry_after,
             )
             raise NotificationTemporaryError(
@@ -156,16 +155,12 @@ class TelegramNotificationService(NotificationPort):
                 retry_after_seconds=float(exc.retry_after),
             ) from exc
         except TelegramForbiddenError as exc:
-            logger.warning(
-                "Telegram recipient blocked the bot | recipient_id={recipient_id}",
-                recipient_id=recipient_id,
-            )
+            logger.info("event=direct_notification status=blocked")
             raise NotificationBlockedError(message="Telegram recipient blocked the bot") from exc
         except (TelegramNetworkError, TelegramServerError, RestartingTelegram) as exc:
             logger.warning(
-                "Temporary Telegram failure while sending message | recipient_id={recipient_id} error={error}",
-                recipient_id=recipient_id,
-                error=str(exc),
+                "event=direct_notification status=failed category=temporary error_type={error_type}",
+                error_type=type(exc).__name__,
             )
             raise NotificationTemporaryError(message="Temporary Telegram delivery failure") from exc
         except (
@@ -175,23 +170,20 @@ class TelegramNotificationService(NotificationPort):
             TelegramEntityTooLarge,
         ) as exc:
             logger.warning(
-                "Permanent Telegram failure while sending message | recipient_id={recipient_id} error={error}",
-                recipient_id=recipient_id,
-                error=str(exc),
+                "event=direct_notification status=failed category=permanent error_type={error_type}",
+                error_type=type(exc).__name__,
             )
             raise NotificationPermanentError(message="Permanent Telegram delivery failure") from exc
         except TelegramAPIError as exc:
             logger.warning(
-                "Telegram API error while sending message | recipient_id={recipient_id} error={error}",
-                recipient_id=recipient_id,
-                error=str(exc),
+                "event=direct_notification status=failed category=api error_type={error_type}",
+                error_type=type(exc).__name__,
             )
             raise NotificationPermanentError(message="Telegram API delivery failure") from exc
         except Exception as exc:
-            logger.exception(
-                "Failed to send direct notification | recipient_id={recipient_id} message_preview={message_preview}",
-                recipient_id=recipient_id,
-                message_preview=cleaned_text[:120],
+            logger.error(
+                "event=direct_notification status=failed category=unexpected error_type={error_type}",
+                error_type=type(exc).__name__,
             )
             raise NotificationPermanentError(message="Unexpected notification delivery failure") from exc
 

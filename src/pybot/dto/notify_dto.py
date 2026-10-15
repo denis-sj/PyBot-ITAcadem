@@ -64,7 +64,7 @@ class NotificationLogEvent:
     """Structured log event for outbound notifications."""
 
     event_type: Literal["role_request_to_admin", "direct_message", "attendance_confirmed", "role_request_updated"]
-    recipient_id: int
+    recipient_id: int | None
     message_text: str
     request_id: int | None = None
     requester_user_id: int | None = None

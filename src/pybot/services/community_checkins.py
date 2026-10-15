@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import logger
 from ..core.config import YEKATERINBURG_TZ
+from ..core.constants import MAX_MODEL_INPUT_CHARACTERS
 from ..db.models import User
 from ..domain.services.community_achievements import calculate_attendance_achievements
 from ..domain.services.community_checkins import CheckinStatus, get_current_checkin_week_start, is_checkin_response_open
@@ -17,6 +18,7 @@ from ..infrastructure.attendance_repository import AttendanceRepository
 from ..infrastructure.user_notification_preference_repository import UserNotificationPreferenceRepository
 from ..infrastructure.weekly_checkin_repository import WeeklyCheckinRepository
 from ..presentation.texts.community_checkins import (
+    CHECKIN_MESSAGE_TOO_LONG,
     CHECKIN_PARSE_RETRY,
     CHECKIN_SAVED,
     STREAK_WARNING,
@@ -78,6 +80,7 @@ class CommunityCheckinService:
                     NotifyDTO(
                         recipient_id=recipient.telegram_id,
                         message=render_checkin_prompt(recipient.goal_text, recipient.has_technology_stack),
+                        parse_mode=None,
                     )
                 )
             except NotificationBlockedError:
@@ -93,9 +96,8 @@ class CommunityCheckinService:
                 raise
             except NotificationPermanentError as error:
                 logger.warning(
-                    "event=community_checkin_prompt status=failed user_id={user_id} error={error}",
-                    user_id=recipient.user_id,
-                    error=str(error),
+                    "event=community_checkin_prompt status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
                 continue
             sent_count += 1
@@ -113,12 +115,17 @@ class CommunityCheckinService:
         )
         if campaign is None or not is_checkin_response_open(campaign.week_start, local_now):
             return None
+        if len(source_text) > MAX_MODEL_INPUT_CHARACTERS:
+            return CHECKIN_MESSAGE_TOO_LONG
 
         try:
             parsed = await self._parser.parse(source_text)
             parsed = self._normalize_parsed_response(parsed)
-        except Exception:
-            logger.exception("event=community_checkin_parse status=failed user_id={user_id}", user_id=user_id)
+        except Exception as error:
+            logger.warning(
+                "event=community_checkin_parse status=failed error_type={error_type}",
+                error_type=type(error).__name__,
+            )
             return CHECKIN_PARSE_RETRY
 
         await self._repository.save_response(
@@ -155,6 +162,7 @@ class CommunityCheckinService:
                     NotifyDTO(
                         recipient_id=recipient.telegram_id,
                         message=render_checkin_reminder(recipient.goal_text),
+                        parse_mode=None,
                     )
                 )
             except NotificationBlockedError:
@@ -166,9 +174,8 @@ class CommunityCheckinService:
                 raise
             except NotificationPermanentError as error:
                 logger.warning(
-                    "event=community_checkin_reminder status=failed user_id={user_id} error={error}",
-                    user_id=recipient.user_id,
-                    error=str(error),
+                    "event=community_checkin_reminder status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
                 continue
             sent_count += 1
@@ -214,9 +221,8 @@ class CommunityCheckinService:
                 raise
             except NotificationPermanentError as error:
                 logger.warning(
-                    "event=streak_warning status=failed user_id={user_id} error={error}",
-                    user_id=recipient.user_id,
-                    error=str(error),
+                    "event=streak_warning status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
                 continue
             sent_count += 1

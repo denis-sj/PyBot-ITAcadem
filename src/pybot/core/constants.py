@@ -2,6 +2,7 @@ from enum import StrEnum
 from zoneinfo import ZoneInfo
 
 YEKATERINBURG_TZ = ZoneInfo("Asia/Yekaterinburg")
+MAX_MODEL_INPUT_CHARACTERS = 4_000
 
 
 class PointsTypeEnum(StrEnum):

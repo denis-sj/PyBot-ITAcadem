@@ -91,6 +91,21 @@ async def test_empty_week_is_sent_as_pdf_when_renderer_succeeds(monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pdf", (b"%PDF-test", None))
+async def test_revoked_admin_role_prevents_pdf_and_fallback_delivery(pdf: bytes | None) -> None:
+    service, checkins, notifications, document_delivery, report = make_empty_report_service()
+    checkins.is_available_report_recipient.return_value = False
+    recipient = PulseReportRecipientDTO(user_id=1, telegram_id=123)
+
+    delivered = await service._deliver_to_admin(recipient, report, pdf, "caption", "fallback")
+
+    assert delivered == 0
+    checkins.is_available_report_recipient.assert_awaited_once_with(service._db, recipient)
+    document_delivery.send_pdf.assert_not_awaited()
+    notifications.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_build_report_counts_visits_for_last_seven_full_days_and_previous_seven_days() -> None:
     from pybot.core.config import YEKATERINBURG_TZ
 

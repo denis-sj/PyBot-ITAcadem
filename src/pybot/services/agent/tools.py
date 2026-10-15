@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from typing import Literal
 
 from pydantic import JsonValue, TypeAdapter
 from pydantic_ai import RunContext, Tool
@@ -87,23 +88,66 @@ from .stack_action_tools import (
 )
 
 _ACTION_ARGUMENTS_ADAPTER = TypeAdapter(dict[str, JsonValue])
+ALL_AGENT_ROLES = frozenset({"Student", "Mentor", "Admin"})
+
+
+@dataclass(frozen=True)
+class ConfiguredAgentRoles:
+    """Resolve a tool's roles from a named application setting."""
+
+    setting_name: Literal["broadcast_allowed_roles"]
+
+
+AgentRolePolicy = frozenset[str] | ConfiguredAgentRoles
+
+
+@dataclass(frozen=True)
+class AgentToolMetadata:
+    """Policy and model-facing contract stored beside one registered tool."""
+
+    name: str
+    roles: AgentRolePolicy
+    kind: Literal["read", "action"]
+    requires_confirmation: bool
+    description: str
+    service: str
 
 
 @dataclass(frozen=True)
 class RegisteredAgentTool:
-    """A tool's role policy is enforced during discovery and execution."""
+    """A tool's metadata and confirmation presentation used by the registry."""
 
     tool: Tool[AgentDependencies]
-    allowed_roles: frozenset[str] = frozenset()
+    metadata: AgentToolMetadata
     confirmation_summary: Callable[[ToolCallPart, str | None], str] | None = None
-    uses_broadcast_roles: bool = False
     confirmation_previewer: Callable[[ToolCallPart, AgentDependencies], Awaitable[str]] | None = None
+
+
+def _register_tool(  # noqa: PLR0913
+    tool: Tool[AgentDependencies],
+    roles: AgentRolePolicy,
+    kind: Literal["read", "action"],
+    service: str,
+    *,
+    confirmation_summary: Callable[[ToolCallPart, str | None], str] | None = None,
+    confirmation_previewer: Callable[[ToolCallPart, AgentDependencies], Awaitable[str]] | None = None,
+) -> RegisteredAgentTool:
+    """Build one registry row from its executable tool and explicit policy."""
+    metadata = AgentToolMetadata(
+        name=tool.name,
+        roles=roles,
+        kind=kind,
+        requires_confirmation=tool.requires_approval,
+        description=tool.description or "",
+        service=service,
+    )
+    return RegisteredAgentTool(tool, metadata, confirmation_summary, confirmation_previewer)
 
 
 class AgentToolRegistry:
     """Keep tool policy next to its implementation without global registration."""
 
-    def __init__(
+    def __init__(  # noqa: C901
         self,
         entries: tuple[RegisteredAgentTool, ...] | None = None,
         *,
@@ -112,16 +156,14 @@ class AgentToolRegistry:
         self.broadcast_allowed_roles = broadcast_allowed_roles
         if entries is None:
             public_tools = tuple(
-                RegisteredAgentTool(Tool(function))
+                _register_tool(Tool(function), ALL_AGENT_ROLES, "read", "AgentReadService")
                 for function in (
-                    bot_capabilities,
                     get_my_profile,
                     get_my_achievements,
                     get_my_goal,
                     get_my_technology_stack,
                     find_technology_helpers,
                     get_upcoming_meetings,
-                    get_meeting_attendees,
                     get_my_attendance,
                     get_my_visits,
                     get_attendance_week_top,
@@ -131,143 +173,187 @@ class AgentToolRegistry:
                     get_competences_catalog,
                     get_my_roles,
                     get_my_competences,
-                    get_bot_info,
                 )
             )
+            public_tools = (
+                _register_tool(Tool(bot_capabilities), ALL_AGENT_ROLES, "read", "AgentDependencies"),
+                _register_tool(Tool(get_meeting_attendees), frozenset({"Admin", "Mentor"}), "read", "AgentReadService"),
+                _register_tool(Tool(get_bot_info), ALL_AGENT_ROLES, "read", "INFO_GLOBAL"),
+                *public_tools,
+            )
             admin_tools = tuple(
-                RegisteredAgentTool(Tool(function), ADMIN_AGENT_ROLES)
+                _register_tool(Tool(function), ADMIN_AGENT_ROLES, "read", "AgentReadService")
                 for function in (
                     get_current_month,
                     get_club_attendance_report,
                     get_user_profile,
                     get_user_attendance,
-                    get_current_chat_id,
                     find_user_candidates,
                 )
             )
+            admin_tools = (
+                *admin_tools,
+                _register_tool(Tool(get_current_chat_id), ADMIN_AGENT_ROLES, "read", "AgentDependencies"),
+            )
             admin_action_tools = (
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         adjust_user_points,
                         args_validator=validate_points_adjustment,
                         requires_approval=True,
                     ),
                     ADMIN_AGENT_ROLES,
-                    confirmation_summary,
+                    "action",
+                    "AgentActionsPort.adjust_points",
+                    confirmation_summary=confirmation_summary,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         change_user_role,
                         args_validator=validate_user_role_change,
                         requires_approval=True,
                     ),
                     ADMIN_AGENT_ROLES,
-                    confirmation_summary,
+                    "action",
+                    "AgentActionsPort.change_role",
+                    confirmation_summary=confirmation_summary,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         change_user_competence,
                         args_validator=validate_user_competence_change,
                         requires_approval=True,
                     ),
                     ADMIN_AGENT_ROLES,
-                    confirmation_summary,
+                    "action",
+                    "AgentActionsPort.change_competence",
+                    confirmation_summary=confirmation_summary,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         update_attendance_visit_time,
                         args_validator=validate_visit_update,
                         requires_approval=True,
                     ),
                     ADMIN_AGENT_ROLES,
-                    confirmation_summary,
+                    "action",
+                    "AgentActionsPort.update_visit_time",
+                    confirmation_summary=confirmation_summary,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         delete_attendance_visit,
                         args_validator=validate_visit_delete,
                         requires_approval=True,
                     ),
                     ADMIN_AGENT_ROLES,
-                    confirmation_summary,
+                    "action",
+                    "AgentActionsPort.delete_visit",
+                    confirmation_summary=confirmation_summary,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         add_manual_attendance_visit,
                         args_validator=validate_manual_visit,
                         requires_approval=True,
                     ),
                     ADMIN_AGENT_ROLES,
-                    confirmation_summary,
+                    "action",
+                    "AgentActionsPort.create_manual_visit",
+                    confirmation_summary=confirmation_summary,
                 ),
             )
-            role_request_tool = RegisteredAgentTool(
+            role_request_tool = _register_tool(
                 Tool(
                     request_mentor_role,
                     args_validator=validate_mentor_request,
                     requires_approval=True,
                 ),
                 frozenset({"Student"}),
-                _role_request_summary,
+                "action",
+                "AgentActionsPort.request_mentor_role",
+                confirmation_summary=_role_request_summary,
             )
             stack_action_tools = (
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         set_my_technology,
                         args_validator=validate_my_technology_update,
                         requires_approval=True,
                     ),
+                    ALL_AGENT_ROLES,
+                    "action",
+                    "AgentActionsPort.set_my_stack_item",
                     confirmation_summary=stack_confirmation_summary,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         remove_my_technology,
                         args_validator=validate_my_technology_removal,
                         requires_approval=True,
                     ),
+                    ALL_AGENT_ROLES,
+                    "action",
+                    "AgentActionsPort.remove_my_stack_item",
                     confirmation_summary=stack_confirmation_summary,
                 ),
             )
             goal_action_tools = (
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(set_my_goal, args_validator=validate_my_goal, requires_approval=True),
+                    ALL_AGENT_ROLES,
+                    "action",
+                    "AgentActionsPort.set_my_goal",
                     confirmation_summary=goal_confirmation_summary,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(mark_my_goal_achieved, args_validator=validate_goal_completion, requires_approval=True),
+                    ALL_AGENT_ROLES,
+                    "action",
+                    "AgentActionsPort.complete_my_goal",
                     confirmation_summary=goal_confirmation_summary,
                 ),
             )
             meeting_action_tools = (
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(create_community_meeting, args_validator=validate_meeting_creation, requires_approval=True),
                     frozenset({"Admin", "Mentor"}),
-                    meeting_confirmation_summary,
+                    "action",
+                    "AgentActionsPort.create_meeting",
+                    confirmation_summary=meeting_confirmation_summary,
                     confirmation_previewer=preview_meeting_creation,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         reschedule_community_meeting, args_validator=validate_meeting_reschedule, requires_approval=True
                     ),
+                    frozenset({"Admin", "Mentor"}),
+                    "action",
+                    "AgentActionsPort.reschedule_meeting",
                     confirmation_summary=meeting_confirmation_summary,
                     confirmation_previewer=preview_meeting_reschedule,
                 ),
-                RegisteredAgentTool(
+                _register_tool(
                     Tool(
                         cancel_community_meeting, args_validator=validate_meeting_cancellation, requires_approval=True
                     ),
+                    frozenset({"Admin", "Mentor"}),
+                    "action",
+                    "AgentActionsPort.cancel_meeting",
                     confirmation_summary=meeting_confirmation_summary,
                     confirmation_previewer=preview_meeting_cancellation,
                 ),
             )
-            broadcast_tool = RegisteredAgentTool(
+            broadcast_tool = _register_tool(
                 Tool(
                     send_broadcast,
                     args_validator=validate_broadcast,
                     requires_approval=True,
                 ),
+                ConfiguredAgentRoles("broadcast_allowed_roles"),
+                "action",
+                "AgentActionsPort.broadcast",
                 confirmation_summary=broadcast_confirmation_summary,
-                uses_broadcast_roles=True,
             )
             self.entries = (
                 *public_tools,
@@ -283,7 +369,22 @@ class AgentToolRegistry:
             self.entries = entries
         for entry in self.entries:
             entry.tool.sequential = True
-            if entry.tool.requires_approval and entry.confirmation_summary is None:
+            metadata = entry.metadata
+            if not metadata.name or metadata.name != entry.tool.name:
+                raise ValueError("Registered agent tool metadata must match its tool name")
+            if not metadata.description or metadata.description != entry.tool.description:
+                raise ValueError("Registered agent tools must define one model-facing description")
+            if not metadata.service:
+                raise ValueError("Registered agent tools must name the service they call")
+            if not metadata.roles:
+                raise ValueError("Registered agent tools must define an explicit role policy")
+            if metadata.kind == "action" and not metadata.requires_confirmation:
+                raise ValueError("Action tools must require user confirmation")
+            if metadata.kind == "read" and metadata.requires_confirmation:
+                raise ValueError("Read tools must not require action confirmation")
+            if metadata.requires_confirmation != entry.tool.requires_approval:
+                raise ValueError("Registered agent tool confirmation metadata must match its approval policy")
+            if metadata.requires_confirmation and entry.confirmation_summary is None:
                 raise ValueError("Action tools must define a user-facing confirmation summary")
         names = [entry.tool.name for entry in self.entries]
         if len(names) != len(set(names)):
@@ -333,24 +434,30 @@ class AgentToolRegistry:
     def get_policy(self, name: str) -> frozenset[str]:
         """Find a registered tool policy, rejecting unregistered names."""
         for entry in self.entries:
-            if entry.tool.name == name:
-                if entry.uses_broadcast_roles:
-                    if not self.broadcast_allowed_roles:
+            if entry.metadata.name == name:
+                roles = entry.metadata.roles
+                if isinstance(roles, ConfiguredAgentRoles):
+                    if roles.setting_name != "broadcast_allowed_roles" or not self.broadcast_allowed_roles:
                         raise AgentAccessDeniedError
                     return self.broadcast_allowed_roles
-                return entry.allowed_roles
+                return roles
         raise AgentAccessDeniedError
 
-    def for_roles(self, roles: frozenset[str]) -> AuthorizedAgentToolset:
+    def for_roles(self, actor_roles: frozenset[str]) -> AuthorizedAgentToolset:
         """Expose only tools allowed for the current role."""
         entries: list[RegisteredAgentTool] = []
         for entry in self.entries:
             resolved_entry = entry
-            if entry.uses_broadcast_roles:
+            role_policy = entry.metadata.roles
+            if isinstance(role_policy, ConfiguredAgentRoles):
                 if not self.broadcast_allowed_roles:
                     continue
-                resolved_entry = replace(entry, allowed_roles=self.broadcast_allowed_roles, uses_broadcast_roles=False)
-            if not resolved_entry.allowed_roles or roles.intersection(resolved_entry.allowed_roles):
+                resolved_entry = replace(
+                    entry,
+                    metadata=replace(entry.metadata, roles=self.broadcast_allowed_roles),
+                )
+                role_policy = self.broadcast_allowed_roles
+            if actor_roles.intersection(role_policy):
                 entries.append(resolved_entry)
         return AuthorizedAgentToolset(tuple(entries))
 
@@ -360,7 +467,13 @@ class AuthorizedAgentToolset(FunctionToolset[AgentDependencies]):
 
     def __init__(self, entries: tuple[RegisteredAgentTool, ...]) -> None:
         super().__init__([entry.tool for entry in entries])
-        self.policies = {entry.tool.name: entry.allowed_roles for entry in entries}
+        policies: dict[str, frozenset[str]] = {}
+        for entry in entries:
+            roles = entry.metadata.roles
+            if isinstance(roles, ConfiguredAgentRoles) or not roles:
+                raise ValueError("Toolsets require resolved, explicit tool role policies")
+            policies[entry.metadata.name] = roles
+        self.policies = policies
 
     async def call_tool(
         self,

@@ -72,6 +72,9 @@ def test_meeting_create_role_policy_and_dynamic_owner_actions() -> None:
 
     assert "create_community_meeting" not in student_tools
     assert "create_community_meeting" in mentor_tools
+    for name in ("reschedule_community_meeting", "cancel_community_meeting"):
+        assert name not in student_tools
+        assert name in mentor_tools
     for name in ("create_community_meeting", "reschedule_community_meeting", "cancel_community_meeting"):
         entry = next(item for item in registry.entries if item.tool.name == name)
         assert entry.tool.requires_approval is True

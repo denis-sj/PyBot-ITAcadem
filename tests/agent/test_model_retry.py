@@ -11,7 +11,7 @@ from pydantic_ai.models.function import FunctionModel
 
 from pybot.dto.agent import AgentReplyStatus
 from pybot.services.agent import model_timeout as timeout_module
-from pybot.services.agent.tools import AgentDependencies, AgentToolRegistry, RegisteredAgentTool
+from pybot.services.agent.tools import AgentDependencies, AgentToolMetadata, AgentToolRegistry, RegisteredAgentTool
 from tests.agent.conftest import build_service
 
 
@@ -121,11 +121,23 @@ async def test_confirmed_action_transient_error_is_never_retried(agent_settings,
     def model(messages, info):
         return ModelResponse(parts=[ToolCallPart("failing_action", {}, tool_call_id="synthetic-action")])
 
+    tool = Tool(
+        failing_action,
+        description="Выполнить тестовое действие после подтверждения.",
+        requires_approval=True,
+    )
     registry = AgentToolRegistry(
         (
             RegisteredAgentTool(
-                Tool(failing_action, requires_approval=True),
-                frozenset({"Admin"}),
+                tool,
+                AgentToolMetadata(
+                    name=tool.name,
+                    roles=frozenset({"Admin"}),
+                    kind="action",
+                    requires_confirmation=True,
+                    description=tool.description or "",
+                    service="TestAgentService",
+                ),
                 lambda call, recipient: "Подтвердить",
             ),
         )

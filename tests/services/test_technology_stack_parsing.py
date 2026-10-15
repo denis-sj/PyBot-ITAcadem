@@ -36,3 +36,14 @@ async def test_parser_rejects_garbage_when_model_returns_no_technologies() -> No
 
     with pytest.raises(TechnologyStackValidationError):
         await service.parse("Сегодня хорошая погода")
+
+
+@pytest.mark.asyncio
+async def test_very_long_stack_text_is_rejected_before_model_call() -> None:
+    parser = AsyncMock()
+    service = TechnologyStackParsingService(parser)
+
+    with pytest.raises(TechnologyStackValidationError, match="Сообщение слишком длинное"):
+        await service.parse("x" * 20_000)
+
+    parser.parse.assert_not_awaited()

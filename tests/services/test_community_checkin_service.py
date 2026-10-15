@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -12,6 +12,7 @@ from pybot.dto.community_checkins import (
     StreakWarningRecipientDTO,
 )
 from pybot.dto.technology_stack import TechnologyStackRecommendationDTO
+from pybot.services import community_checkins as community_checkins_module
 from pybot.services.community_checkins import CommunityCheckinService
 from pybot.services.ports import NotificationBlockedError
 
@@ -97,6 +98,40 @@ async def test_expired_checkin_does_not_consume_or_parse_message() -> None:
     assert result is None
     parser.parse.assert_not_awaited()
     repository.save_response.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_very_long_checkin_response_is_rejected_before_model_or_storage() -> None:
+    service, db, repository, _, _, _, _, parser, _ = make_checkin_service()
+    repository.find_latest_prompted_checkin.return_value = SimpleNamespace(id=22, week_start=date(2026, 10, 12))
+
+    result = await service.handle_response(42, "x" * 20_000, now=_open_checkin_time())
+
+    assert result == "Ответ слишком длинный. Сократи его до 4000 символов и отправь ещё раз."
+    parser.parse.assert_not_awaited()
+    repository.save_response.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_checkin_parse_failure_log_contains_no_user_or_message_data(monkeypatch) -> None:
+    service, _, repository, _, _, _, _, parser, _ = make_checkin_service()
+    repository.find_latest_prompted_checkin.return_value = SimpleNamespace(id=23, week_start=date(2026, 10, 12))
+    parser.parse.side_effect = ValueError("PRIVATE-EXCEPTION-CONTENT")
+    logger_mock = Mock()
+    monkeypatch.setattr(community_checkins_module, "logger", logger_mock)
+
+    await service.handle_response(
+        8_888_123,
+        "PRIVATE-CHECKIN-SOURCE",
+        now=_open_checkin_time(),
+    )
+
+    logger_mock.warning.assert_called_once()
+    logger_mock.exception.assert_not_called()
+    assert "8_888_123" not in repr(logger_mock.warning.call_args)
+    assert "PRIVATE-CHECKIN-SOURCE" not in repr(logger_mock.warning.call_args)
+    assert "PRIVATE-EXCEPTION-CONTENT" not in repr(logger_mock.warning.call_args)
 
 
 @pytest.mark.asyncio

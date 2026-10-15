@@ -18,6 +18,10 @@ class EvalReads(AgentReadService):
     async def get_my_achievements(self, user_id: int) -> str:
         return "🔥 Текущая серия посещений: 3 недели\n🏅 Достижения: Постоянство · 4 недели, Десятка"
 
+    async def get_my_goal(self, user_id: int) -> str:
+        del user_id
+        return "Моя активная цель: «подготовиться к собеседованию на Python»."
+
     async def get_my_stack(self, user_id: int) -> str:
         del user_id
         return "Твой стек:\nЗнаю: Python, SQL.\nИзучаю: Docker."
@@ -29,6 +33,10 @@ class EvalReads(AgentReadService):
     async def get_upcoming_meetings(self, user_id: int) -> str:
         del user_id
         return "Ближайших встреч для тебя пока нет."
+
+    async def get_meeting_attendees(self, meeting_id: int, user_id: int) -> str:
+        del meeting_id, user_id
+        return "На встречу отметились: Тест Иванов."
 
     async def get_profile_for_telegram_id(self, telegram_id: int) -> str:
         return "Профиль участника: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."

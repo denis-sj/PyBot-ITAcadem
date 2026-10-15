@@ -59,7 +59,10 @@ async def create_community_meeting(  # noqa: PLR0913
     audience_target: str | None = Field(default=None, max_length=100, strict=True),
     description: MeetingDescription = None,
 ) -> str:
-    """Create and publish a community meeting after explicit author confirmation."""
+    """Use audience_kind='all' for everyone; 'competence' or 'stack' uses audience_target for its name.
+
+    Omit leading в/на from venue: 'в аудитории клуба' -> 'аудитории клуба'.
+    """
     user = await ctx.deps.get_actor()
     draft = CommunityMeetingDraftDTO(
         title=title,

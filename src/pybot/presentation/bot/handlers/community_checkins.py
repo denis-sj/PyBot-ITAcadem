@@ -25,4 +25,4 @@ async def handle_private_checkin_response(
     reply = await service.handle_response(user_id, message.text)
     if reply is None:
         return UNHANDLED
-    await message.answer(reply)
+    await message.answer(reply, parse_mode=None)

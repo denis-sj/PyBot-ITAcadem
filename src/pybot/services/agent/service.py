@@ -22,7 +22,7 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ...core import logger
 from ...core.config import AppSettings
-from ...core.constants import YEKATERINBURG_TZ
+from ...core.constants import MAX_MODEL_INPUT_CHARACTERS, YEKATERINBURG_TZ
 from ...domain.agent import AgentAccessDeniedError
 from ...dto.agent import AgentConversation, AgentReply, AgentReplyStatus
 from ..ports.agent import AgentActionsPort, AgentMemoryPort, AgentModelPort
@@ -148,6 +148,10 @@ class AgentService:
             user = await self.users.find_user_by_telegram_id(conversation.telegram_id)
             if user is None:
                 return AgentReply(status=AgentReplyStatus.REGISTRATION_REQUIRED)
+            if len(question) > MAX_MODEL_INPUT_CHARACTERS:
+                return AgentReply(
+                    text=f"Сообщение слишком длинное. Сократите его до {MAX_MODEL_INPUT_CHARACTERS} символов."
+                )
             history: list[ModelMessage] = []
             for message in await self.memory.load(conversation):
                 if message.role == "user":

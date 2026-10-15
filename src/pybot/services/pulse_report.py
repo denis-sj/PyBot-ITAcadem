@@ -169,9 +169,10 @@ class PulseReportService:
         """Render once and switch to text delivery if the renderer fails."""
         try:
             return render_pulse_report_pdf(report)
-        except Exception:
-            logger.exception(
-                "event=pulse_report_render status=failed week_start={week_start}", week_start=report.week_start
+        except Exception as error:
+            logger.warning(
+                "event=pulse_report_render status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             return None
 
@@ -200,6 +201,8 @@ class PulseReportService:
         """Deliver PDF or fallback while translating blocked and permanent failures."""
         if pdf is None:
             return await self._send_fallback(recipient, fallback)
+        if not await self._checkins.is_available_report_recipient(self._db, recipient):
+            return 0
         try:
             await self._document_delivery.send_pdf(
                 recipient_id=recipient.telegram_id,
@@ -214,15 +217,16 @@ class PulseReportService:
             raise
         except NotificationPermanentError as error:
             logger.warning(
-                "event=pulse_report_delivery status=failed user_id={user_id} error={error}",
-                user_id=recipient.user_id,
-                error=str(error),
+                "event=pulse_report_delivery status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             return await self._send_fallback(recipient, fallback)
         return 1
 
     async def _send_fallback(self, recipient: PulseReportRecipientDTO, fallback: str) -> int:
         """Deliver the text report fallback when PDF rendering or upload fails."""
+        if not await self._checkins.is_available_report_recipient(self._db, recipient):
+            return 0
         try:
             await self._notifications.send_message(NotifyDTO(recipient_id=recipient.telegram_id, message=fallback))
         except NotificationBlockedError:
@@ -232,9 +236,8 @@ class PulseReportService:
             raise
         except NotificationPermanentError as error:
             logger.warning(
-                "event=pulse_report_fallback status=failed user_id={user_id} error={error}",
-                user_id=recipient.user_id,
-                error=str(error),
+                "event=pulse_report_fallback status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             return 0
         return 1

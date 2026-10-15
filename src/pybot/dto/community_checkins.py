@@ -17,9 +17,9 @@ GoalText = Annotated[str, Field(min_length=1, max_length=200, strict=True)]
 class ParsedCheckinResponseDTO(BaseDTO):
     """Structured check-in fields extracted from a participant's transient message."""
 
-    summary: Annotated[str, Field(max_length=200)] | None
+    summary: Annotated[str, Field(max_length=200, strict=True)] | None
     status: CheckinStatus
-    help_topic: Annotated[str, Field(max_length=40)] | None = None
+    help_topic: Annotated[str, Field(max_length=40, strict=True)] | None = None
     new_goal: GoalText | None = None
 
     @model_validator(mode="after")

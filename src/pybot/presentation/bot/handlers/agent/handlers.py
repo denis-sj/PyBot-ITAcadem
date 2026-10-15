@@ -98,8 +98,11 @@ async def handle_agent_confirmation(  # noqa: PLR0913
         )
         try:
             await _send_reply(bot, target, result, runtime, memory)
-        except Exception:
-            logger.exception("event=agent_confirmation phase=result_delivery status=failed")
+        except Exception as error:
+            logger.warning(
+                "event=agent_confirmation phase=result_delivery status=failed error_type={error_type}",
+                error_type=type(error).__name__,
+            )
 
 
 async def _send_reply(

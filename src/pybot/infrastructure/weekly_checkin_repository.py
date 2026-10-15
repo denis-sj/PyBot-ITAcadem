@@ -344,3 +344,25 @@ class WeeklyCheckinRepository:
         return tuple(
             PulseReportRecipientDTO(user_id=user_id, telegram_id=telegram_id) for user_id, telegram_id in result.all()
         )
+
+    async def is_available_report_recipient(
+        self,
+        db: AsyncSession,
+        recipient: PulseReportRecipientDTO,
+    ) -> bool:
+        """Recheck the recipient's Admin role and delivery eligibility immediately before sending."""
+        statement = (
+            select(1)
+            .select_from(User)
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .where(
+                User.id == recipient.user_id,
+                User.telegram_id == recipient.telegram_id,
+                User.bot_is_blocked.is_(False),
+                Role.name == RoleEnum.ADMIN.value,
+            )
+            .limit(1)
+        )
+        result = await db.execute(statement)
+        return result.scalar_one_or_none() is not None

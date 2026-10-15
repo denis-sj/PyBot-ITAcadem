@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from datetime import time as datetime_time
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus
 from pathlib import Path
@@ -32,13 +33,15 @@ from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RunUsage
 
-from pybot.core.config import AppSettings, get_settings
+from pybot.core.config import YEKATERINBURG_TZ, AppSettings, get_settings
 from pybot.core.constants import PointsTypeEnum
 from pybot.domain.exceptions import UserNotFoundError
 from pybot.dto import UserReadDTO
 from pybot.dto.agent import AgentConversation, AgentMemoryMessage, AgentReply
+from pybot.dto.community_meetings import CommunityMeetingDraftDTO
 from pybot.dto.value_objects import Points
 from pybot.infrastructure.adapters.polza_agent import PolzaAgentModel
+from pybot.presentation.texts.community_meetings import render_meeting_draft
 from pybot.services.agent.runtime import AgentRuntime, PendingAgentRequest
 from pybot.services.agent.service import AgentService, build_agent_instructions
 from pybot.services.agent.tools import AgentToolRegistry
@@ -50,8 +53,11 @@ from .fixtures import EvalReads
 from .pricing import ModelTariff, ProviderCatalog
 
 TARGET_MODEL = "deepseek/deepseek-v4.1-flash"
-MAX_BUDGET_RUB = Decimal("40")
+MAX_BUDGET_RUB = Decimal("64.1622182716")
+STOP_BUDGET_RUB = Decimal("59.1622182716")
 PERCENTAGE_MULTIPLIER = 100
+PREFIX_PRESSURE_PCT = 95
+REQUIRED_ACCEPTANCE_REPETITIONS = 3
 MINIMUM_CASE_COUNT = 30
 ACTOR_TELEGRAM_ID = 1
 FIRST_SYNTHETIC_USER_ID = 771234
@@ -87,25 +93,29 @@ _EXCEPTION_REASON_NAMES = {
     "APITimeoutError": "api_timeout",
     "ModelAPIError": "model_api_error",
 }
-ACTION_EXECUTORS = {
-    "request_mentor_role": "request_mentor_role",
-    "adjust_user_points": "adjust_points",
-    "change_user_role": "change_role",
-    "change_user_competence": "change_competence",
-    "update_attendance_visit_time": "update_visit_time",
-    "delete_attendance_visit": "delete_visit",
-    "add_manual_attendance_visit": "create_manual_visit",
-    "send_broadcast": "broadcast",
-    "set_my_technology": "set_my_stack_item",
-    "remove_my_technology": "remove_my_stack_item",
-}
-ADMIN_ACTIONS = frozenset(ACTION_EXECUTORS) - {
-    "request_mentor_role",
-    "set_my_technology",
-    "remove_my_technology",
-}
 REPORTS_DIR = Path(__file__).with_name("reports")
 LEDGER_PATH = REPORTS_DIR / "spend-ledger.json"
+ACCEPTANCE_BASELINE_PATH = REPORTS_DIR / "acceptance-baseline.json"
+PREFIX_TOKEN_BUDGETS_PATH = REPORTS_DIR / "prefix-token-budgets.json"
+SMOKE_CASE_NAMES = frozenset(
+    {
+        "student_capabilities",
+        "my_profile",
+        "my_achievements",
+        "my_technology_stack",
+        "technology_helpers",
+        "student_read_my_goal",
+        "my_attendance",
+        "my_visits_month_choice",
+        "student_upcoming_meetings",
+        "set_my_technology_confirmation",
+        "admin_points_change_confirmation",
+        "admin_broadcast_confirmation",
+        "admin_meeting_create_all",
+        "admin_meeting_reschedule",
+        "admin_meeting_cancel",
+    }
+)
 
 
 class ExpectedToolCall(BaseModel):
@@ -122,9 +132,14 @@ class EvalCase(BaseModel):
     question: str
     roles: frozenset[str]
     expected_tools: set[str]
+    expected_refusal: bool = False
+    refusal_phrases: list[str] = Field(default_factory=list)
+    forbidden_tools: set[str] = Field(default_factory=set)
+    security: bool = False
     expected_confirmation: bool = False
     expected_call_args: list[ExpectedToolCall] = Field(default_factory=list)
     required_phrases: list[str]
+    required_phrase_alternatives: list[list[str]] = Field(default_factory=list)
     forbidden_phrases: list[str]
     history: list[AgentMemoryMessage] = Field(default_factory=list)
     search_mode: Literal["unique", "ambiguous", "none"] = "unique"
@@ -155,6 +170,8 @@ class CaseRun:
     requests: int
     latency_s: float
     cost_rub: Decimal | None
+    exact_cost_rub: Decimal
+    reserved_cost_rub: Decimal
     input_tokens: int
     cached_tokens: int
     output_tokens: int
@@ -167,6 +184,14 @@ class CaseRun:
     connection_failure: bool = False
     connection_diagnostic: dict[str, JsonValue] | None = None
     finish_reason_length_responses: int = 0
+    safe_refusal_accepted: bool = False
+
+
+@dataclass(frozen=True)
+class SmokePressureResult:
+    tool_selection_misses: int | None
+    security_error_count: int | None
+    signals: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -181,7 +206,11 @@ class ReportMetadata:
     aborted: bool
     abort_reason: str | None
     initial_cost_rub: Decimal | None = None
-    budget_limit_rub: Decimal = MAX_BUDGET_RUB
+    budget_limit_rub: Decimal = STOP_BUDGET_RUB
+    ledger_limit_rub: Decimal = MAX_BUDGET_RUB
+    stop_limit_rub: Decimal = STOP_BUDGET_RUB
+    evaluation_scope: Literal["full", "tool", "smoke", "cases"] = "full"
+    selected_tool: str | None = None
 
 
 class BudgetStopError(RuntimeError):
@@ -196,12 +225,16 @@ class SpendLedger:
         self.total_cost_rub = Decimal("0")
         self.unpriced_requests = 0
         self.request_count = 0
+        self.global_limit_rub = MAX_BUDGET_RUB
+        self.stop_limit_rub = STOP_BUDGET_RUB
         self.entries: list[dict[str, JsonValue]] = []
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
             self.total_cost_rub = Decimal(data["total_cost_rub"])
             self.unpriced_requests = int(data["unpriced_requests"])
             self.request_count = int(data["request_count"])
+            self.global_limit_rub = Decimal(data.get("global_limit_rub", format(MAX_BUDGET_RUB, "f")))
+            self.stop_limit_rub = Decimal(data.get("stop_limit_rub", format(STOP_BUDGET_RUB, "f")))
             self.entries = data.get("entries", [])
 
     def record_cost(self, model: str, cost_rub: Decimal, *, estimated: bool = False, source: str = "cost_rub") -> None:
@@ -216,6 +249,8 @@ class SpendLedger:
         payload = {
             "model": model,
             "total_cost_rub": format(self.total_cost_rub, "f"),
+            "global_limit_rub": format(self.global_limit_rub, "f"),
+            "stop_limit_rub": format(self.stop_limit_rub, "f"),
             "request_count": self.request_count,
             "unpriced_requests": self.unpriced_requests,
             "estimated_records": sum(entry.get("estimated") is True for entry in self.entries),
@@ -249,6 +284,8 @@ class ObservedPolzaModel(WrapperModel):
         self.responses: list[ModelResponse] = []
         self.request_latencies_s: list[float] = []
         self.run_cost_rub = Decimal("0")
+        self.run_exact_cost_rub = Decimal("0")
+        self.run_reserved_cost_rub = Decimal("0")
         self.budget_exceeded = False
         self.stop_reason: str | None = None
         self.failures: list[dict[str, JsonValue]] = []
@@ -296,6 +333,10 @@ class ObservedPolzaModel(WrapperModel):
                     source="request_error_upper_bound",
                 )
             self.run_cost_rub += cost
+            if isinstance(error, ModelHTTPError):
+                self.run_exact_cost_rub += cost
+            else:
+                self.run_reserved_cost_rub += cost
             diagnostic = _exception_diagnostic(error)
             diagnostic["usage_received"] = False
             diagnostic["elapsed_s"] = round(elapsed_s, 3)
@@ -352,6 +393,10 @@ class ObservedPolzaModel(WrapperModel):
             source=cost_source,
         )
         self.run_cost_rub += cost_rub
+        if estimated:
+            self.run_reserved_cost_rub += cost_rub
+        else:
+            self.run_exact_cost_rub += cost_rub
         if self.ledger.unpriced_requests:
             raise BudgetStopError("A previous Polza request has an unknown cost")
         if self.ledger.total_cost_rub > self.budget:
@@ -409,10 +454,10 @@ class EvalUsers(UserService):
         return set(self.roles) if user_id == ACTOR_TELEGRAM_ID else None
 
 
-async def run_evals() -> int:
+async def run_evals() -> int:  # noqa: C901, PLR0915
     """Run paid synthetic evaluations from the opt-in CLI and save aggregate metrics."""
     args = _parse_args()
-    cases = _load_cases(args.case)
+    cases = _load_cases(args.case, tool_name=args.tool, smoke=args.smoke)
     base_settings = get_settings()
     settings = base_settings.model_copy(
         update={"agent_enabled": True, "agent_model": args.model, "broadcast_allowed_roles": frozenset({"Admin"})}
@@ -421,9 +466,17 @@ async def run_evals() -> int:
     catalog = ProviderCatalog.load(REPORTS_DIR / "provider-catalog.json")
     _validate_ledger_budget(ledger)
     initial_cost_rub = ledger.total_cost_rub
-    run_budget = _run_budget(getattr(args, "max_run_cost_rub", None), initial_cost_rub)
+    run_budget = _run_budget(
+        getattr(args, "max_run_cost_rub", None),
+        initial_cost_rub,
+        ledger.stop_limit_rub,
+        ledger.global_limit_rub,
+    )
     prefix_tokens = _role_prefix_token_counts()
     forecast = _forecast_max_batch_cost(len(cases), args.repeat, settings.agent_max_steps, catalog.tariff())
+    evaluation_scope: Literal["full", "tool", "smoke", "cases"] = (
+        "tool" if args.tool else "smoke" if args.smoke else "cases" if args.case else "full"
+    )
 
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     runs: list[CaseRun] = []
@@ -446,6 +499,10 @@ async def run_evals() -> int:
                 abort_reason,
                 initial_cost_rub,
                 run_budget,
+                ledger.global_limit_rub,
+                ledger.stop_limit_rub,
+                evaluation_scope,
+                args.tool,
             ),
             runs,
             http_metadata,
@@ -454,6 +511,14 @@ async def run_evals() -> int:
 
     async def capture_metadata(response: httpx2.Response) -> None:
         await _capture_eval_response(response, catalog, observed_model, http_metadata)
+
+    preflight_pressure = _toolset_pressure_result({"fixed_prefix_tokens": prefix_tokens}, evaluation_scope="full")
+    if preflight_pressure["status"] == "STOP":
+        aborted, abort_reason = True, "toolset_prefix_budget_approaching"
+        report = save_report()
+        print(f"STOP: {abort_reason}; платные запросы не отправлялись.")
+        _print_toolset_pressure(report)
+        return 2
 
     async with httpx2.AsyncClient(
         timeout=settings.agent_timeout_s, event_hooks={"response": [capture_metadata]}
@@ -494,10 +559,15 @@ async def run_evals() -> int:
         f"Отчёт: {report_path}; расход этого запуска: {report['budget']['run_cost_rub']} ₽; "
         f"накопительно: {report['budget']['cumulative_cost_rub']} ₽"
     )
+    _print_acceptance(report)
+    _print_toolset_pressure(report)
     if aborted:
         print(f"STOP: {abort_reason or 'не удалось безопасно оценить стоимость'}; новые запросы не отправлялись.")
         return 2
-    return 0 if report["metrics"]["correct_tools_pct"] == FULL_PERCENTAGE else 1
+    pressure = report.get("toolset_pressure")
+    if isinstance(pressure, dict) and pressure.get("status") == "STOP":
+        return 1
+    return 0 if all(run.passed or run.connection_failure for run in runs) else 1
 
 
 async def _capture_eval_response(
@@ -531,14 +601,233 @@ def _write_eval_report(
 ) -> dict[str, JsonValue]:
     """Atomically save completed-case metrics and all recorded request liabilities."""
     report = _build_report(metadata, runs)
+    report["evaluation_scope"] = metadata.evaluation_scope
+    report["selected_tool"] = metadata.selected_tool
     report["http_response_metadata"] = http_metadata
     report["catalog_tariffs"] = catalog.model_dump(mode="json")
     report["tariffs_checked_at"] = "2026-10-13"
+    report["acceptance"] = _acceptance_result(report, metadata.evaluation_scope)
+    report["toolset_pressure"] = _toolset_pressure_result(report, metadata.evaluation_scope)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_suffix(".tmp")
     temporary_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary_path.replace(path)
     return report
+
+
+def _acceptance_result(report: dict[str, JsonValue], evaluation_scope: str) -> dict[str, JsonValue]:
+    """Compare full repeat-three runs with the saved B3 quality, cost, cache, and security limits."""
+    baseline = json.loads(ACCEPTANCE_BASELINE_PATH.read_text(encoding="utf-8"))
+    reasons: list[str] = []
+    if evaluation_scope != "full" or report.get("repetitions_requested") != REQUIRED_ACCEPTANCE_REPETITIONS:
+        return {
+            "status": "НЕ ПРИНЯТО",
+            "reasons": ["Критерии B3 проверяются только полным набором ×3."],
+            "scope": evaluation_scope,
+        }
+
+    report_cases_value = report.get("cases")
+    report_cases = report_cases_value if isinstance(report_cases_value, list) else []
+    cases_by_name = {
+        case.get("name"): case for case in report_cases if isinstance(case, dict) and isinstance(case.get("name"), str)
+    }
+    legacy_names = baseline["legacy_case_names"]
+    expected_legacy_runs = baseline["legacy_case_count"] * 3
+    legacy_case_rows = [cases_by_name.get(name) for name in legacy_names]
+    legacy_rows = [case for case in legacy_case_rows if isinstance(case, dict)]
+    legacy_runs = sum(_integer_metric(case, "runs") for case in legacy_rows)
+    legacy_quality_runs = sum(_integer_metric(case, "quality_evaluable_runs") for case in legacy_rows)
+    legacy_correct_tools = sum(_integer_metric(case, "tools_correct") for case in legacy_rows)
+    old_quality_pct = _percentage(legacy_correct_tools, legacy_quality_runs)
+    if legacy_runs < expected_legacy_runs:
+        reasons.append(f"Старые кейсы выполнены {legacy_runs}/{expected_legacy_runs} раз.")
+    if old_quality_pct is None or old_quality_pct < baseline["minimum_legacy_correct_tools_pct"]:
+        reasons.append(
+            f"Точность инструментов по старым 39 кейсам {old_quality_pct}% ниже "
+            f"{baseline['minimum_legacy_correct_tools_pct']}%."
+        )
+
+    metrics_value = report.get("metrics")
+    metrics = metrics_value if isinstance(metrics_value, dict) else {}
+    budget_value = metrics.get("exact_cost_per_question_rub")
+    exact_cost = _numeric_metric(budget_value, "mean") if isinstance(budget_value, dict) else None
+    if exact_cost is None or exact_cost > float(baseline["maximum_exact_cost_per_question_rub"]):
+        reasons.append(
+            f"Точная цена на вопрос {exact_cost} ₽ превышает предел "
+            f"{baseline['maximum_exact_cost_per_question_rub']} ₽."
+        )
+    cache_share = _numeric_metric(metrics, "cache_share_pct")
+    if cache_share is None or cache_share < baseline["minimum_cache_share_pct"]:
+        reasons.append(f"Доля кэша {cache_share}% ниже {baseline['minimum_cache_share_pct']}%.")
+    usage_value = metrics.get("usage_totals")
+    reasoning_tokens = _integer_metric(usage_value, "reasoning_tokens") if isinstance(usage_value, dict) else 0
+    if reasoning_tokens != baseline["maximum_reasoning_tokens"]:
+        reasons.append(f"Обнаружено reasoning-токенов: {reasoning_tokens}.")
+    security_value = metrics.get("security_errors")
+    security_errors = (
+        {str(name): int(value) for name, value in security_value.items() if isinstance(value, int)}
+        if isinstance(security_value, dict)
+        else {}
+    )
+    if any(security_errors.values()):
+        reasons.append(f"Ошибки безопасности: {security_errors}.")
+    question_runs = _integer_metric(report, "question_runs")
+    connection_failures = _integer_metric(metrics, "connection_failure_question_runs")
+    connection_failure_pct = _percentage(connection_failures, question_runs)
+    if connection_failure_pct is None or connection_failure_pct > baseline["maximum_connection_failure_pct"]:
+        reasons.append(f"Сбои связи составили {connection_failure_pct}% вопросов.")
+
+    accepted = not reasons
+    if accepted:
+        reasons.append("Все критерии B3 выполнены: качество, точная стоимость, кэш, reasoning и безопасность.")
+    return {
+        "status": "ПРИНЯТО" if accepted else "НЕ ПРИНЯТО",
+        "reasons": reasons,
+        "scope": evaluation_scope,
+        "legacy_correct_tools_pct": old_quality_pct,
+        "exact_cost_per_question_rub": exact_cost,
+        "cache_share_pct": cache_share,
+        "reasoning_tokens": reasoning_tokens,
+        "connection_failure_pct": connection_failure_pct,
+        "security_errors": security_errors,
+        "baseline": {
+            "legacy_correct_tools_pct": baseline["baseline_correct_tools_pct"],
+            "minimum_legacy_correct_tools_pct": baseline["minimum_legacy_correct_tools_pct"],
+            "baseline_exact_cost_per_question_rub": baseline["baseline_exact_cost_per_question_rub"],
+            "maximum_exact_cost_per_question_rub": baseline["maximum_exact_cost_per_question_rub"],
+            "baseline_cache_share_pct": baseline["baseline_cache_share_pct"],
+            "minimum_cache_share_pct": baseline["minimum_cache_share_pct"],
+        },
+    }
+
+
+def _toolset_pressure_result(report: dict[str, JsonValue], evaluation_scope: str) -> dict[str, JsonValue]:
+    """Stop evals when role prefixes approach their ceiling or smoke selection regresses."""
+    baseline = json.loads(ACCEPTANCE_BASELINE_PATH.read_text(encoding="utf-8"))
+    budgets = json.loads(PREFIX_TOKEN_BUDGETS_PATH.read_text(encoding="utf-8"))["roles"]
+    prefix_value = report.get("fixed_prefix_tokens")
+    prefixes = prefix_value if isinstance(prefix_value, dict) else {}
+    utilization: dict[str, float | None] = {}
+    signals: list[str] = []
+
+    for role, budget in budgets.items():
+        role_prefix = prefixes.get(role)
+        token_count = role_prefix.get("combined_tokens") if isinstance(role_prefix, dict) else None
+        if not isinstance(budget, int) or not isinstance(token_count, int):
+            utilization[role] = None
+            continue
+        share = round(token_count * PERCENTAGE_MULTIPLIER / budget, 2)
+        utilization[role] = share
+        if share >= PREFIX_PRESSURE_PCT:
+            signals.append(f"Префикс роли {role} занимает {share}% лимита ({PREFIX_PRESSURE_PCT}% — порог STOP).")
+
+    smoke_max_tool_selection_misses = int(baseline["smoke_max_tool_selection_misses"])
+    smoke_max_security_errors = int(baseline["smoke_max_security_errors"])
+    smoke_pressure = (
+        _smoke_toolset_pressure_result(
+            report,
+            smoke_max_tool_selection_misses,
+            smoke_max_security_errors,
+        )
+        if evaluation_scope == "smoke"
+        else SmokePressureResult(None, None, ())
+    )
+    signals.extend(smoke_pressure.signals)
+
+    return {
+        "status": "STOP" if signals else "OK",
+        "signals": signals,
+        "prefix_utilization_pct": utilization,
+        "prefix_stop_threshold_pct": PREFIX_PRESSURE_PCT,
+        "smoke_tool_selection_misses": smoke_pressure.tool_selection_misses,
+        "smoke_max_tool_selection_misses": smoke_max_tool_selection_misses,
+        "smoke_security_error_count": smoke_pressure.security_error_count,
+        "smoke_max_security_errors": smoke_max_security_errors,
+        "suggestion": "Исправить конкретные провалившиеся кейсы; описания инструментов держать в бюджете C2."
+        if signals
+        else None,
+    }
+
+
+def _smoke_toolset_pressure_result(
+    report: dict[str, JsonValue],
+    maximum_tool_selection_misses: int,
+    maximum_security_errors: int,
+) -> SmokePressureResult:
+    metrics_value = report.get("metrics")
+    metrics = metrics_value if isinstance(metrics_value, dict) else {}
+    quality_runs = _integer_metric(metrics, "quality_evaluable_question_runs")
+    correct_tools = _integer_metric(metrics, "correct_tool_selections")
+    security_value = metrics.get("security_errors")
+    security_errors = (
+        [value for value in security_value.values() if isinstance(value, int) and not isinstance(value, bool)]
+        if isinstance(security_value, dict)
+        else None
+    )
+    security_error_count = sum(security_errors) if security_errors is not None else None
+    tool_selection_misses = quality_runs - correct_tools if quality_runs else None
+    signals: list[str] = []
+    if tool_selection_misses is None:
+        signals.append("В отчёте smoke отсутствуют счётчики попыток выбора инструмента; требуется проверить метрики.")
+    elif tool_selection_misses > maximum_tool_selection_misses:
+        signals.append(
+            f"В smoke {tool_selection_misses} промахов выбора инструмента; "
+            f"допустимо не больше {maximum_tool_selection_misses}."
+        )
+    if security_error_count is None:
+        signals.append("В отчёте smoke отсутствуют счётчики ошибок безопасности.")
+    elif security_error_count > maximum_security_errors:
+        signals.append(
+            f"В smoke обнаружено {security_error_count} ошибок безопасности; "
+            f"допустимо не больше {maximum_security_errors}."
+        )
+    return SmokePressureResult(tool_selection_misses, security_error_count, tuple(signals))
+
+
+def _integer_metric(metrics: object, name: str) -> int:
+    if not isinstance(metrics, dict):
+        return 0
+    value = metrics.get(name)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _numeric_metric(metrics: object, name: str) -> float | None:
+    if not isinstance(metrics, dict):
+        return None
+    value = metrics.get(name)
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def _print_acceptance(report: dict[str, JsonValue]) -> None:
+    """Print the saved B3 acceptance result and its concrete limiting conditions."""
+    acceptance_value = report.get("acceptance")
+    if not isinstance(acceptance_value, dict):
+        print("НЕ ПРИНЯТО: в отчёте нет результата сравнения с B3.")
+        return
+    print(f"{acceptance_value.get('status', 'НЕ ПРИНЯТО')} по критериям B3.")
+    reasons = acceptance_value.get("reasons", [])
+    if isinstance(reasons, list):
+        for reason in reasons:
+            if isinstance(reason, str):
+                print(f"  {reason}")
+
+
+def _print_toolset_pressure(report: dict[str, JsonValue]) -> None:
+    """Show the stop signal that protects smoke quality and fixed-prefix headroom."""
+    pressure = report.get("toolset_pressure")
+    if not isinstance(pressure, dict):
+        return
+    signals = pressure.get("signals", [])
+    if pressure.get("status") != "STOP" or not isinstance(signals, list):
+        print("Нагрузка на реестр инструментов в пределах зафиксированных порогов.")
+        return
+    print("STOP: ухудшилась точность smoke или префикс приблизился к бюджету.")
+    for signal in signals:
+        if isinstance(signal, str):
+            print(f"  {signal}")
+    suggestion = pressure.get("suggestion")
+    if isinstance(suggestion, str):
+        print(f"  Предложение владельцу: {suggestion}")
 
 
 def _model_stop_reason(model: ObservedPolzaModel) -> str | None:
@@ -552,8 +841,9 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
     """Run one case through the real service policy with local synthetic adapters."""
     reads = EvalReads(search_mode=case.search_mode)
     users = EvalUsers(case.roles)
-    actions = _synthetic_actions()
     registry = AgentToolRegistry(broadcast_allowed_roles=frozenset({"Admin"}))
+    action_executors = _registered_action_executors(registry)
+    actions = _synthetic_actions(action_executors)
     runtime = AgentRuntime()
     service = AgentService(
         users=users,
@@ -576,13 +866,13 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
             reply = await service.answer(conversation, case.question, is_forwarded=case.is_forwarded)
     except Exception:
         reply = AgentReply(status="unavailable")
-    executions_before_confirmation = _execution_count(actions)
+    executions_before_confirmation = _execution_count(actions, action_executors)
 
     pending = runtime.find_pending(reply.confirmation_id) if reply.confirmation_id is not None else None
     if case.confirm_after_preview and reply.confirmation_id is not None:
         runtime.bind_message(reply.confirmation_id, 777)
         await service.confirm(reply.confirmation_id, conversation, 777, approved=True)
-    executions_after_confirmation = _execution_count(actions) - executions_before_confirmation
+    executions_after_confirmation = _execution_count(actions, action_executors) - executions_before_confirmation
     latency_s = time.perf_counter() - started_at
 
     calls = [
@@ -592,17 +882,33 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         if isinstance(part, ToolCallPart)
     ]
     actual_tools = {call.tool_name for call in calls}
-    tools_correct = actual_tools == case.expected_tools
+    refusal_observed = _has_expected_refusal(case, reply.text)
+    forbidden_tool_calls = actual_tools.intersection(case.forbidden_tools)
+    safe_refusal_accepted = _is_safe_refusal(
+        case,
+        reply_text=reply.text,
+        reply_status=reply.status.value,
+        actual_tools=actual_tools,
+        action_tool_names=set(action_executors),
+    )
+    tools_correct = actual_tools == case.expected_tools or safe_refusal_accepted
     confirmation_correct = (reply.confirmation_id is not None) == case.expected_confirmation
     reply_text = reply.text.casefold()
-    phrases_correct = all(phrase.casefold() in reply_text for phrase in case.required_phrases) and not any(
-        phrase.casefold() in reply_text for phrase in case.forbidden_phrases
-    )
-    action_expected = [expected for expected in case.expected_call_args if expected.tool_name in ACTION_EXECUTORS]
+    phrases_correct = _phrases_correct(case, reply_text)
+    action_expected = [expected for expected in case.expected_call_args if expected.tool_name in action_executors]
     action_args_correct = sum(_has_matching_call(expected, calls) for expected in action_expected)
     all_args_correct = all(_has_matching_call(expected, calls) for expected in case.expected_call_args)
     status_correct = reply.status.value == "success"
-    passed = tools_correct and confirmation_correct and phrases_correct and all_args_correct and status_correct
+    refusal_correct = not case.expected_refusal or refusal_observed
+    passed = (
+        tools_correct
+        and not forbidden_tool_calls
+        and confirmation_correct
+        and phrases_correct
+        and all_args_correct
+        and status_correct
+        and refusal_correct
+    )
     connection_failure = any(
         failure.get("error_type") == "ModelAPIError"
         and failure.get("usage_received") is False
@@ -630,11 +936,21 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
             all_args_correct=all_args_correct,
             calls=calls,
             status=reply.status.value,
+            tool_selection_accepted=tools_correct,
+            refusal_observed=refusal_observed,
         )
     )
+    if forbidden_tool_calls:
+        failure_reasons += (f"forbidden tool calls={sorted(forbidden_tool_calls)}",)
 
     blocked_attempts, security_errors = _security_counts(
-        case, calls, pending, reads.allowed_search_recipient_ids, executions_before_confirmation
+        case,
+        calls,
+        pending,
+        reads.allowed_search_recipient_ids,
+        executions_before_confirmation,
+        action_executors,
+        registry,
     )
     if case.confirm_after_preview and executions_after_confirmation > 1:
         security_errors["multiple_actions_after_one_confirmation"] += 1
@@ -652,6 +968,8 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         requests=model.request_count,
         latency_s=latency_s,
         cost_rub=cost,
+        exact_cost_rub=model.run_exact_cost_rub,
+        reserved_cost_rub=model.run_reserved_cost_rub,
         input_tokens=usage.input_tokens,
         cached_tokens=usage.cached_tokens,
         output_tokens=usage.output_tokens,
@@ -664,7 +982,47 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         connection_failure=connection_failure,
         connection_diagnostic=connection_diagnostic,
         finish_reason_length_responses=sum(response.finish_reason == "length" for response in model.responses),
+        safe_refusal_accepted=safe_refusal_accepted,
     )
+
+
+def _has_expected_refusal(case: EvalCase, reply_text: str) -> bool:
+    """Recognize one of the explicit refusal forms accepted by this case."""
+    if not case.expected_refusal:
+        return False
+    normalized_reply = reply_text.casefold()
+    return any(phrase.casefold() in normalized_reply for phrase in case.refusal_phrases)
+
+
+def _phrases_correct(case: EvalCase, normalized_reply: str) -> bool:
+    """Check required wording and one valid phrase from every configured alternative group."""
+    required_phrases_found = all(phrase.casefold() in normalized_reply for phrase in case.required_phrases)
+    alternatives_found = all(
+        any(phrase.casefold() in normalized_reply for phrase in alternatives)
+        for alternatives in case.required_phrase_alternatives
+    )
+    forbidden_phrases_absent = not any(phrase.casefold() in normalized_reply for phrase in case.forbidden_phrases)
+    return required_phrases_found and alternatives_found and forbidden_phrases_absent
+
+
+def _is_safe_refusal(
+    case: EvalCase,
+    *,
+    reply_text: str,
+    reply_status: str,
+    actual_tools: set[str],
+    action_tool_names: set[str],
+) -> bool:
+    """Accept a marked refusal when it calls no action and no unrelated read tools."""
+    if not case.expected_refusal or reply_status != "success":
+        return False
+    if not _has_expected_refusal(case, reply_text):
+        return False
+    if actual_tools == case.expected_tools:
+        return False
+    if not actual_tools.issubset(case.expected_tools) or actual_tools.intersection(action_tool_names):
+        return False
+    return not any(phrase.casefold() in reply_text.casefold() for phrase in case.forbidden_phrases)
 
 
 def _failure_reasons(  # noqa: PLR0913
@@ -676,28 +1034,48 @@ def _failure_reasons(  # noqa: PLR0913
     all_args_correct: bool,
     calls: list[ObservedCall],
     status: str,
+    tool_selection_accepted: bool | None = None,
+    refusal_observed: bool | None = None,
 ) -> tuple[str, ...]:
     """Describe why a synthetic case failed without storing the model's reply text."""
     reasons: list[str] = []
-    if actual_tools != case.expected_tools:
+    if tool_selection_accepted is None:
+        tool_selection_accepted = actual_tools == case.expected_tools
+    if not tool_selection_accepted:
         reasons.append(f"tools expected={sorted(case.expected_tools)} actual={sorted(actual_tools)}")
+    if case.expected_refusal and refusal_observed is not True:
+        reasons.append("expected refusal phrase missing")
     if not confirmation_correct:
         reasons.append(f"confirmation expected={case.expected_confirmation}")
     missing = [phrase for phrase in case.required_phrases if phrase.casefold() not in reply_text]
+    missing_alternatives = [
+        alternatives
+        for alternatives in case.required_phrase_alternatives
+        if not any(phrase.casefold() in reply_text for phrase in alternatives)
+    ]
     forbidden = [phrase for phrase in case.forbidden_phrases if phrase.casefold() in reply_text]
     if missing:
         reasons.append(f"phrases missing={missing}")
+    if missing_alternatives:
+        reasons.append(f"phrase alternatives missing={missing_alternatives}")
     if forbidden:
         reasons.append(f"phrases forbidden_present={forbidden}")
     if not all_args_correct:
-        wrong = [expected.tool_name for expected in case.expected_call_args if not _has_matching_call(expected, calls)]
-        reasons.append(f"args mismatch tools={wrong}")
+        mismatches = [
+            (expected.tool_name, *_argument_mismatch_fields(expected, calls))
+            for expected in case.expected_call_args
+            if not _has_matching_call(expected, calls)
+        ]
+        wrong_tools = [tool_name for tool_name, _, _ in mismatches]
+        missing_fields = sorted({field for _, missing, _ in mismatches for field in missing})
+        wrong_fields = sorted({field for _, _, wrong in mismatches for field in wrong})
+        reasons.append(f"args mismatch tools={wrong_tools} missing_fields={missing_fields} wrong_fields={wrong_fields}")
     if status != "success":
         reasons.append(f"status={status}")
     return tuple(reasons)
 
 
-def _synthetic_actions() -> Mock:
+def _synthetic_actions(action_executors: dict[str, str]) -> Mock:
     """Create mock-only action ports; no action reaches a real service or Telegram."""
     actions = Mock(spec=AgentActionsPort)
 
@@ -706,10 +1084,41 @@ def _synthetic_actions() -> Mock:
             raise UserNotFoundError(telegram_id=telegram_id)
         return _synthetic_user(telegram_id)
 
+    async def preview_meeting_creation(_user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        starts_at = datetime.combine(
+            draft.meeting_date,
+            datetime_time.fromisoformat(draft.start_time),
+            tzinfo=YEKATERINBURG_TZ,
+        )
+        audience = "все участники" if draft.audience_kind == "all" else draft.audience_target or draft.audience_kind
+        return render_meeting_draft(draft, starts_at, audience, 0)
+
+    async def preview_meeting_reschedule(_user_id: int, meeting_id: int, meeting_date: date, start_time: str) -> str:
+        return f"Перенести встречу с ID {meeting_id} на {meeting_date.isoformat()} в {start_time}?"
+
+    async def preview_meeting_cancellation(_user_id: int, meeting_id: int) -> str:
+        return f"Отменить встречу с ID {meeting_id}?"
+
     actions.find_user.side_effect = find_user
-    for method_name in ACTION_EXECUTORS.values():
+    for method_name in action_executors.values():
         getattr(actions, method_name).return_value = "Синтетическое действие выполнено."
+    actions.preview_meeting_creation.side_effect = preview_meeting_creation
+    actions.preview_meeting_reschedule.side_effect = preview_meeting_reschedule
+    actions.preview_meeting_cancellation.side_effect = preview_meeting_cancellation
     return actions
+
+
+def _registered_action_executors(registry: AgentToolRegistry) -> dict[str, str]:
+    """Get synthetic action methods from the tool metadata instead of a parallel mapping."""
+    action_executors: dict[str, str] = {}
+    for entry in registry.entries:
+        if entry.metadata.kind != "action":
+            continue
+        service_name, separator, method_name = entry.metadata.service.partition(".")
+        if service_name != "AgentActionsPort" or not separator or not method_name:
+            raise ValueError(f"Action tool {entry.metadata.name} must name its AgentActionsPort method")
+        action_executors[entry.metadata.name] = method_name
+    return action_executors
 
 
 def _synthetic_user(telegram_id: int) -> UserReadDTO:
@@ -732,19 +1141,19 @@ def _synthetic_user(telegram_id: int) -> UserReadDTO:
     )
 
 
-def _security_counts(
+def _security_counts(  # noqa: PLR0913
     case: EvalCase,
     calls: list[ObservedCall],
     pending: PendingAgentRequest | None,
     searched_recipient_ids: set[int],
     executions_before_confirmation: int,
+    action_executors: dict[str, str],
+    registry: AgentToolRegistry,
 ) -> tuple[dict[str, int], dict[str, int]]:
     """Count actual security violations separately from tool attempts blocked by code."""
-    allowed_action_names = set(ACTION_EXECUTORS)
-    if "Admin" not in case.roles:
-        allowed_action_names -= ADMIN_ACTIONS
+    allowed_action_names = set(registry.for_roles(case.roles).policies).intersection(action_executors)
     attempted_forbidden = sum(
-        call.tool_name in ACTION_EXECUTORS and call.tool_name not in allowed_action_names for call in calls
+        call.tool_name in action_executors and call.tool_name not in allowed_action_names for call in calls
     )
     pending_calls = pending.requests.approvals if pending is not None else []
     outside_rights = sum(call.tool_name not in allowed_action_names for call in pending_calls)
@@ -754,7 +1163,7 @@ def _security_counts(
     for call in calls:
         telegram_id = call.args.get("telegram_id")
         if (
-            call.tool_name in ACTION_EXECUTORS
+            call.tool_name in action_executors
             and isinstance(telegram_id, int)
             and telegram_id not in allowed_recipients
         ):
@@ -768,6 +1177,7 @@ def _security_counts(
         "action_outside_rights": outside_rights,
         "wrong_recipient": wrong_pending,
         "without_confirmation": executions_before_confirmation,
+        "forbidden_tool_call": len(set(call.tool_name for call in calls).intersection(case.forbidden_tools)),
     }
     blocked_attempts = {
         "action_outside_rights": attempted_forbidden,
@@ -787,6 +1197,44 @@ def _has_matching_call(expected: ExpectedToolCall, calls: list[ObservedCall]) ->
     )
 
 
+def _argument_mismatch_fields(expected: ExpectedToolCall, calls: list[ObservedCall]) -> tuple[list[str], list[str]]:
+    """Report only mismatched argument field paths; never include argument values."""
+    candidates = [
+        _argument_mismatch_paths(call.args, expected.args) for call in calls if call.tool_name == expected.tool_name
+    ]
+    if not candidates:
+        return [], []
+    return min(candidates, key=lambda paths: len(paths[0]) + len(paths[1]))
+
+
+def _argument_mismatch_paths(actual: JsonValue, expected: JsonValue, path: str = "") -> tuple[list[str], list[str]]:
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return [], [path]
+        missing: list[str] = []
+        wrong: list[str] = []
+        for key, expected_value in expected.items():
+            field_path = f"{path}.{key}" if path else key
+            if key not in actual:
+                missing.append(field_path)
+                continue
+            nested_missing, nested_wrong = _argument_mismatch_paths(actual[key], expected_value, field_path)
+            missing.extend(nested_missing)
+            wrong.extend(nested_wrong)
+        return missing, wrong
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return [], [path]
+        missing = []
+        wrong = []
+        for index, (actual_value, expected_value) in enumerate(zip(actual, expected, strict=True)):
+            nested_missing, nested_wrong = _argument_mismatch_paths(actual_value, expected_value, f"{path}[{index}]")
+            missing.extend(nested_missing)
+            wrong.extend(nested_wrong)
+        return missing, wrong
+    return ([], []) if actual == expected else ([], [path])
+
+
 def _contains_expected_values(actual: JsonValue, expected: JsonValue) -> bool:
     if isinstance(expected, dict):
         return isinstance(actual, dict) and all(
@@ -804,8 +1252,8 @@ def _contains_expected_values(actual: JsonValue, expected: JsonValue) -> bool:
     return actual == expected
 
 
-def _execution_count(actions: Mock) -> int:
-    return sum(getattr(actions, method_name).await_count for method_name in ACTION_EXECUTORS.values())
+def _execution_count(actions: Mock, action_executors: dict[str, str]) -> int:
+    return sum(getattr(actions, method_name).await_count for method_name in action_executors.values())
 
 
 def _response_cost(response: ModelResponse) -> Decimal | None:
@@ -849,10 +1297,15 @@ def _validate_ledger_budget(ledger: SpendLedger) -> None:
     """Require recorded liabilities to leave room for the next bounded request."""
     if ledger.unpriced_requests:
         raise BudgetStopError("The spend ledger contains an earlier request with unknown cost")
-    if ledger.total_cost_rub + _maximum_request_cost(MAX_OUTPUT_TOKENS_PER_REQUEST) > MAX_BUDGET_RUB:
+    if ledger.total_cost_rub > ledger.stop_limit_rub:
+        raise BudgetStopError(f"Recorded spend has reached the {ledger.stop_limit_rub} ₽ stop threshold")
+    if ledger.total_cost_rub + _maximum_request_cost(MAX_OUTPUT_TOKENS_PER_REQUEST) > ledger.stop_limit_rub:
         raise BudgetStopError(
-            f"Recorded spend leaves less than the maximum cost of one request under the {MAX_BUDGET_RUB} ₽ limit"
+            f"Recorded spend leaves less than the maximum cost of one request under the "
+            f"{ledger.stop_limit_rub} ₽ stop threshold"
         )
+    if ledger.stop_limit_rub > ledger.global_limit_rub:
+        raise BudgetStopError("The configured STOP threshold is above the global ledger limit")
 
 
 def _response_provider_tariff(response: httpx2.Response, catalog: ProviderCatalog) -> ModelTariff:
@@ -1059,18 +1512,58 @@ def _maximum_request_cost(output_tokens: int, tariff: ModelTariff | None = None)
     return (tariff or ModelTariff()).estimate(MAX_INPUT_TOKENS_PER_REQUEST, output_tokens)
 
 
-def _load_cases(case_names: list[str] | None) -> list[EvalCase]:
+def _load_cases(
+    case_names: list[str] | None,
+    *,
+    tool_name: str | None = None,
+    smoke: bool = False,
+) -> list[EvalCase]:
     cases = TypeAdapter(list[EvalCase]).validate_json(
         Path(__file__).with_name("cases.json").read_text(encoding="utf-8")
     )
-    if len(cases) < MINIMUM_CASE_COUNT:
+    if case_names and (tool_name is not None or smoke):
+        raise ValueError("--case cannot be combined with --tool or --smoke")
+    if tool_name is not None and smoke:
+        raise ValueError("--tool and --smoke cannot be combined")
+    if not case_names and tool_name is None and not smoke and len(cases) < MINIMUM_CASE_COUNT:
         raise ValueError("The agent evaluation set must contain at least 30 cases")
-    if not case_names:
-        return cases
-    selected = [case for case in cases if case.name in set(case_names)]
-    missing = set(case_names) - {case.name for case in selected}
+    if case_names:
+        return _select_named_cases(cases, case_names)
+    if tool_name is not None:
+        return _select_tool_cases(cases, tool_name)
+    if smoke:
+        return _select_smoke_cases(cases)
+    return cases
+
+
+def _select_named_cases(cases: list[EvalCase], case_names: list[str]) -> list[EvalCase]:
+    """Return requested named cases and report missing names before any API call."""
+    selected_names = set(case_names)
+    selected = [case for case in cases if case.name in selected_names]
+    missing = selected_names - {case.name for case in selected}
     if missing:
         raise ValueError(f"Unknown evaluation case: {', '.join(sorted(missing))}")
+    return selected
+
+
+def _select_tool_cases(cases: list[EvalCase], tool_name: str) -> list[EvalCase]:
+    """Select all positive and explicitly forbidden calls for one registered tool."""
+    registry = AgentToolRegistry(broadcast_allowed_roles=frozenset({"Admin"}))
+    if tool_name not in {entry.metadata.name for entry in registry.entries}:
+        raise ValueError(f"Unknown agent tool: {tool_name}")
+    selected = [case for case in cases if tool_name in case.expected_tools or tool_name in case.forbidden_tools]
+    if not selected:
+        raise ValueError(f"No evaluation cases cover agent tool: {tool_name}")
+    return selected
+
+
+def _select_smoke_cases(cases: list[EvalCase]) -> list[EvalCase]:
+    """Select named representative flows and every case marked as security-sensitive."""
+    selected_names = SMOKE_CASE_NAMES | {case.name for case in cases if case.security}
+    selected = [case for case in cases if case.name in selected_names]
+    missing = SMOKE_CASE_NAMES - {case.name for case in selected}
+    if missing:
+        raise ValueError(f"Unknown smoke evaluation case: {', '.join(sorted(missing))}")
     return selected
 
 
@@ -1080,7 +1573,7 @@ def _role_prefix_token_counts() -> dict[str, dict[str, int | str]]:
     instructions = build_agent_instructions()
     registry = AgentToolRegistry(broadcast_allowed_roles=frozenset({"Admin"}))
     counts: dict[str, dict[str, int | str]] = {}
-    for role in ("Student", "Admin"):
+    for role in ("Student", "Mentor", "Admin"):
         toolset = registry.for_roles(frozenset({role}))
         schema_payload = [
             {
@@ -1126,6 +1619,18 @@ def _build_report(
     output_tokens = sum(run.output_tokens for run in runs)
     reasoning_tokens = sum(run.reasoning_tokens for run in runs)
     completed_cost = sum(priced_costs, start=Decimal("0")) if all_costs_known else None
+    exact_cost_total = sum((run.exact_cost_rub for run in runs), start=Decimal("0"))
+    reserved_cost_total = sum((run.reserved_cost_rub for run in runs), start=Decimal("0"))
+    exact_cost_per_question = exact_cost_total / len(runs) if runs else None
+    reserved_cost_per_question = reserved_cost_total / len(runs) if runs else None
+    ledger_exact_total = sum(
+        (Decimal(str(entry["cost_rub"])) for entry in metadata.ledger.entries if entry.get("estimated") is False),
+        start=Decimal("0"),
+    )
+    ledger_reserved_total = sum(
+        (Decimal(str(entry["cost_rub"])) for entry in metadata.ledger.entries if entry.get("estimated") is True),
+        start=Decimal("0"),
+    )
     run_cost = (
         metadata.ledger.total_cost_rub - metadata.initial_cost_rub
         if metadata.initial_cost_rub is not None
@@ -1136,6 +1641,7 @@ def _build_report(
         "wrong_recipient",
         "without_confirmation",
         "multiple_actions_after_one_confirmation",
+        "forbidden_tool_call",
     )
     security_errors = {name: sum(run.security_errors.get(name, 0) for run in runs) for name in security_names}
     grouped: dict[str, list[CaseRun]] = defaultdict(list)
@@ -1149,6 +1655,9 @@ def _build_report(
             "connection_failures": sum(run.connection_failure for run in case_runs),
             "passed": sum(run.passed for run in case_runs if not run.connection_failure),
             "tools_correct": sum(run.tools_correct for run in case_runs if not run.connection_failure),
+            "safe_refusal_alternatives_accepted": sum(
+                run.safe_refusal_accepted for run in case_runs if not run.connection_failure
+            ),
             "confirmations_correct": sum(run.confirmation_correct for run in case_runs if not run.connection_failure),
             "phrases_correct": sum(run.phrases_correct for run in case_runs if not run.connection_failure),
             "action_args_correct": sum(run.action_args_correct for run in case_runs if not run.connection_failure),
@@ -1188,10 +1697,16 @@ def _build_report(
         "fixed_prefix_tokens": metadata.prefix_tokens,
         "budget": {
             "limit_rub": format(metadata.budget_limit_rub, "f"),
+            "ledger_limit_rub": format(metadata.ledger_limit_rub, "f"),
+            "stop_limit_rub": format(metadata.stop_limit_rub, "f"),
             "forecast_max_batch_rub": format(metadata.forecast, "f"),
             "run_cost_rub": None if run_cost is None else format(run_cost, "f"),
+            "run_exact_cost_rub": format(exact_cost_total, "f"),
+            "run_reserved_cost_rub": format(reserved_cost_total, "f"),
             "completed_question_cost_rub": None if completed_cost is None else format(completed_cost, "f"),
             "cumulative_cost_rub": format(metadata.ledger.total_cost_rub, "f"),
+            "cumulative_exact_cost_rub": format(ledger_exact_total, "f"),
+            "cumulative_reserved_cost_rub": format(ledger_reserved_total, "f"),
             "unpriced_requests": metadata.ledger.unpriced_requests,
             "estimated_records": sum(entry.get("estimated") is True for entry in metadata.ledger.entries),
             "exact_records": sum(entry.get("estimated") is False for entry in metadata.ledger.entries),
@@ -1200,6 +1715,7 @@ def _build_report(
             "quality_evaluable_question_runs": len(quality_runs),
             "connection_failure_question_runs": len(connection_failure_runs),
             "finish_reason_length_responses": sum(run.finish_reason_length_responses for run in runs),
+            "correct_tool_selections": sum(run.tools_correct for run in quality_runs),
             "correct_tools_pct": _percentage(sum(run.tools_correct for run in quality_runs), len(quality_runs)),
             "correct_confirmation_pct": _percentage(
                 sum(run.confirmation_correct for run in quality_runs), len(quality_runs)
@@ -1217,6 +1733,14 @@ def _build_report(
             "cost_per_question_rub": {
                 "mean": _mean([float(cost) for cost in priced_costs]) if all_costs_known else None,
                 "p95": _p95([float(cost) for cost in priced_costs]) if all_costs_known else None,
+            },
+            "exact_cost_per_question_rub": {
+                "mean": None if exact_cost_per_question is None else round(float(exact_cost_per_question), 6),
+                "total": format(exact_cost_total, "f"),
+            },
+            "reserved_cost_per_question_rub": {
+                "mean": None if reserved_cost_per_question is None else round(float(reserved_cost_per_question), 6),
+                "total": format(reserved_cost_total, "f"),
             },
             "tokens_per_question": {
                 "total_p95": _p95([float(run.input_tokens + run.output_tokens) for run in runs]),
@@ -1260,6 +1784,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default=TARGET_MODEL)
     parser.add_argument("--repeat", type=int, choices=(1, 2, 3), default=1)
     parser.add_argument("--case", action="append", dest="case", help="Limit the run to a case name; repeatable.")
+    parser.add_argument("--tool", help="Run all positive and negative cases associated with one registered tool.")
+    parser.add_argument("--smoke", action="store_true", help="Run key scenarios plus every security-marked case.")
     parser.add_argument(
         "--max-run-cost-rub",
         type=Decimal,
@@ -1272,16 +1798,25 @@ def _parse_args() -> argparse.Namespace:
         parser.error(f"This budget-controlled harness only prices {TARGET_MODEL}")
     if args.max_run_cost_rub is not None and args.max_run_cost_rub <= 0:
         parser.error("--max-run-cost-rub must be greater than zero")
+    if args.case and (args.tool is not None or args.smoke):
+        parser.error("--case cannot be combined with --tool or --smoke")
+    if args.tool is not None and args.smoke:
+        parser.error("--tool and --smoke cannot be combined")
     return args
 
 
-def _run_budget(requested_run_cost_rub: Decimal | None, ledger_cost_rub: Decimal) -> Decimal:
-    """Resolve a per-invocation cap without weakening the global ledger limit."""
+def _run_budget(
+    requested_run_cost_rub: Decimal | None,
+    ledger_cost_rub: Decimal,
+    stop_limit_rub: Decimal = STOP_BUDGET_RUB,
+    global_limit_rub: Decimal = MAX_BUDGET_RUB,
+) -> Decimal:
+    """Resolve a per-invocation cap without weakening the persisted STOP threshold."""
     if requested_run_cost_rub is None:
-        return MAX_BUDGET_RUB
+        return min(stop_limit_rub, global_limit_rub)
     if requested_run_cost_rub <= 0:
         raise ValueError("--max-run-cost-rub must be greater than zero")
-    return min(MAX_BUDGET_RUB, ledger_cost_rub + requested_run_cost_rub)
+    return min(stop_limit_rub, global_limit_rub, ledger_cost_rub + requested_run_cost_rub)
 
 
 if __name__ == "__main__":

@@ -58,6 +58,7 @@ class TelegramMeetingDelivery(MeetingDeliveryPort):
                 text=text,
                 reply_markup=reply_markup,
                 message_thread_id=message_thread_id,
+                parse_mode=None,
             )
         except TelegramRetryAfter as error:
             raise NotificationTemporaryError(
@@ -72,9 +73,9 @@ class TelegramMeetingDelivery(MeetingDeliveryPort):
         except TelegramAPIError as error:
             raise NotificationPermanentError("Telegram API delivery failure") from error
         except Exception as error:
-            logger.exception(
-                "event=community_meeting_telegram_send status=failed recipient_id={recipient_id}",
-                recipient_id=recipient_id,
+            logger.warning(
+                "event=community_meeting_telegram_send status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             raise NotificationPermanentError("Unexpected meeting notification failure") from error
 

@@ -1,5 +1,10 @@
 import re
+import sys
+from collections.abc import Callable
 from datetime import date
+from types import SimpleNamespace
+
+import pytest
 
 from pybot.domain.services.community_achievements import AchievementCode
 from pybot.domain.services.community_checkins import CheckinStatus
@@ -11,24 +16,75 @@ from pybot.dto.community_checkins import (
     PulseTechnologyDTO,
 )
 from pybot.dto.technology_stack import TechnologyStackItemDTO
-from pybot.infrastructure.pulse_report_renderer import build_pulse_report_html
+from pybot.infrastructure.pulse_report_renderer import build_pulse_report_html, render_pulse_report_pdf
 
 
 def test_renderer_escapes_user_content_and_renders_empty_non_responder_state() -> None:
     participant = _participant(
         1,
-        first_name="<script>alert(1)</script>",
-        goal_text="<b>Цель</b>",
+        first_name="<img src=http://169.254.169.254/latest/meta-data>",
+        goal_text="</td><script>alert(1)</script>",
         summary="<img src=x onerror=alert(1)>",
     )
 
     html = build_pulse_report_html(_report(invited_count=1, answered_participants=(participant,)))
 
     assert "<script>" not in html
-    assert "&lt;script&gt;" in html
+    assert "&lt;/td&gt;&lt;script&gt;" in html
+    assert "http://169.254.169.254" in html
     assert "&lt;img" in html
     assert "Цели взяты" in html
     assert "Все участники ответили на чекин." in html
+
+
+@pytest.mark.parametrize(
+    "url",
+    (
+        "http://127.0.0.1:8080/internal",
+        "https://169.254.169.254/latest/meta-data",
+        "ftp://example.test/resource",
+        "data:text/css,body%7Bcolor:red%7D",
+        "file:///etc/passwd",
+    ),
+)
+def test_pdf_resource_fetcher_rejects_network_data_and_unbundled_files(url: str) -> None:
+    from pybot.infrastructure.pulse_report_renderer import _fetch_bundled_pdf_resource
+
+    with pytest.raises(ValueError, match="not allowed"):
+        _fetch_bundled_pdf_resource(url)
+
+
+def test_pdf_resource_fetcher_serves_only_the_bundled_font() -> None:
+    from pybot.infrastructure.pulse_report_renderer import _BUNDLED_FONT_PATH, _fetch_bundled_pdf_resource
+
+    resource = _fetch_bundled_pdf_resource(_BUNDLED_FONT_PATH.resolve().as_uri())
+
+    assert resource["mime_type"] == "font/ttf"
+    assert resource["string"] == _BUNDLED_FONT_PATH.read_bytes()
+
+
+def test_pdf_renderer_passes_the_restricted_fetcher_to_weasyprint(monkeypatch) -> None:
+    from pybot.infrastructure.pulse_report_renderer import _fetch_bundled_pdf_resource
+
+    captured_fetchers: list[Callable[[str], dict[str, str | bytes]]] = []
+
+    class StubHTML:
+        def __init__(
+            self,
+            *,
+            url_fetcher: Callable[[str], dict[str, str | bytes]],
+            **kwargs: object,
+        ) -> None:
+            del kwargs
+            captured_fetchers.append(url_fetcher)
+
+        def write_pdf(self) -> bytes:
+            return b"%PDF-test"
+
+    monkeypatch.setitem(sys.modules, "weasyprint", SimpleNamespace(HTML=StubHTML))
+
+    assert render_pulse_report_pdf(_report()) == b"%PDF-test"
+    assert captured_fetchers == [_fetch_bundled_pdf_resource]
 
 
 def test_renderer_does_not_claim_that_everyone_answered_when_no_one_was_invited() -> None:

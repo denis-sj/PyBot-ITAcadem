@@ -158,7 +158,11 @@ async def test_competence_finish_and_skip_buttons_are_dispatched(monkeypatch: py
     assert profile_service.build_profile_view.await_count == 2
     assert answered_callbacks == ["click-1", "click-3", "click-5"]
     assert any(message.text == REGISTRATION_INTERNAL_ERROR for message in sent_messages)
-    log.exception.assert_called_once_with("event=registration phase=completion status=failed")
+    log.warning.assert_called_once_with(
+        "event=registration phase=completion status=failed error_type={error_type}",
+        error_type="RuntimeError",
+    )
+    assert "database unavailable" not in repr(log.warning.call_args)
 
 
 def _user_read_dto(telegram_id: int, first_name: str) -> UserReadDTO:

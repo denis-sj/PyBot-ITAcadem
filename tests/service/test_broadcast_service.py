@@ -16,12 +16,18 @@ from pybot.db.models import User
 from pybot.dto import BroadcastDTO, CompetenceBroadcastDTO, NotifyDTO, RoleBroadcastDTO
 from pybot.infrastructure.user_repository import UserRepository
 from pybot.services.broadcast import BroadcastAlreadyRunningError, BroadcastService
-from pybot.services.ports import NotificationPermanentError, NotificationPort, NotificationTemporaryError
+from pybot.services.ports import (
+    NotificationBlockedError,
+    NotificationPermanentError,
+    NotificationPort,
+    NotificationTemporaryError,
+)
 
 
 class DeliveryOutcome(Enum):
     OK = "ok"
     TEMPORARY = "temporary"
+    BLOCKED = "blocked"
     PERMANENT = "permanent"
     UNEXPECTED = "unexpected"
 
@@ -86,6 +92,8 @@ class ScriptedNotificationPort(NotificationPort):
 
         if outcome is DeliveryOutcome.TEMPORARY:
             raise NotificationTemporaryError("temporary failure", retry_after_seconds=0.0)
+        if outcome is DeliveryOutcome.BLOCKED:
+            raise NotificationBlockedError("recipient blocked the bot")
         if outcome is DeliveryOutcome.PERMANENT:
             raise NotificationPermanentError("permanent failure")
         if outcome is DeliveryOutcome.UNEXPECTED:
@@ -140,6 +148,44 @@ async def test_broadcast_for_all_happy_path(
     assert result.failed_permanent == 0
     assert result.skipped_invalid_user == 0
     sleep_mock.assert_awaited_once_with(1.28)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_skips_users_who_have_blocked_the_bot(settings_obj: AppSettings) -> None:
+    _configure_broadcast_settings(settings_obj)
+    available_user = _mk_user(11)
+    blocked_user = _mk_user(12)
+    blocked_user.bot_is_blocked = True
+    user_repository = FakeUserRepository(users=[available_user, blocked_user], role_users={})
+    notification_port = ScriptedNotificationPort()
+    service = BroadcastService(AsyncMock(spec=AsyncSession), user_repository, notification_port, settings_obj)
+
+    result = await service.broadcast_for_all(BroadcastDTO(broadcast_message="hello"))
+
+    assert result.attempted == 1
+    assert result.sent == 1
+    assert notification_port.call_counts == {11: 1}
+    assert notification_port.messages_by_user == {11: ["hello"]}
+
+
+@pytest.mark.asyncio
+async def test_broadcast_persists_new_block_status_and_skips_user_next_time(settings_obj: AppSettings) -> None:
+    _configure_broadcast_settings(settings_obj)
+    blocked_user = _mk_user(13)
+    user_repository = FakeUserRepository(users=[blocked_user], role_users={})
+    notification_port = ScriptedNotificationPort(plans={13: [DeliveryOutcome.BLOCKED]})
+    db = AsyncMock(spec=AsyncSession)
+    service = BroadcastService(db, user_repository, notification_port, settings_obj)
+
+    first_result = await service.broadcast_for_all(BroadcastDTO(broadcast_message="hello"))
+    second_result = await service.broadcast_for_all(BroadcastDTO(broadcast_message="hello again"))
+
+    assert first_result.attempted == 1
+    assert first_result.failed_permanent == 1
+    assert blocked_user.bot_is_blocked is True
+    assert second_result.attempted == 0
+    assert notification_port.call_counts == {13: 1}
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

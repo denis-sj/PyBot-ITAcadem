@@ -16,6 +16,9 @@ from pybot.presentation.bot.dialogs.user_reg.handlers import (
     _on_technology_stack_save_impl,
     _on_technology_stack_skip_impl,
 )
+from pybot.presentation.bot.dialogs.user_reg.getters import get_stack_confirmation
+from pybot.presentation.bot.dialogs.user_reg.states import CreateProfileSG
+from pybot.presentation.bot.dialogs.user_reg.windows import profile_create_dialog
 from pybot.services.technology_stack import TechnologyStackService
 from pybot.services.technology_stack_parsing import TechnologyStackParsingService
 
@@ -99,6 +102,19 @@ async def test_stack_message_creates_preview_without_persisting(mocker) -> None:
     ]
     assert manager_state.dialog_data["technology_stack_confirmation"] == "Записал: знаю — Python; изучаю — Docker."
     manager_state.next_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_stack_confirmation_keeps_user_markup_as_plain_text() -> None:
+    hostile_text = '<b>x</b> & <a href="tg://user?id=1">Аня</a>'
+    manager_state = _manager()
+    manager_state.dialog_data["technology_stack_confirmation"] = f"Записал: {hostile_text}"
+
+    rendered = await get_stack_confirmation(manager_state.manager)
+    confirmation_window = profile_create_dialog.windows[CreateProfileSG.technology_stack_confirmation]
+
+    assert rendered["technology_stack_confirmation"] == f"Записал: {hostile_text}"
+    assert getattr(confirmation_window, "parse_mode", "unset") is None
 
 
 @pytest.mark.asyncio
@@ -186,6 +202,8 @@ async def test_save_replaces_stack_once_and_repeated_click_is_ignored(mocker) ->
     )
     service.recommend_for_learning_items.assert_awaited_once()
     edit_text.assert_awaited_once()
+    assert edit_text.await_args is not None
+    assert edit_text.await_args.kwargs["parse_mode"] is None
     assert manager_state.dialog_data["technology_stack_saved"] is True
     assert manager_state.done_mock.await_count == 1
     assert callback_state.answer_mock.await_count == 2

@@ -6,11 +6,13 @@ import re
 from datetime import date
 from html import escape
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from ..domain.services.community_checkins import CheckinStatus, get_checkin_deadline
 from ..dto.community_checkins import CheckinParticipantDTO, PulseReportDTO
 
 _TEMPLATE_PATH = Path(__file__).parent / "templates" / "pulse_report.html"
+_BUNDLED_FONT_PATH = _TEMPLATE_PATH.parent / "fonts" / "NotoSans-Variable-Latin-Cyrillic.ttf"
 _SILENT_WEEK_THRESHOLD = 4
 _MONTHS_GENITIVE = (
     "января",
@@ -89,7 +91,32 @@ def render_pulse_report_pdf(report: PulseReportDTO) -> bytes:
     # Pango libraries are present in the Linux runtime image, not on every dev host.
     from weasyprint import HTML  # noqa: PLC0415
 
-    return HTML(string=build_pulse_report_html(report), base_url=str(_TEMPLATE_PATH.parent)).write_pdf()
+    return HTML(
+        string=build_pulse_report_html(report),
+        base_url=str(_TEMPLATE_PATH.parent),
+        url_fetcher=_fetch_bundled_pdf_resource,
+    ).write_pdf()
+
+
+def _fetch_bundled_pdf_resource(url: str) -> dict[str, str | bytes]:
+    """Return the bundled font and reject all other PDF resource URLs."""
+    parsed_url = urlsplit(url)
+    if parsed_url.scheme != "file" or parsed_url.netloc not in {"", "localhost"}:
+        raise ValueError("PDF resource URL is not allowed")
+
+    try:
+        resource_path = Path(unquote(parsed_url.path)).resolve(strict=True)
+        bundled_font_path = _BUNDLED_FONT_PATH.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("PDF resource URL is not allowed") from error
+    if resource_path != bundled_font_path:
+        raise ValueError("PDF resource URL is not allowed")
+
+    return {
+        "string": resource_path.read_bytes(),
+        "mime_type": "font/ttf",
+        "redirected_url": url,
+    }
 
 
 def _split_responders(

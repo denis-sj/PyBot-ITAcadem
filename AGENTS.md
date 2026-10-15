@@ -30,6 +30,7 @@ Read only the ADRs relevant to the task, but do not ignore them when the task to
 - Avoid speculative abstractions and unnecessary indirection.
 - Keep code explicit, readable, and easy to trace.
 - Follow existing project structure instead of concentrating a solution in one file.
+- For an AI-agent tool, follow the idea-card and eval recipe in [`docs/agent/adding-a-tool.md`](docs/agent/adding-a-tool.md).
 
 ## Architectural Invariants
 
