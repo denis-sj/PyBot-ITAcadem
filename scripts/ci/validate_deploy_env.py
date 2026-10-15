@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -19,7 +20,7 @@ _WORKER_KEY = "TASKIQ_WORKERS"
 _SUPPORTED_WORKER_VALUE = "1"
 _DATABASE_SCHEME = "postgresql+asyncpg"
 _DATABASE_HOSTNAME = "postgres"
-_ORCHESTRATION_BOOLEAN_KEYS = ("HEALTH_API_ENABLED",)
+_ORCHESTRATION_BOOLEAN_KEYS = ("HEALTH_API_ENABLED", "AGENT_ENABLED")
 _SUPPORTED_BOOLEAN_VALUES = frozenset({"0", "1", "false", "true", "no", "yes", "off", "on"})
 _QUOTED_VALUE_MIN_LENGTH = 2
 
@@ -53,8 +54,80 @@ def validate_deploy_env(env_values: dict[str, str]) -> list[str]:
         errors.append("TASKIQ_WORKERS must be set to 1 until multi-instance runtime is supported")
 
     errors.extend(_validate_orchestration_switches(env_values))
+    errors.extend(_validate_agent_env(env_values))
 
     return errors
+
+
+def _validate_agent_env(env_values: dict[str, str]) -> list[str]:
+    """Validate agent settings without materializing runtime secrets or clients."""
+    errors: list[str] = []
+    if (
+        env_values.get("AGENT_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+        and not env_values.get("POLZA_API_KEY", "").strip()
+    ):
+        errors.append("POLZA_API_KEY must be set when AGENT_ENABLED=true")
+    group_id = env_values.get("AGENT_GROUP_CHAT_ID", "").strip()
+    topic_id = env_values.get("AGENT_TOPIC_ID", "").strip()
+    if bool(group_id) != bool(topic_id):
+        errors.append("AGENT_GROUP_CHAT_ID and AGENT_TOPIC_ID must be configured together")
+    ranges = {
+        "AGENT_GROUP_CHAT_ID": (None, -1),
+        "AGENT_TOPIC_ID": (1, None),
+        "AGENT_MEMORY_MAX_MESSAGES": (2, 10),
+        "AGENT_MEMORY_TTL_S": (1, 1800),
+        "AGENT_REPLY_MARK_TTL_S": (1, None),
+        "AGENT_MAX_STEPS": (1, 20),
+        "AGENT_TIMEOUT_S": (5, 300),
+    }
+    for key, (minimum, maximum) in ranges.items():
+        value = env_values.get(key)
+        if value is None or (key in {"AGENT_GROUP_CHAT_ID", "AGENT_TOPIC_ID"} and not value.strip()):
+            continue
+        try:
+            number = int(value)
+        except ValueError:
+            errors.append(f"{key} must be an integer")
+            continue
+        if (minimum is not None and number < minimum) or (maximum is not None and number > maximum):
+            errors.append(f"{key} is outside its supported range")
+    if "AGENT_MODEL" in env_values and not env_values["AGENT_MODEL"].strip():
+        errors.append("AGENT_MODEL must be non-empty")
+    if env_values.get("AGENT_REASONING_EFFORT", "none") not in {
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low",
+        "minimal",
+        "none",
+    }:
+        errors.append("AGENT_REASONING_EFFORT must be max, xhigh, high, medium, low, minimal or none")
+    provider_json = env_values.get("AGENT_PROVIDER")
+    if provider_json is not None and not _is_valid_agent_provider_json(provider_json):
+        errors.append("AGENT_PROVIDER must be valid routing JSON with supported fields")
+    return errors
+
+
+def _is_valid_agent_provider_json(value: str) -> bool:
+    """Keep deploy validation usable with the runner's standard-library Python."""
+    try:
+        provider = json.loads(value)
+    except ValueError:
+        return False
+    if not isinstance(provider, dict) or set(provider) - {"order", "only", "require_parameters", "allow_fallbacks"}:
+        return False
+    for key in ("require_parameters", "allow_fallbacks"):
+        if key in provider and not isinstance(provider[key], bool):
+            return False
+    for key in ("order", "only"):
+        names = provider.get(key, [])
+        if not isinstance(names, list) or any(not isinstance(name, str) or not name.strip() for name in names):
+            return False
+        normalized = [name.strip() for name in names]
+        if len(set(normalized)) != len(normalized):
+            return False
+    return True
 
 
 def _validate_database_url(env_values: dict[str, str]) -> list[str]:

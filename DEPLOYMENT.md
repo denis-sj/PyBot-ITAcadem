@@ -680,3 +680,111 @@ Important:
 
 - Add external monitoring/log shipping
 - Add image vulnerability scanning before deploy
+
+## Agent harness (stage 0, opt-in)
+
+`AGENT_ENABLED=false` is the default: the agent router is not registered and ordinary
+bot behavior stays unchanged. To enable the agent in a test bot, set `AGENT_ENABLED=true`
+and the existing `POLZA_API_KEY`. The independent `AGENT_MODEL` defaults to
+`deepseek/deepseek-v4.1-flash`.
+`POLZA_BASE_URL` is shared with vision; `POLZA_VISION_MODEL` remains unchanged.
+
+Optional agent settings:
+
+- `AGENT_REASONING_EFFORT=none`: disable paid model reasoning through Polza
+  `reasoning.effort`. Accepted values: `max`, `xhigh`, `high`, `medium`, `low`,
+  `minimal`, `none`. With reasoning enabled, Pydantic AI preserves the returned
+  `reasoning_content` in subsequent tool requests.
+
+- `AGENT_PROVIDER`: routing JSON. The evaluated default is
+  `{"only":["decart/fp4","deepseek"],"order":["decart/fp4","deepseek"],"require_parameters":true,"allow_fallbacks":true}`.
+  `order` and `only` accept unique non-empty provider IDs from Polza's catalog.
+  The default prefers `decart/fp4` and permits fallback to `deepseek` while
+  requiring compatible parameters. DeepSeek passed 12/12 tool probes without
+  `parallel_tool_calls`; Decart was retained first because its 2026-10-13 catalog
+  prices were lower (10.70964/21.41928 ₽ per million input/output tokens).
+  Evaluation metadata records the configured route and the serving provider when
+  Polza returns a catalog ID; exact Polza `cost_rub` remains the authoritative charge. Recheck
+  provider capabilities and tariffs when changing the model.
+
+- `AGENT_GROUP_CHAT_ID` and `AGENT_TOPIC_ID`: configure together (negative group ID,
+  positive topic ID), or leave both blank. That topic accepts unaddressed text;
+  other group locations require `@bot` or a reply to an agent message.
+- `AGENT_MEMORY_MAX_MESSAGES=10`: between 2 and 10 text messages, including both
+  questions and answers. Each message is truncated to 2000 characters.
+- `AGENT_MEMORY_TTL_S=1800`: between 1 and 1800 seconds, renewed after a completed
+  turn; also the pending approval TTL.
+- `AGENT_REPLY_MARK_TTL_S=604800`: positive seconds; agent reply markers expire
+  after seven days by default. Outside the configured agent topic, a reply to an
+  older message needs `@bot` to address the agent.
+- `AGENT_MAX_STEPS=8`: model request limit, between 1 and 20; resumed approvals share
+  the original request budget. Each run also permits at most 8 tool calls.
+- `AGENT_TIMEOUT_S=60`: between 5 and 300 seconds per model HTTP request; it does not limit
+  application tools or confirmed actions. The HTTP client has the same timeout.
+
+Redis is required for agent memory even when `FSM_STORAGE_BACKEND=memory`.
+Text memory keys include chat, topic and author. Tool traces are not persisted.
+Agent reply provenance is expiring metadata (chat/topic/message IDs only),
+independent of text memory. Replying after the memory TTL starts a new question
+while the reply marker is still alive. Existing markers written before the TTL
+setting was introduced retain their original Redis lifetime; the TTL applies to
+new replies.
+Confirmation continuations are process-local, bound to their author and exact
+keyboard message; restarting the bot invalidates them. The local FIFO queue holds
+through Telegram delivery and is cleaned when no waiter remains. This follows the
+current single-replica bot contract; multiple replicas require distributed sequencing
+and approval consumption before enabling the agent there.
+
+Stage 1 adds read tools for the caller's profile and points, attendance summary and
+visits, attendance week/month tops, the points leaderboard, role/competence catalogs,
+the caller's roles/competences and bot information. They reuse existing command
+services and require current registration on every execution. Personal reads always
+use the Telegram actor; tools accept no recipient ID. Administrative reads and data
+changes remain unavailable through the agent at this stage.
+
+Stage 2 adds the current accounting month and current club attendance report, plus
+chat/topic IDs for administrators. Administrators can read a registered user's
+profile or monthly attendance by an explicitly supplied Telegram ID. These tools
+are role-filtered and re-check the current `Admin` role at execution. Report output
+is plain text and bounded to 25 ranking rows and 30 detailed visits; larger reports
+state how many rows were omitted. Other-user lookup does not infer an ID from a name.
+
+Attendance week top is the current week; `/leaderboard` is points for the previous
+calendar week. The month top defaults to the current Yekaterinburg month. Visit
+history asks for a month when several months exist, matching `/visits`; a single
+available month is selected automatically. Month arguments reject future periods.
+`bot_capabilities` lists commands according to the caller's current roles. Commands, active FSM scenarios, active
+`aiogram-dialog` contexts and non-text messages keep their existing handlers.
+
+Stage 3 adds the student's Mentor role request. The agent checks the existing role-request
+eligibility rules before asking for confirmation, binds the confirmation to the author and
+the exact message, then calls `RoleRequestService` after approval. The service checks the
+rules again before persisting and notifying administrators. Cancelling or an expired
+confirmation creates no request.
+
+Stage 4 adds administrator-only points changes, role and competence assignment/removal,
+and attendance time edits, deletion, or manual entry. Every action preflights the exact
+Telegram ID and requested data before showing a code-built summary; approval is bound to
+the author and original message, then current roles and action validity are checked again.
+Points use `PointsService` and the existing notification flow; role and competence changes
+reuse their services; visit changes reuse attendance auditing and participant notifications.
+The admin-only name search shows up to five matching participants with their Telegram IDs;
+when a name is ambiguous, the agent asks which exact ID to use. No new database schema is
+required.
+
+Stage 5 adds a deferred broadcast action for the roles listed in `BROADCAST_ALLOWED_ROLES`.
+The confirmation shows the recipient scope (all registered users, one role, or one competence)
+and the complete exact message; the message is limited to 3,500 characters so the preview and
+buttons fit in one Telegram message. Sending is available only in the private chat, matching
+`/broadcast`. The role is checked when tools are exposed and again when approval resumes. The
+agent resolves targets from the existing role and competence catalogs and then calls
+`BroadcastService`, preserving its single-running-broadcast lock, delivery batches, retry policy,
+and result accounting. No recipient receives the draft before approval.
+
+Tests use Pydantic AI `TestModel`/`FunctionModel` and prohibit network model requests.
+Live evaluations are opt-in and billed by Polza: `just eval-agent`, or
+`uv run python evals/agent/run.py`. They use synthetic users without database or
+Telegram access; they print case status and tool names, not provider bodies or keys.
+They are not part of CI. During a test-bot smoke check, verify private questions,
+the configured topic, mentions, replies to agent versus ordinary bot messages,
+registration/broadcast text entry, and model timeout UX.

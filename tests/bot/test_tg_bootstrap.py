@@ -25,6 +25,7 @@ async def test_tg_bot_main_uses_di_bot_and_closes_container(monkeypatch: pytest.
     setup_runtime_alerts_service_mock = mocker.AsyncMock(return_value=runtime_alerts_service)
     setup_middlewares_mock = mocker.AsyncMock()
     setup_handlers_mock = mocker.Mock()
+    setup_agent_handler_mock = mocker.AsyncMock()
     cleanup_drafts_mock = mocker.AsyncMock()
     monkeypatch.setattr(tg_bot_run, "setup_dispatcher", setup_dispatcher_mock)
     monkeypatch.setattr(tg_bot_run, "setup_di", setup_di_mock)
@@ -32,6 +33,7 @@ async def test_tg_bot_main_uses_di_bot_and_closes_container(monkeypatch: pytest.
     monkeypatch.setattr(tg_bot_run, "setup_runtime_alerts_service", setup_runtime_alerts_service_mock)
     monkeypatch.setattr(tg_bot_run, "setup_middlewares", setup_middlewares_mock)
     monkeypatch.setattr(tg_bot_run, "setup_handlers", setup_handlers_mock)
+    monkeypatch.setattr(tg_bot_run, "setup_agent_handler", setup_agent_handler_mock)
     monkeypatch.setattr(tg_bot_run, "cleanup_stale_attendance_drafts_on_startup", cleanup_drafts_mock)
 
     with pytest.raises(asyncio.CancelledError):
@@ -39,6 +41,7 @@ async def test_tg_bot_main_uses_di_bot_and_closes_container(monkeypatch: pytest.
 
     setup_bot_mock.assert_awaited_once_with(fake_container)
     setup_runtime_alerts_service_mock.assert_awaited_once_with(fake_container)
+    setup_agent_handler_mock.assert_awaited_once()
     fake_bot.delete_webhook.assert_awaited_once_with(drop_pending_updates=True)
     cleanup_drafts_mock.assert_awaited_once_with(fake_container)
     runtime_alerts_service.notify_startup.assert_awaited_once()
@@ -74,6 +77,7 @@ async def test_tg_bot_main_keeps_shutdown_running_when_runtime_alert_delivery_fa
     )
     monkeypatch.setattr(tg_bot_run, "setup_middlewares", mocker.AsyncMock())
     monkeypatch.setattr(tg_bot_run, "setup_handlers", mocker.Mock())
+    monkeypatch.setattr(tg_bot_run, "setup_agent_handler", mocker.AsyncMock())
     monkeypatch.setattr(tg_bot_run, "cleanup_stale_attendance_drafts_on_startup", mocker.AsyncMock())
 
     with pytest.raises(asyncio.CancelledError):

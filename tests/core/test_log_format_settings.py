@@ -20,7 +20,8 @@ class AppSettingsWithoutDotenv(AppSettings):
         return (init_settings, env_settings)
 
 
-def test_log_format_defaults_to_text_for_test_mode() -> None:
+def test_log_format_defaults_to_text_for_test_mode(monkeypatch) -> None:
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
     parsed_settings = AppSettingsWithoutDotenv(
         BOT_TOKEN="123456:prod",
         BOT_TOKEN_TEST="123456:test",
@@ -32,7 +33,8 @@ def test_log_format_defaults_to_text_for_test_mode() -> None:
     assert parsed_settings.log_format == "text"
 
 
-def test_log_format_defaults_to_json_for_prod_mode() -> None:
+def test_log_format_defaults_to_json_for_prod_mode(monkeypatch) -> None:
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
     parsed_settings = AppSettingsWithoutDotenv(
         BOT_TOKEN="123456:prod",
         BOT_TOKEN_TEST="123456:test",

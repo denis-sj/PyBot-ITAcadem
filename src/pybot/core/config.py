@@ -4,7 +4,7 @@ import functools
 from typing import Annotated, Literal, Self
 from zoneinfo import ZoneInfo
 
-from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_extra_types.cron import CronStr
 from pydantic_extra_types.timezone_name import TimeZoneName
 from pydantic_settings import (
@@ -18,6 +18,26 @@ from pydantic_settings import (
 from .constants import RoleEnum
 
 YEKATERINBURG_TZ = ZoneInfo("Asia/Yekaterinburg")
+
+
+class AgentProviderSettings(BaseModel):
+    """Explicit Polza routing; provider IDs come from the evaluated catalog."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    order: tuple[str, ...] = ("decart/fp4", "deepseek")
+    only: tuple[str, ...] = ("decart/fp4", "deepseek")
+    require_parameters: bool = Field(True, strict=True)
+    allow_fallbacks: bool = Field(True, strict=True)
+
+    @field_validator("order", "only")
+    @classmethod
+    def validate_provider_names(cls, names: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(name.strip() for name in names)
+        if any(not name for name in normalized):
+            raise ValueError("Provider names must not be blank")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("Provider names must be unique")
+        return normalized
 
 
 class AppSettings(BaseSettings):
@@ -248,6 +268,21 @@ class AppSettings(BaseSettings):
         le=4096,
     )
 
+    # Agent harness (opt-in; uses Polza credentials independently of vision)
+    agent_enabled: bool = Field(False, alias="AGENT_ENABLED")
+    agent_model: str = Field("deepseek/deepseek-v4.1-flash", alias="AGENT_MODEL", min_length=1)
+    agent_provider: AgentProviderSettings = Field(default_factory=AgentProviderSettings, alias="AGENT_PROVIDER")
+    agent_reasoning_effort: Literal["max", "xhigh", "high", "medium", "low", "minimal", "none"] = Field(
+        "none", alias="AGENT_REASONING_EFFORT"
+    )
+    agent_group_chat_id: int | None = Field(None, alias="AGENT_GROUP_CHAT_ID", lt=0)
+    agent_topic_id: int | None = Field(None, alias="AGENT_TOPIC_ID", gt=0)
+    agent_memory_max_messages: int = Field(10, alias="AGENT_MEMORY_MAX_MESSAGES", ge=2, le=10)
+    agent_memory_ttl_s: int = Field(1800, alias="AGENT_MEMORY_TTL_S", ge=1, le=1800)
+    agent_reply_mark_ttl_s: int = Field(604800, alias="AGENT_REPLY_MARK_TTL_S", ge=1)
+    agent_max_steps: int = Field(8, alias="AGENT_MAX_STEPS", ge=1, le=20)
+    agent_timeout_s: int = Field(60, alias="AGENT_TIMEOUT_S", ge=5, le=300)
+
     # Polza.ai and Attendance settings
     polza_api_key: SecretStr | None = Field(None, alias="POLZA_API_KEY", description="Polza.ai API key")
     polza_base_url: str = Field("https://polza.ai/api/v1", alias="POLZA_BASE_URL", description="Polza.ai API base URL")
@@ -278,6 +313,32 @@ class AppSettings(BaseSettings):
         alias="ATTENDANCE_STALE_DRAFT_CLEANUP_CRON",
         description="Cron schedule for stale draft cleanup",
     )
+
+    @model_validator(mode="after")
+    def validate_agent_config(self) -> Self:
+        """Require credentials only when enabled and keep topic configuration coherent."""
+        if (self.agent_group_chat_id is None) != (self.agent_topic_id is None):
+            raise ValueError("AGENT_GROUP_CHAT_ID and AGENT_TOPIC_ID must be configured together")
+        if self.agent_enabled and (self.polza_api_key is None or not self.polza_api_key.get_secret_value().strip()):
+            raise ValueError("POLZA_API_KEY must be set when AGENT_ENABLED=true")
+        return self
+
+    @field_validator("agent_model")
+    @classmethod
+    def normalize_agent_model(cls, value: str) -> str:
+        """Reject blank model identifiers before contacting the provider."""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("AGENT_MODEL must be non-empty")
+        return normalized
+
+    @field_validator("agent_group_chat_id", "agent_topic_id", mode="before")
+    @classmethod
+    def parse_agent_optional_id(cls, value: int | str | None) -> int | None:
+        """Allow blank optional IDs in .env.example."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return int(value) if value is not None else None
 
     @property
     def active_bot_token(self: Self) -> str:

@@ -53,12 +53,14 @@ class UserService:
         return None
 
     # TODO Вынести в UserActivityService, если activity flow обрастет собственной orchestration
-    async def track_activity(self, telegram_id: int) -> int | None:
+    async def track_activity(self, telegram_id: int, username: str | None) -> int | None:
         """Update the last activity timestamp for the Telegram user."""
         user = await self.user_repository.find_user_by_telegram_id(self.db, telegram_id)
         if not user:
             return None
 
+        if user.telegram_username != username:
+            user.telegram_username = username
         await self.user_repository.update_user_last_active(self.db, user.id)
         await self.db.commit()
         return user.id

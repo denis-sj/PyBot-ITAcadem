@@ -281,6 +281,7 @@ class UserRepository:
         user = User(
             phone_number=data.phone,
             telegram_id=data.tg_id,
+            telegram_username=data.telegram_username,
             first_name=data.first_name,
             last_name=data.last_name,
             patronymic=data.patronymic,

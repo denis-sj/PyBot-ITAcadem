@@ -1,0 +1,27 @@
+{
+  "status": "compatibility_fixed_before_baseline",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "accounted_cost_rub": "10.5622565560",
+  "exact_cost_rub": "0.79443418",
+  "estimated_cost_rub": "9.7678223760",
+  "exact_records": 70,
+  "estimated_records": 20,
+  "remaining_budget_rub": "19.4377434440",
+  "findings": [
+    "Initial agent request failed before ModelResponse/usage was available.",
+    "Successful synthetic responses include both usage.cost_rub and usage.cost with equal values.",
+    "No cost_details or separate cache tariff was observed; cached input fallback uses ordinary input tariff.",
+    "Simple synthetic prompts work with no tools, a synthetic tool, and the Student tool registry.",
+    "The profile question with Student tools and system instructions returns HTTP 502 BAD_GATEWAY, including with thinking disabled.",
+    "SDK retries are disabled for evaluations.",
+    "Provider capability comparison isolated unsupported parallel_tool_calls; after its omission all selected-provider probes passed."
+  ],
+  "verification": {
+    "targeted_tests": 8,
+    "quality_gate_tests": 1444,
+    "unit_tests": 1329,
+    "coverage_pct": 89.14
+  },
+  "budget_limit_rub": "30",
+  "tariffs_checked_at": "2026-10-13"
+}

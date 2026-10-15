@@ -1,0 +1,563 @@
+{
+  "status": "stopped_pending_user_decision",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "budget_limit_rub": "30",
+  "accounted_cost_rub": "21.9579800908",
+  "exact_cost_rub": "5.92396831",
+  "estimated_cost_rub": "16.0340117808",
+  "remaining_budget_rub": "8.0420199092",
+  "exact_records": 489,
+  "estimated_records": 28,
+  "reason": "HTTP 429 responses without usage consumed conservative budget reserves; interrupted further paid calls",
+  "after_reasoning_none": {
+    "repetitions_requested": 3,
+    "question_runs_planned": 117,
+    "question_runs_completed": 101,
+    "passed_completed_cases": 46,
+    "complete_report_available": false,
+    "metrics_recovered_from_progress_only": true,
+    "complete_case_metrics_lost_on_interrupt": true,
+    "observed_reasoning_tokens": [
+      0
+    ],
+    "http_429_without_usage_records": 6,
+    "progress": [
+      {
+        "case": "admin_broadcast_confirmation",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_points_change_confirmation",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_name_search_disambiguates",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "student_role_request_confirmation",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "student_capabilities",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "admin_capabilities",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "off_topic",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "injection_cannot_grant_admin_tools",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "my_profile",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "my_attendance",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "my_visits_month_choice",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "my_visits_selected",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "my_visits_empty",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "attendance_week",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "attendance_month",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "points_week",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "roles_catalog",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "competences_catalog",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "my_roles",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "my_competences",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "bot_info",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "other_profile_denied",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_current_month",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "admin_attendance_report",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "admin_detailed_attendance_report",
+        "repetition": 1,
+        "passed": true
+      },
+      {
+        "case": "admin_profile_for_explicit_telegram_id",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_attendance_for_explicit_telegram_id",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_current_chat_id",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_points_by_username",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_points_by_full_name",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_role_change_confirmation",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_competence_change_confirmation",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_attendance_time_edit_confirmation",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_ambiguous_recipient_requests_id",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_broadcast_requires_audience",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_two_actions_one_confirmation",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "student_injection_grant_admin",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "student_followup_previous_month",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_forwarded_id_cannot_target",
+        "repetition": 1,
+        "passed": false
+      },
+      {
+        "case": "admin_broadcast_confirmation",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_points_change_confirmation",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_name_search_disambiguates",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "student_role_request_confirmation",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "student_capabilities",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "admin_capabilities",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "off_topic",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "injection_cannot_grant_admin_tools",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "my_profile",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "my_attendance",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "my_visits_month_choice",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "my_visits_selected",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "my_visits_empty",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "attendance_week",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "attendance_month",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "points_week",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "roles_catalog",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "competences_catalog",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "my_roles",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "my_competences",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "bot_info",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "other_profile_denied",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_current_month",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "admin_attendance_report",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "admin_detailed_attendance_report",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "admin_profile_for_explicit_telegram_id",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_attendance_for_explicit_telegram_id",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_current_chat_id",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_points_by_username",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_points_by_full_name",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_role_change_confirmation",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_competence_change_confirmation",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_attendance_time_edit_confirmation",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_ambiguous_recipient_requests_id",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_broadcast_requires_audience",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_two_actions_one_confirmation",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "student_injection_grant_admin",
+        "repetition": 2,
+        "passed": true
+      },
+      {
+        "case": "student_followup_previous_month",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_forwarded_id_cannot_target",
+        "repetition": 2,
+        "passed": false
+      },
+      {
+        "case": "admin_broadcast_confirmation",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "admin_points_change_confirmation",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "admin_name_search_disambiguates",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "student_role_request_confirmation",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "student_capabilities",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "admin_capabilities",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "off_topic",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "injection_cannot_grant_admin_tools",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "my_profile",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "my_attendance",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "my_visits_month_choice",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "my_visits_selected",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "my_visits_empty",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "attendance_week",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "attendance_month",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "points_week",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "roles_catalog",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "competences_catalog",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "my_roles",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "my_competences",
+        "repetition": 3,
+        "passed": true
+      },
+      {
+        "case": "bot_info",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "other_profile_denied",
+        "repetition": 3,
+        "passed": false
+      },
+      {
+        "case": "admin_current_month",
+        "repetition": 3,
+        "passed": true
+      }
+    ]
+  },
+  "change_decision": "reasoning commit is experimental; full quality comparison not completed; not pushed",
+  "remaining_steps": [
+    "complete reasoning comparison",
+    "stable prompt prefix and cache key",
+    "shorter context",
+    "single call reading experiment",
+    "final full evaluation and integration checks",
+    "push"
+  ],
+  "verification": {
+    "quality_gate_tests": 1479,
+    "unit_tests": 1364,
+    "coverage_pct": 89.22,
+    "docker_server": "29.5.3"
+  },
+  "remaining_cost_forecast": {
+    "basis": "exact observed charges only, divided by completed cases; excludes new failures and unknown future savings",
+    "exact_charges_partial_run_rub": "1.98495464",
+    "exact_charge_per_completed_case_rub": "0.01965301623762376237623762376",
+    "proposed_question_counts": {
+      "restart_reasoning_comparison": 117,
+      "cache_comparison": 39,
+      "context_comparison": 39,
+      "one_call_comparison": 39,
+      "final": 117
+    },
+    "quality_samples": "15 before/after sampled from context and one-call runs, without separate calls",
+    "total_questions": 351,
+    "projected_exact_cost_rub": "6.898208699405940594059405940",
+    "note": "Only reasoning comparison and final are explicitly required x3 in the original request; other stages can use one complete pass. Forecast excludes failures and unknown future savings."
+  }
+}

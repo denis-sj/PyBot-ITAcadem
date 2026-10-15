@@ -261,11 +261,14 @@ async def test_track_activity_updates_last_active_and_returns_user_id(
     user = await create_user(db, spec=UserSpec(telegram_id=700_777))
     await db.commit()
 
-    tracked_user_id = await service.track_activity(user.telegram_id)
+    tracked_user_id = await service.track_activity(user.telegram_id, "petrov")
 
     refreshed_user = await user_repository.get_by_id(db, user.id)
+    mapped_user = await service.find_user_by_telegram_id(user.telegram_id)
     assert tracked_user_id == user.id
     assert refreshed_user.last_active_at is not None
+    assert refreshed_user.telegram_username == "petrov"
+    assert mapped_user is not None and mapped_user.telegram_username == "petrov"
 
 
 @pytest.mark.asyncio

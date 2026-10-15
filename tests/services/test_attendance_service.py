@@ -1,6 +1,7 @@
 """Unit tests for AttendanceService orchestration and use cases."""
 
 from datetime import UTC, date, datetime, time, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
@@ -106,6 +107,27 @@ def service(
 
 
 @pytest.mark.asyncio
+async def test_sorted_participants_uses_all_registered_users_without_requiring_visits(
+    service: AttendanceService,
+    mock_user_repo: AsyncMock,
+) -> None:
+    registered_user_without_visits = SimpleNamespace(
+        id=771,
+        last_name="Петров",
+        first_name="Пётр",
+        patronymic=None,
+        telegram_id=771234,
+        telegram_username="petya",
+    )
+    mock_user_repo.find_all_users.return_value = [registered_user_without_visits]
+
+    participants = await service.get_sorted_participants()
+
+    assert participants == [registered_user_without_visits]
+    mock_user_repo.find_all_users.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_photo_browser_service_uses_month_date_range(
     service: AttendanceService,
     mock_attendance_repo: AsyncMock,
@@ -181,7 +203,7 @@ async def test_ingest_attendance_photo_happy_path(
 ) -> None:
     tz = ZoneInfo(str(settings_obj.attendance_timezone))
     now = datetime.now(tz)
-    today = date(now.year, now.month, 15)
+    today = now.date()
 
     user1 = User(id=1, first_name="Иван", last_name="Иванов", patronymic="Иванович")
     user2 = User(id=2, first_name="Петр", last_name="Петров")
@@ -264,7 +286,7 @@ async def test_participant_matching_ambiguous_and_unknown(
 ) -> None:
     tz = ZoneInfo(str(settings_obj.attendance_timezone))
     now = datetime.now(tz)
-    today = date(now.year, now.month, 10)
+    today = now.date()
 
     # Two users named "Алексей Смирнов" -> ambiguous!
     user1 = User(id=1, first_name="Алексей", last_name="Смирнов", patronymic="Сергеевич")
@@ -591,6 +613,7 @@ async def test_ingest_photo_marks_out_of_month_and_already_processed(
     mock_user_repo: AsyncMock,
     mock_recognition_port: AsyncMock,
 ) -> None:
+    current_month_date = datetime.now(ZoneInfo("Asia/Yekaterinburg")).date()
     mock_user_repo.find_all_users.return_value = []
     mock_recognition_port.recognize_attendance_sheet.return_value = AttendanceRecognitionResultDTO(
         quality=AttendanceQualityDTO(is_good=True, comment="OK"),
@@ -600,13 +623,13 @@ async def test_ingest_photo_marks_out_of_month_and_already_processed(
                 rows=[],
             ),
             AttendanceRecognizedDateBlockDTO(
-                date=date(2026, 9, 15),
+                date=current_month_date,
                 rows=[],
             ),
         ],
     )
     mock_attendance_repo.find_processed_date.side_effect = lambda _db, d: (
-        AttendanceDate(id=1, import_id=55, date=d) if d == date(2026, 9, 15) else None
+        AttendanceDate(id=1, import_id=55, date=d) if d == current_month_date else None
     )
     mock_attendance_repo.create_draft.return_value = AttendanceImport(id=99)
 
@@ -921,7 +944,7 @@ async def test_ingest_attendance_photo_preserves_needs_manual_review_and_low_con
 ) -> None:
     tz = ZoneInfo(str(settings_obj.attendance_timezone))
     now = datetime.now(tz)
-    today = date(now.year, now.month, 15)
+    today = now.date()
 
     user1 = User(id=1, first_name="Иван", last_name="Иванов")
     user2 = User(id=2, first_name="Петр", last_name="Петров")
@@ -991,7 +1014,7 @@ async def test_ingest_attendance_photo_keeps_incomplete_time_for_manual_entry(
 ) -> None:
     tz = ZoneInfo(str(settings_obj.attendance_timezone))
     now = datetime.now(tz)
-    today = date(now.year, now.month, 15)
+    today = now.date()
     mock_user_repo.find_all_users.return_value = [User(id=1, first_name="Иван", last_name="Иванов")]
     mock_recognition_port.recognize_attendance_sheet.return_value = AttendanceRecognitionResultDTO(
         quality=AttendanceQualityDTO(is_good=True, comment="ОК", problems=[]),
@@ -1727,7 +1750,7 @@ async def test_ingest_photo_skips_participant_with_existing_manual_visit(
 ) -> None:
     tz = ZoneInfo(str(settings_obj.attendance_timezone))
     now = datetime.now(tz)
-    today = date(now.year, now.month, 15)
+    today = now.date()
 
     user1 = User(id=1, first_name="Иван", last_name="Иванов")
     user2 = User(id=2, first_name="Петр", last_name="Петров")

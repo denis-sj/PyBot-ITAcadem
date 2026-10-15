@@ -1,0 +1,75 @@
+{
+  "http": [
+    {
+      "status": 200,
+      "request_fields": [
+        "max_completion_tokens",
+        "messages",
+        "model",
+        "stream",
+        "temperature",
+        "tool_choice",
+        "tools"
+      ],
+      "message_roles": [
+        "system",
+        "user"
+      ],
+      "tool_strict_flags": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "tool_choice": "auto",
+      "fields": [
+        "choices",
+        "created",
+        "id",
+        "model",
+        "object",
+        "usage"
+      ],
+      "usage_fields": [
+        "completion_tokens",
+        "completion_tokens_details",
+        "cost",
+        "cost_rub",
+        "plugins",
+        "prompt_tokens",
+        "prompt_tokens_details",
+        "server_tool_use",
+        "total_tokens"
+      ],
+      "billing": {
+        "prompt_tokens": 1906,
+        "completion_tokens": 226,
+        "total_tokens": 2132,
+        "completion_tokens_details": {
+          "reasoning_tokens": 187,
+          "audio_tokens": 0,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 1792,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_rub": 0.01408989,
+        "cost": 0.01408989
+      },
+      "error_terms": []
+    }
+  ],
+  "cost_rub": "0.01408989"
+}

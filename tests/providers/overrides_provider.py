@@ -11,6 +11,18 @@ from pybot.services.ports import AttendanceRecognitionPort, NotificationPort
 __test__ = False
 
 
+class FakeAttendanceRecognitionPort:
+    """Fail loudly if an integration test unexpectedly tries external recognition."""
+
+    async def recognize_attendance_sheet(
+        self,
+        photo_bytes: bytes,
+        mime_type: str,
+        candidate_user_names: list[str],
+    ) -> AttendanceRecognitionResultDTO:
+        raise AssertionError("Photo recognition requires an explicit test result; network calls are forbidden")
+
+
 class FakeNotificationPort(NotificationPort):
     """In-memory notification adapter for isolated tests."""
 
@@ -50,18 +62,6 @@ class FakeNotificationPort(NotificationPort):
         status_text: str,
     ) -> None:
         return None
-
-
-class FakeAttendanceRecognitionPort(AttendanceRecognitionPort):
-    """Fail explicitly if an integration test tries to call external vision API."""
-
-    async def recognize_attendance_sheet(
-        self,
-        photo_bytes: bytes,
-        mime_type: str,
-        candidate_user_names: list[str],
-    ) -> AttendanceRecognitionResultDTO:
-        raise AssertionError("Attendance photo recognition must be mocked in tests")
 
 
 @dataclass(frozen=True, slots=True)

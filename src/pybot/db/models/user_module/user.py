@@ -44,6 +44,7 @@ class User(Base):
     patronymic: Mapped[str | None] = mapped_column(Text)
     phone_number: Mapped[str | None] = mapped_column(Text)
     telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    telegram_username: Mapped[str | None] = mapped_column(Text)
     github_url: Mapped[str | None] = mapped_column(Text)
 
     join_date: Mapped[date] = mapped_column(

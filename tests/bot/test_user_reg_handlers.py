@@ -25,10 +25,11 @@ from pybot.services.user_services import UserService
 def _build_message(
     *,
     from_user_id: int = 700_001,
+    username: str | None = None,
     phone_number: str | None = None,
     contact_user_id: int | None = None,
 ) -> Message:
-    sender = User(id=from_user_id, is_bot=False, first_name="Tester")
+    sender = User(id=from_user_id, is_bot=False, first_name="Tester", username=username)
     contact: Contact | None = None
     if phone_number is not None:
         contact = Contact(
@@ -80,7 +81,7 @@ def _build_user_read_dto(user_id: int, telegram_id: int) -> UserReadDTO:
 async def test_on_contact_input_removes_keyboard_and_moves_to_next_step(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    message = _build_message(phone_number="+79990001122")
+    message = _build_message(phone_number="+79990001122", username="student_name")
     manager = StubDialogManager()
     user_service = StubUserService(existing_user=None)
     answer_mock = AsyncMock()
@@ -95,6 +96,7 @@ async def test_on_contact_input_removes_keyboard_and_moves_to_next_step(
     assert user_service.phone_queries == ["+79990001122"]
     assert manager.dialog_data["phone_number"] == "+79990001122"
     assert manager.dialog_data["tg_id"] == 700_001
+    assert manager.dialog_data["telegram_username"] == "student_name"
     manager.next.assert_awaited_once()
     manager.done.assert_not_awaited()
 
