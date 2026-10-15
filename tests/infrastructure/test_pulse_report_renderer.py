@@ -58,6 +58,20 @@ def test_participant_is_rendered_once_in_priority_sections_and_remainder_count_m
     assert 'Кто чем занимается <span class="count">2 участника</span>' in html
     assert "Пометка: без ответа по существу." in html
     assert "Без ответа по существу" in html
+    off_topic_card = html.split('data-user-id="3"', maxsplit=1)[1].split("</article>", maxsplit=1)[0]
+    assert "Есть прогресс" not in off_topic_card
+    assert 'class="summary"' not in off_topic_card
+
+
+def test_needs_help_delta_uses_inverse_colors() -> None:
+    increased = build_pulse_report_html(_report(needs_help_delta=2))
+    decreased = build_pulse_report_html(_report(needs_help_delta=-2))
+
+    help_label = 'class="label">Нужна помощь</div>'
+    increased_help_kpi = increased.split(help_label, maxsplit=1)[1].split("</div></div>", maxsplit=1)[0]
+    decreased_help_kpi = decreased.split(help_label, maxsplit=1)[1].split("</div></div>", maxsplit=1)[0]
+    assert 'class="delta negative"' in increased_help_kpi
+    assert 'class="delta positive"' in decreased_help_kpi
 
 
 def test_report_has_russian_period_gradient_header_and_seven_day_participant_metrics() -> None:
@@ -153,6 +167,7 @@ def _report(
     *,
     invited_count: int = 0,
     answered_count: int = 0,
+    needs_help_delta: int = 0,
     needs_help: tuple[CheckinParticipantDTO, ...] = (),
     answered_participants: tuple[CheckinParticipantDTO, ...] = (),
     achievements: tuple[PulseAchievementDTO, ...] = (),
@@ -169,7 +184,7 @@ def _report(
         goals_achieved_count=sum(item.status == CheckinStatus.GOAL_ACHIEVED for item in answered_participants),
         visit_count=0,
         answered_delta=0,
-        needs_help_delta=0,
+        needs_help_delta=needs_help_delta,
         goals_achieved_delta=0,
         visits_delta=0,
         needs_help=needs_help,

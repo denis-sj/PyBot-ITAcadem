@@ -144,16 +144,16 @@ def _format_russian_date(value: date) -> str:
 
 def _render_kpis(report: PulseReportDTO) -> str:
     cards = (
-        (report.answer_ratio, "Ответили на чекин", report.answered_delta, "к прошлой неделе"),
-        (str(report.needs_help_count), "Нужна помощь", report.needs_help_delta, "к прошлой неделе"),
-        (str(report.goals_achieved_count), "Цели достигнуты", report.goals_achieved_delta, "к прошлой неделе"),
-        (str(report.visit_count), "Посещений за 7 дней", report.visits_delta, "к предыдущим 7 дням"),
+        (report.answer_ratio, "Ответили на чекин", report.answered_delta, "к прошлой неделе", False),
+        (str(report.needs_help_count), "Нужна помощь", report.needs_help_delta, "к прошлой неделе", True),
+        (str(report.goals_achieved_count), "Цели достигнуты", report.goals_achieved_delta, "к прошлой неделе", False),
+        (str(report.visit_count), "Посещений за 7 дней", report.visits_delta, "к предыдущим 7 дням", False),
     )
     return "\n".join(
         '<div class="kpi"><div class="value">'
         f'{escape(value)}</div><div class="label">{escape(label)}</div>'
-        f'<div class="delta {_delta_class(delta)}">{_delta_text(delta, comparison)}</div></div>'
-        for value, label, delta, comparison in cards
+        f'<div class="delta {_delta_class(delta, reverse=reverse)}">{_delta_text(delta, comparison)}</div></div>'
+        for value, label, delta, comparison, reverse in cards
     )
 
 
@@ -179,9 +179,10 @@ def _render_participants(participants: tuple[CheckinParticipantDTO, ...], *, kin
         if participant.goal_text:
             card_lines.append(f'<div class="goal-line"><span>Цель:</span> {goal_text}</div>')
         card_lines.append(f'<div class="status-line"><span class="badge {kind}">{status}</span></div>')
-        card_lines.append(f'<div class="summary">{summary}</div>')
         if participant.status == CheckinStatus.NO_SUBSTANTIVE_ANSWER:
             card_lines.append('<div class="annotation">Пометка: без ответа по существу.</div>')
+        else:
+            card_lines.append(f'<div class="summary">{summary}</div>')
         if participant.technology_stack:
             chips = []
             for item in participant.technology_stack:
@@ -294,8 +295,13 @@ def _week_word(count: int) -> str:
     return "недель"
 
 
-def _delta_class(delta: int) -> str:
-    return "positive" if delta > 0 else "negative" if delta < 0 else ""
+def _delta_class(delta: int, *, reverse: bool = False) -> str:
+    if delta == 0:
+        return ""
+    is_positive = delta > 0
+    if reverse:
+        is_positive = not is_positive
+    return "positive" if is_positive else "negative"
 
 
 def _delta_text(delta: int, comparison: str) -> str:
