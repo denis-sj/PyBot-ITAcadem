@@ -170,8 +170,20 @@ jobs:
         run: |
           set -eu
           install -m 700 -d "$HOME/.ssh"
-          printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > "$HOME/.ssh/staging_ed25519"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          private_key = os.environ["STAGING_DEPLOY_SSH_KEY"]
+          private_key = private_key.replace("\\r\\n", "\n").replace("\\n", "\n")
+          private_key = private_key.replace("\r\n", "\n").replace("\r", "\n")
+          Path.home().joinpath(".ssh/staging_ed25519").write_text(private_key.strip() + "\n")
+          PY
           chmod 600 "$HOME/.ssh/staging_ed25519"
+          if ! ssh-keygen -y -f "$HOME/.ssh/staging_ed25519" >/dev/null 2>&1; then
+            echo "STAGING_DEPLOY_SSH_KEY must contain a valid, unencrypted OpenSSH private key." >&2
+            exit 1
+          fi
           printf '%s\n' "$STAGING_DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/staging_known_hosts"
           chmod 644 "$HOME/.ssh/staging_known_hosts"
 
