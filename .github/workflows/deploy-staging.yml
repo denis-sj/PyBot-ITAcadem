@@ -181,6 +181,7 @@ jobs:
           PY
           chmod 600 "$HOME/.ssh/staging_ed25519"
           if ! ssh-keygen -y -f "$HOME/.ssh/staging_ed25519" >/dev/null 2>&1; then
+            python scripts/ci/ssh_key_diagnostics.py
             echo "STAGING_DEPLOY_SSH_KEY must contain a valid, unencrypted OpenSSH private key." >&2
             exit 1
           fi
