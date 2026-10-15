@@ -473,7 +473,7 @@ async def _on_technology_stack_save_impl(
                 error_type=type(error).__name__,
             )
             response_text = "Твой стек сохранён. Не получилось подобрать помощников сейчас — попробуй позже."
-        await callback.message.edit_text(response_text, reply_markup=None)
+        await callback.message.edit_text(response_text, reply_markup=None, parse_mode=None)
     await manager.done()
 
 

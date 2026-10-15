@@ -149,6 +149,7 @@ profile_create_dialog = Dialog(
             ),
         ),
         getter=get_stack_confirmation,
+        parse_mode=None,
         state=CreateProfileSG.technology_stack_confirmation,
     ),
 )

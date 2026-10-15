@@ -283,6 +283,7 @@ class CommunityAchievementService:
                 NotifyDTO(
                     recipient_id=user.telegram_id,
                     message=render_achievement_congratulation([award.code for award in awards]),
+                    parse_mode=None,
                 )
             )
         except NotificationBlockedError:

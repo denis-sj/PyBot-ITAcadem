@@ -7,7 +7,9 @@ from aiogram.types import CallbackQuery, Chat, Message, User
 
 from pybot.domain.services.community_checkins import NotificationPreferenceKey
 from pybot.dto.community_checkins import UserNotificationPreferencesDTO
+from pybot.dto.technology_stack import TechnologyStackHelperDTO, TechnologyStackRecommendationDTO
 from pybot.presentation.bot.handlers.community_checkins import handle_private_checkin_response
+from pybot.presentation.texts.technology_stack import render_helper_recommendation
 from pybot.presentation.bot.handlers.notification_preferences import (
     NotificationPreferenceCB,
     cb_toggle_notification,
@@ -41,12 +43,29 @@ async def test_private_checkin_response_is_acknowledged(monkeypatch: pytest.Monk
     answer = AsyncMock()
     monkeypatch.setattr(Message, "answer", answer)
     service = AsyncMock(spec=CommunityCheckinService)
-    service.handle_response.return_value = "Записал, удачи на неделе!"
+    hostile_name = '<b>x</b> & <a href="tg://user?id=1">Аня</a>'
+    recommendation = render_helper_recommendation(
+        TechnologyStackRecommendationDTO(
+            technology="Python",
+            helpers=(
+                TechnologyStackHelperDTO(
+                    user_id=1,
+                    first_name=hostile_name,
+                    last_name=None,
+                    telegram_username=None,
+                    is_mentor=True,
+                    last_visit=None,
+                ),
+            ),
+        )
+    )
+    hostile_text = f"Записал: <b>x</b>.\n\n{recommendation}"
+    service.handle_response.return_value = hostile_text
 
     await handle_private_checkin_response(message, service, user_id=42)
 
     service.handle_response.assert_awaited_once_with(42, "На этой неделе изучаю Python")
-    answer.assert_awaited_once_with("Записал, удачи на неделе!")
+    answer.assert_awaited_once_with(hostile_text, parse_mode=None)
 
 
 @pytest.mark.asyncio

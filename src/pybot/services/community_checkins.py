@@ -80,6 +80,7 @@ class CommunityCheckinService:
                     NotifyDTO(
                         recipient_id=recipient.telegram_id,
                         message=render_checkin_prompt(recipient.goal_text, recipient.has_technology_stack),
+                        parse_mode=None,
                     )
                 )
             except NotificationBlockedError:
@@ -161,6 +162,7 @@ class CommunityCheckinService:
                     NotifyDTO(
                         recipient_id=recipient.telegram_id,
                         message=render_checkin_reminder(recipient.goal_text),
+                        parse_mode=None,
                     )
                 )
             except NotificationBlockedError:

@@ -12,7 +12,11 @@ from pybot.domain.services.community_achievements import AchievementCode, calcul
 from pybot.dto import AchievementPublicationDTO
 from pybot.dto.attendance import AttendanceMonthlyRankingItemDTO
 from pybot.infrastructure.community_achievement_repository import CommunityAchievementRepository
-from pybot.presentation.texts.community_achievements import achievement_title
+from pybot.presentation.texts.community_achievements import (
+    achievement_title,
+    render_achievement_congratulation,
+    render_achievement_digest,
+)
 from pybot.services.community_achievements import CommunityAchievementService
 from pybot.services.ports import CommunityAchievementDispatchPort, NotificationBlockedError
 
@@ -340,6 +344,89 @@ async def test_empty_daily_digest_does_not_send(settings_obj) -> None:
 
     assert count == 0
     notification_service.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_escapes_user_names_before_html_delivery(settings_obj) -> None:
+    settings_obj.achievements_chat_id = -1001234567890
+    settings_obj.achievements_topic_id = 32
+    hostile_name = '<b>x</b> & <a href="tg://user?id=1">Аня</a>'
+    notification_service = Mock()
+    notification_service.send_message = AsyncMock()
+    service, _, _, _, _, _, repository = make_service(settings_obj, notifications=notification_service)
+    repository.find_unpublished_public_awards = AsyncMock(
+        return_value=[
+            AchievementPublicationDTO(
+                id=1,
+                user_id=17,
+                first_name=hostile_name,
+                last_name=None,
+                telegram_username=None,
+                code=AchievementCode.FIRST_STEP.value,
+                achieved_at=datetime(2026, 10, 14, tzinfo=UTC),
+            )
+        ]
+    )
+
+    await service.publish_daily_digest()
+
+    send_call = notification_service.send_message.await_args
+    assert send_call is not None
+    sent_message = send_call.args[0]
+    assert sent_message.parse_mode == "HTML"
+    assert "&lt;b&gt;x&lt;/b&gt; &amp; &lt;a href=&quot;tg://user?id=1&quot;&gt;Аня&lt;/a&gt;" in sent_message.message
+    assert hostile_name not in sent_message.message
+
+
+@pytest.mark.asyncio
+async def test_personal_congratulation_does_not_render_untrusted_award_code(settings_obj) -> None:
+    notification_service = Mock()
+    notification_service.send_message = AsyncMock()
+    service, _, user, _, _, _, repository = make_service(settings_obj, notifications=notification_service)
+    malicious_code = "<b>x</b>"
+    repository.awards[(17, malicious_code)] = UserAchievementAward(
+        id=99,
+        user_id=17,
+        code=malicious_code,
+        achieved_at=datetime(2026, 10, 14, tzinfo=UTC),
+        is_published=False,
+        is_notified=False,
+    )
+
+    await service._deliver_pending_congratulations(17, user)
+
+    send_call = notification_service.send_message.await_args
+    assert send_call is not None
+    sent_message = send_call.args[0]
+    assert sent_message.parse_mode is None
+    assert "<b>x</b>" not in sent_message.message
+    assert "Достижение" in sent_message.message
+
+
+def test_achievement_congratulation_uses_fixed_labels_for_unknown_codes() -> None:
+    assert "<b>x</b>" not in render_achievement_congratulation(["<b>x</b>"])
+
+
+def test_achievement_digest_escapes_names_and_keeps_fixed_formatting() -> None:
+    hostile_name = '<b>x</b> & <a href="tg://user?id=1">Аня</a>'
+    digest = render_achievement_digest(
+        [
+            AchievementPublicationDTO(
+                id=1,
+                user_id=17,
+                first_name=hostile_name,
+                last_name=None,
+                telegram_username=None,
+                code=AchievementCode.FIRST_STEP.value,
+                achieved_at=datetime(2026, 10, 14, tzinfo=UTC),
+            )
+        ]
+    )
+
+    assert digest == (
+        "🏆 Достижения сегодня:\n"
+        "• <b>&lt;b&gt;x&lt;/b&gt; &amp; &lt;a href=&quot;tg://user?id=1&quot;&gt;Аня&lt;/a&gt;</b> — Первый шаг"
+    )
 
 
 @pytest.mark.asyncio
