@@ -28,7 +28,7 @@ async def handle_meeting_response(
     try:
         result = await service.respond(meeting_id, user_id, response)
     except DomainError as error:
-        await callback.answer(str(error), show_alert=True)
+        await callback.answer(error.message, show_alert=True)
         return
     await callback.answer(result)
 
