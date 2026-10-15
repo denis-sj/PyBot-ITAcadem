@@ -104,14 +104,24 @@ def test_role_prefix_stays_within_checked_in_budget() -> None:
         assert counts[role]["combined_tokens"] < budget * 0.95, role
 
 
-def test_acceptance_baseline_keeps_legacy_case_set_and_b3_thresholds() -> None:
+def test_acceptance_baseline_records_legacy_thresholds_and_stage_b_deviation() -> None:
     baseline = json.loads(ACCEPTANCE_BASELINE_PATH.read_text(encoding="utf-8"))
 
     assert baseline["legacy_case_count"] == 39
     assert len(baseline["legacy_case_names"]) == 39
     assert baseline["minimum_legacy_correct_tools_pct"] == 94.8718
-    assert baseline["maximum_exact_cost_per_question_rub"] == "0.025963080"
+    assert baseline["baseline_exact_cost_per_question_rub"] == "0.027"
+    assert baseline["maximum_exact_cost_per_question_rub"] == "0.029700"
+    assert baseline["baseline_cache_share_pct"] == 84.48
     assert baseline["minimum_cache_share_pct"] == 85
+    assert baseline["accepted_baseline_deviation"] == {
+        "stage": "B",
+        "metric": "cache_share_pct",
+        "observed_pct": 84.48,
+        "threshold_pct": 85.0,
+        "deviation_percentage_points": -0.52,
+        "accepted": True,
+    }
     assert baseline["maximum_reasoning_tokens"] == 0
     assert baseline["smoke_max_tool_selection_misses"] == 1
     assert baseline["smoke_max_security_errors"] == 0
