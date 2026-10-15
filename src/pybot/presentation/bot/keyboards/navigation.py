@@ -15,11 +15,18 @@ class CommonNavigationCB(CallbackData, prefix="nav"):
     target: str | None = None
 
 
-def get_close_button(text: str = BUTTON_CLOSE) -> InlineKeyboardButton:
-    """Return a single inline button that closes the message."""
+def get_close_button(text: str = BUTTON_CLOSE, owner_id: int | None = None) -> InlineKeyboardButton:
+    """Return a single inline button that closes the message.
+
+    Args:
+        text: Button label.
+        owner_id: Telegram ID of the only user allowed to close the message. Use it for personal
+            cards that may be opened in a group chat; ``None`` lets anyone close the message.
+    """
     return InlineKeyboardButton(
         text=text,
-        callback_data=CommonNavigationCB(action="close").pack(),
+        callback_data=CommonNavigationCB(action="close", target=None if owner_id is None else str(owner_id)).pack(),
+        style="danger",
     )
 
 

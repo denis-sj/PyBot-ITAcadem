@@ -57,7 +57,7 @@ async def test_cb_close_message_deletes_successfully() -> None:
     callback.answer = answer_mock
     state_mock = AsyncMock(spec=FSMContext)
 
-    await cb_close_message(callback, state_mock)
+    await cb_close_message(callback, state_mock, CommonNavigationCB(action="close"))
 
     state_mock.clear.assert_awaited_once()
     delete_mock.assert_awaited_once()
@@ -83,7 +83,7 @@ async def test_cb_close_message_fallback_to_edit_reply_markup_on_bad_request() -
     callback.answer = answer_mock
     state_mock = AsyncMock(spec=FSMContext)
 
-    await cb_close_message(callback, state_mock)
+    await cb_close_message(callback, state_mock, CommonNavigationCB(action="close"))
 
     state_mock.clear.assert_awaited_once()
     delete_mock.assert_awaited_once()
@@ -114,7 +114,7 @@ async def test_cb_close_message_suppresses_fallback_exception() -> None:
     state_mock = AsyncMock(spec=FSMContext)
 
     # Should not raise exception
-    await cb_close_message(callback, state_mock)
+    await cb_close_message(callback, state_mock, CommonNavigationCB(action="close"))
 
     state_mock.clear.assert_awaited_once()
     delete_mock.assert_awaited_once()
@@ -130,7 +130,51 @@ async def test_cb_close_message_handles_none_message() -> None:
     callback.answer = answer_mock
     state_mock = AsyncMock(spec=FSMContext)
 
-    await cb_close_message(callback, state_mock)
+    await cb_close_message(callback, state_mock, CommonNavigationCB(action="close"))
 
     state_mock.clear.assert_awaited_once()
     answer_mock.assert_awaited_once()
+
+
+def test_get_close_button_carries_owner_id() -> None:
+    button = get_close_button(owner_id=555)
+
+    assert button.callback_data is not None
+    assert CommonNavigationCB.unpack(button.callback_data) == CommonNavigationCB(action="close", target="555")
+
+
+@pytest.mark.asyncio
+async def test_cb_close_message_ignores_press_from_other_user_in_group() -> None:
+    message_mock = AsyncMock(spec=Message)
+    message_mock.delete = AsyncMock()
+    callback = AsyncMock(spec=CallbackQuery)
+    callback.message = message_mock
+    callback.from_user = AsyncMock()
+    callback.from_user.id = 999
+    callback.answer = AsyncMock()
+    state_mock = AsyncMock(spec=FSMContext)
+
+    await cb_close_message(callback, state_mock, CommonNavigationCB(action="close", target="555"))
+
+    message_mock.delete.assert_not_awaited()
+    state_mock.clear.assert_not_awaited()
+    callback.answer.assert_awaited_once()
+    answer_call = callback.answer.await_args
+    assert answer_call is not None
+    assert answer_call.kwargs == {"show_alert": True}
+
+
+@pytest.mark.asyncio
+async def test_cb_close_message_owner_can_close_personal_card() -> None:
+    message_mock = AsyncMock(spec=Message)
+    message_mock.delete = AsyncMock()
+    callback = AsyncMock(spec=CallbackQuery)
+    callback.message = message_mock
+    callback.from_user = AsyncMock()
+    callback.from_user.id = 555
+    callback.answer = AsyncMock()
+    state_mock = AsyncMock(spec=FSMContext)
+
+    await cb_close_message(callback, state_mock, CommonNavigationCB(action="close", target="555"))
+
+    message_mock.delete.assert_awaited_once()

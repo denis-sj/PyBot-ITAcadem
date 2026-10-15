@@ -32,6 +32,7 @@ from ..domain.exceptions import (
 )
 from ..domain.services import AttendanceRankingCalculator, ParticipantAttendanceStat
 from ..dto import (
+    ATTENDANCE_TOP_LIMIT,
     AttendanceDraftDateBlockDTO,
     AttendanceDraftDTO,
     AttendanceDraftItemDTO,
@@ -40,6 +41,7 @@ from ..dto import (
     AttendanceRecognizedDateBlockDTO,
     AttendanceRecognizedRowDTO,
     AttendanceRecordReadDTO,
+    AttendanceTopDTO,
     AttendanceUserSummaryDTO,
     calculate_duration_minutes,
     parse_time_range,
@@ -49,7 +51,10 @@ from ..presentation.texts.attendance import MONTH_NAMES_RU, format_import_notifi
 from .ports import AttendanceRecognitionPort, NotificationPort
 
 DRAFT_TTL_HOURS: int = 24
+CALENDAR_MONTHS_PER_YEAR: int = 12
+_SATURDAY_OFFSET_DAYS: int = 5
 _MIN_CONFIDENCE_THRESHOLD: float = 0.7
+_EMPTY_TIME_INDICATORS: frozenset[str] = frozenset({"", "-", "—", "–", "нет", "прочерк", "н", "n", "0"})
 
 
 class AttendanceService:
@@ -494,7 +499,25 @@ class AttendanceService:
             list[AttendanceMonthlyRankingItemDTO]: Ordered monthly rankings for active participants.
         """
         _, _, start_date, end_date = self._get_month_bounds(year, month)
-        raw_rankings = await self._attendance_repo.get_monthly_rankings(self._db, start_date, end_date)
+        return await self.get_rankings_for_period(start_date, end_date)
+
+    async def get_rankings_for_period(
+        self,
+        start_date: date,
+        end_date: date,
+    ) -> list[AttendanceMonthlyRankingItemDTO]:
+        """Get competition rankings (1, 2, 2, 4) of active participants for an inclusive date range.
+
+        The metric is the sum of minutes of confirmed visits; attendance rankings never use points.
+
+        Args:
+            start_date: First included calendar date.
+            end_date: Last included calendar date.
+
+        Returns:
+            list[AttendanceMonthlyRankingItemDTO]: Ordered rankings for active participants.
+        """
+        raw_rankings = await self._attendance_repo.get_rankings_for_period(self._db, start_date, end_date)
         stats = [
             ParticipantAttendanceStat(
                 user_id=u.id,
@@ -559,6 +582,90 @@ class AttendanceService:
             visits_count=visits,
         )
 
+    async def get_week_top(self, user_id: int, limit: int = ATTENDANCE_TOP_LIMIT) -> AttendanceTopDTO:
+        """Get the attendance top for the current attendance week (Monday to Saturday).
+
+        Args:
+            user_id: User primary key of the viewer, used to find the viewer's own place.
+            limit: Highest rank included in the top.
+
+        Returns:
+            AttendanceTopDTO: Top rows, participants count and the viewer's entry.
+        """
+        start_date, end_date = self.get_attendance_week_bounds()
+        return await self._build_top(user_id, start_date, end_date, limit)
+
+    async def get_month_top(
+        self,
+        user_id: int,
+        year: int | None = None,
+        month: int | None = None,
+        limit: int = ATTENDANCE_TOP_LIMIT,
+    ) -> AttendanceTopDTO:
+        """Get the attendance top for a calendar month.
+
+        Args:
+            user_id: User primary key of the viewer, used to find the viewer's own place.
+            year: Optional calendar year. Defaults to the current year in the configured timezone.
+            month: Optional calendar month (1..12). Defaults to the current month.
+            limit: Highest rank included in the top.
+
+        Returns:
+            AttendanceTopDTO: Top rows, participants count and the viewer's entry.
+        """
+        _, _, start_date, end_date = self._get_month_bounds(year, month)
+        return await self._build_top(user_id, start_date, end_date, limit)
+
+    async def get_attendance_months(self) -> list[tuple[int, int]]:
+        """Return months in which any participant has a confirmed visit, newest first.
+
+        Returns:
+            list[tuple[int, int]]: Distinct (year, month) pairs.
+        """
+        return await self._attendance_repo.find_months_with_visits(self._db)
+
+    async def find_adjacent_attendance_months(
+        self,
+        year: int,
+        month: int,
+    ) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+        """Find the nearest months with confirmed visits before and after the given month.
+
+        The later neighbour is never beyond the current month, so the top cannot be paged into the future.
+
+        Args:
+            year: Calendar year of the month on screen.
+            month: Calendar month (1..12) on screen.
+
+        Returns:
+            tuple: (previous month, next month) as (year, month) pairs; None where there is no such month.
+        """
+        shown = (year, month)
+        now = datetime.now(YEKATERINBURG_TZ)
+        current = (now.year, now.month)
+        months = await self.get_attendance_months()
+        earlier = [item for item in months if item < shown]
+        later = [item for item in months if shown < item <= current]
+        return (max(earlier) if earlier else None, min(later) if later else None)
+
+    @staticmethod
+    def get_attendance_week_bounds(today: date | None = None) -> tuple[date, date]:
+        """Return Monday and Saturday of the attendance week that contains ``today``.
+
+        Visits happen from Monday to Saturday only. On Sunday the week that has just
+        ended stays on screen; the new week starts on Monday.
+
+        Args:
+            today: Business date. Defaults to today in the configured timezone.
+
+        Returns:
+            tuple[date, date]: (Monday, Saturday), both inclusive.
+        """
+        current_day = today or datetime.now(YEKATERINBURG_TZ).date()
+        # date.weekday() is 0 on Monday and 6 on Sunday, so Sunday maps back to the Monday of the week that just ended.
+        monday = current_day - timedelta(days=current_day.weekday())
+        return monday, monday + timedelta(days=_SATURDAY_OFFSET_DAYS)
+
     async def get_user_visit_months(self, user_id: int) -> list[tuple[int, int]]:
         """Return distinct (year, month) pairs where user has confirmed visits, newest first.
 
@@ -569,6 +676,35 @@ class AttendanceService:
             list[tuple[int, int]]: Ordered list of (year, month) tuples.
         """
         return await self._attendance_repo.find_user_visit_months(self._db, user_id)
+
+    async def get_import_photo_months(self) -> list[tuple[int, int]]:
+        """Return months with confirmed attendance dates whose photos are available.
+
+        Returns:
+            list[tuple[int, int]]: Distinct (year, month) pairs, newest first.
+        """
+        return await self._attendance_repo.find_import_photo_months(self._db)
+
+    async def get_import_photo_dates_for_month(self, year: int, month: int) -> list[tuple[date, int]]:
+        """Return recorded attendance dates and photo numbers for one calendar month.
+
+        Args:
+            year: Calendar year.
+            month: Calendar month from 1 to 12.
+
+        Returns:
+            list[tuple[date, int]]: Recorded dates paired with photo numbers.
+        """
+        if not 1 <= month <= CALENDAR_MONTHS_PER_YEAR:
+            return []
+
+        start_date = date(year, month, 1)
+        end_date = date(year, month, calendar.monthrange(year, month)[1])
+        return await self._attendance_repo.find_import_photo_dates_for_month(
+            self._db,
+            start_date,
+            end_date,
+        )
 
     async def get_sorted_participants(self) -> list[User]:
         """Return all registered participants sorted alphabetically by last name, first name, patronymic."""
@@ -1043,7 +1179,15 @@ class AttendanceService:
         if not raw_name or not raw_name.strip():
             return None, None, "needs_manual_review"
 
-        normalized_target = self._normalize_name(raw_name)
+        # The attendance sheet prints the cohort after a comma. It is not part
+        # of the participant's name and should not prevent an exact match.
+        name_without_cohort = re.sub(
+            r",\s*[A-ZА-ЯЁ]{2,}-\d{2}/\d+(?:-\d+)?\s*$",
+            "",
+            raw_name,
+            flags=re.IGNORECASE,
+        )
+        normalized_target = self._normalize_name(name_without_cohort)
         if not normalized_target:
             return None, None, "needs_manual_review"
 
@@ -1076,6 +1220,23 @@ class AttendanceService:
         cleaned = name.lower().replace("ё", "е")
         cleaned = re.sub(r"[^\w\s-]", " ", cleaned)
         return re.sub(r"\s+", " ", cleaned).strip()
+
+    async def _build_top(
+        self,
+        user_id: int,
+        start_date: date,
+        end_date: date,
+        limit: int,
+    ) -> AttendanceTopDTO:
+        """Assemble the top rows and the viewer's entry for a period."""
+        rankings = await self.get_rankings_for_period(start_date, end_date)
+        return AttendanceTopDTO(
+            period_start=start_date,
+            period_end=end_date,
+            rows=[item for item in rankings if item.rank <= limit],
+            total_participants=len(rankings),
+            current_user=next((item for item in rankings if item.user_id == user_id), None),
+        )
 
     @staticmethod
     def _format_user_full_name(user: User) -> str:
@@ -1201,12 +1362,28 @@ class AttendanceService:
     ) -> AttendanceDraftItemDTO | None:
         """Process one recognized row and build a draft item DTO.
 
-        Returns None if row represents an absent participant (empty time).
+        Returns an excluded N marker for an absent participant.
         """
-        if row.is_empty_time:
-            return None
-        if not row.time_raw or row.time_raw.strip() in ("", "-", "—", "–", "нет", "прочерк", "н", "n", "0"):
-            return None
+        if row.is_empty_time or not row.time_raw or row.time_raw.strip().lower() in _EMPTY_TIME_INDICATORS:
+            matched_user_id, matched_user_name, _ = self._match_participant(row.raw_name, users)
+            item_id = f"{date_val.isoformat()}_{row_idx}_{uuid.uuid4().hex[:6]}"
+            requires_manual_review = row.status == "needs_manual_review"
+            return AttendanceDraftItemDTO(
+                item_id=item_id,
+                date=date_val,
+                raw_name=row.raw_name,
+                matched_user_id=matched_user_id,
+                matched_user_name=matched_user_name,
+                start_time=None,
+                end_time=None,
+                duration_minutes=0,
+                is_empty_time=True,
+                confidence=row.confidence,
+                status="needs_manual_review" if requires_manual_review else "recognized",
+                is_duplicate_date=is_already_processed,
+                is_out_of_month=is_out_of_month,
+                is_excluded=not requires_manual_review,
+            )
 
         start_time, end_time, duration_minutes = self._resolve_row_time(
             time_raw=row.time_raw,
@@ -1255,6 +1432,7 @@ class AttendanceService:
             is_empty_time=False,
             confidence=row.confidence,
             status=status,
+            time_raw=row.time_raw,
             is_duplicate_date=is_already_processed,
             is_out_of_month=is_out_of_month,
             is_excluded=is_excluded,

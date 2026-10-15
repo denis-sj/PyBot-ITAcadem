@@ -7,11 +7,13 @@ from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from aiogram import Bot
 from aiogram.types import CallbackQuery, Chat, Message, User
 from aiogram_dialog import DialogManager
 from aiogram_dialog.api.entities.modes import StartMode
 from aiogram_dialog.widgets.kbd import Button
 
+from pybot.core.config import AppSettings
 from pybot.core.constants import PointsTypeEnum
 from pybot.dto import UserReadDTO
 from pybot.dto.value_objects import Points
@@ -24,6 +26,10 @@ from pybot.presentation.bot import (
     request_contact_kb,
     request_contact_prompt,
     start_handlers_module,
+)
+from pybot.presentation.bot.keyboards.main_menu import (
+    get_main_menu_keyboard,
+    get_open_bot_registration_keyboard,
 )
 from pybot.presentation.texts import PROFILE_GROUP_REGISTRATION_REQUIRED, REGISTRATION_CONTACT_PROMPT
 from pybot.services.user_services import UserProfileService, UserService
@@ -51,6 +57,17 @@ def _build_user_read_dto() -> UserReadDTO:
         reputation_points=Points(value=10, point_type=PointsTypeEnum.REPUTATION),
         join_date=date(2025, 1, 10),
     )
+
+
+def _build_settings(broadcast_allowed_roles: set[str] | None = None) -> AppSettings:
+    roles = {"Admin"} if broadcast_allowed_roles is None else broadcast_allowed_roles
+    return cast(AppSettings, SimpleNamespace(broadcast_allowed_roles=roles))
+
+
+def _build_bot(username: str | None = "pybot_test_bot") -> Bot:
+    bot = AsyncMock(spec=Bot)
+    bot.me.return_value = User(id=1, is_bot=True, first_name="PyBot", username=username)
+    return cast(Bot, bot)
 
 
 @dataclass(slots=True)
@@ -99,13 +116,44 @@ async def test_cmd_start_private_shows_profile_when_user_exists(monkeypatch: pyt
         dialog_manager=dialog_manager,
         user_service=user_service,
         user_profile_service=cast(UserProfileService, user_profile_service),
+        settings=_build_settings(),
     )
 
     assert user_service.telegram_queries == [700_001]
     user_profile_service.build_profile_view_mock.assert_awaited_once_with(user)
     render_mock.assert_called_once_with(user_profile_service.profile_view)
-    answer_mock.assert_awaited_once_with("profile text", parse_mode="HTML")
+    answer_mock.assert_awaited_once_with("profile text", parse_mode="HTML", reply_markup=get_main_menu_keyboard())
     dialog_manager.start.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("user_roles", "expects_broadcast_button"),
+    [({"Admin"}, True), ({"Student"}, False), (None, False)],
+)
+async def test_cmd_start_private_shows_broadcast_button_only_to_users_allowed_to_broadcast(
+    user_roles: set[str] | None,
+    expects_broadcast_button: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = _build_message()
+    user_service = StubUserService(found_user=_build_user_read_dto())
+    user_profile_service = StubUserProfileService()
+    answer_mock = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer_mock)
+    monkeypatch.setattr(start_handlers_module, "render_profile_message", Mock(return_value="profile text"))
+
+    await cmd_start_private(
+        message=message,
+        dialog_manager=StubDialogManager(),
+        user_service=user_service,
+        user_profile_service=cast(UserProfileService, user_profile_service),
+        settings=_build_settings(),
+        user_roles=user_roles,
+    )
+
+    expected_menu = get_main_menu_keyboard(show_broadcast=expects_broadcast_button)
+    answer_mock.assert_awaited_once_with("profile text", parse_mode="HTML", reply_markup=expected_menu)
 
 
 @pytest.mark.asyncio
@@ -124,6 +172,7 @@ async def test_cmd_start_private_requests_contact_when_user_is_not_registered(
         dialog_manager=dialog_manager,
         user_service=user_service,
         user_profile_service=cast(UserProfileService, user_profile_service),
+        settings=_build_settings(),
     )
 
     assert user_service.telegram_queries == [700_001]
@@ -225,6 +274,7 @@ async def test_cmd_profile_group_shows_sender_profile_when_user_exists(
         message=message,
         user_service=user_service,
         user_profile_service=cast(UserProfileService, user_profile_service),
+        bot=_build_bot(),
     )
 
     assert user_service.telegram_queries == [700_001]
@@ -249,11 +299,16 @@ async def test_cmd_profile_group_requires_registration_when_user_is_not_register
         message=message,
         user_service=user_service,
         user_profile_service=cast(UserProfileService, user_profile_service),
+        bot=_build_bot(),
     )
 
     assert user_service.telegram_queries == [700_001]
     user_profile_service.build_profile_view_mock.assert_not_awaited()
-    answer_mock.assert_awaited_once_with(PROFILE_GROUP_REGISTRATION_REQUIRED)
+    answer_mock.assert_awaited_once_with(
+        PROFILE_GROUP_REGISTRATION_REQUIRED,
+        reply_markup=get_open_bot_registration_keyboard("pybot_test_bot"),
+        parse_mode=None,
+    )
 
 
 @pytest.mark.asyncio
@@ -270,6 +325,7 @@ async def test_cmd_profile_group_requires_registration_when_message_sender_is_mi
         message=message,
         user_service=user_service,
         user_profile_service=cast(UserProfileService, user_profile_service),
+        bot=_build_bot(),
     )
 
     assert user_service.telegram_queries == []

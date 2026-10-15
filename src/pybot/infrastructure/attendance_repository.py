@@ -228,6 +228,60 @@ class AttendanceRepository:
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
+    async def find_import_photo_months(self, db: AsyncSession) -> list[tuple[int, int]]:
+        """Find months with confirmed attendance dates whose original photos remain available.
+
+        Args:
+            db: Database session.
+
+        Returns:
+            list[tuple[int, int]]: Distinct (year, month) pairs, newest first.
+        """
+        year_expr = cast(extract("year", AttendanceDate.date), Integer)
+        month_expr = cast(extract("month", AttendanceDate.date), Integer)
+        stmt = (
+            select(year_expr, month_expr)
+            .join(AttendanceImport, AttendanceDate.import_id == AttendanceImport.id)
+            .where(
+                AttendanceImport.status == AttendanceImportStatus.CONFIRMED.value,
+                AttendanceImport.photo_data.isnot(None),
+            )
+            .distinct()
+            .order_by(year_expr.desc(), month_expr.desc())
+        )
+        result = await db.execute(stmt)
+        return [(int(year), int(month)) for year, month in result.all()]
+
+    async def find_import_photo_dates_for_month(
+        self,
+        db: AsyncSession,
+        start_date: dt.date,
+        end_date: dt.date,
+    ) -> list[tuple[dt.date, int]]:
+        """Find confirmed dates with available photos in a date range, oldest first.
+
+        Args:
+            db: Database session.
+            start_date: First included calendar date.
+            end_date: Last included calendar date.
+
+        Returns:
+            list[tuple[dt.date, int]]: Recorded dates paired with photo numbers.
+        """
+        stmt = (
+            select(AttendanceDate.date, AttendanceDate.import_id)
+            .join(AttendanceImport, AttendanceDate.import_id == AttendanceImport.id)
+            .where(
+                AttendanceDate.date >= start_date,
+                AttendanceDate.date <= end_date,
+                AttendanceImport.status == AttendanceImportStatus.CONFIRMED.value,
+                AttendanceImport.photo_data.isnot(None),
+            )
+            .order_by(AttendanceDate.date.asc())
+        )
+        result = await db.execute(stmt)
+        return [(visit_date, int(import_id)) for visit_date, import_id in result.all()]
+
     async def expire_stale_drafts(
         self,
         db: AsyncSession,
@@ -416,6 +470,28 @@ class AttendanceRepository:
         result = await db.execute(stmt)
         return result.scalars().all()
 
+    async def find_months_with_visits(self, db: AsyncSession) -> list[tuple[int, int]]:
+        """Return distinct (year, month) pairs in which anyone has a confirmed visit, newest first.
+
+        Only records with a positive duration are counted, as in the rankings.
+
+        Args:
+            db: Database session.
+
+        Returns:
+            list[tuple[int, int]]: List of (year, month) tuples ordered by year desc, month desc.
+        """
+        year_expr = cast(extract("year", AttendanceRecord.date), Integer)
+        month_expr = cast(extract("month", AttendanceRecord.date), Integer)
+        stmt = (
+            select(year_expr, month_expr)
+            .where(AttendanceRecord.duration_minutes > 0)
+            .distinct()
+            .order_by(year_expr.desc(), month_expr.desc())
+        )
+        result = await db.execute(stmt)
+        return [(int(y), int(m)) for y, m in result.all()]
+
     async def find_user_visit_months(
         self,
         db: AsyncSession,
@@ -495,18 +571,18 @@ class AttendanceRepository:
 
         return (total_minutes, rank, total_participants, visits_count)
 
-    async def get_monthly_rankings(
+    async def get_rankings_for_period(
         self,
         db: AsyncSession,
         start_date: dt.date,
         end_date: dt.date,
     ) -> Sequence[tuple[User, int, int]]:
-        """Get monthly rankings of participants ordered by total_minutes desc, user_id asc.
+        """Get participant totals for an inclusive date range ordered by total_minutes desc, user_id asc.
 
         Args:
             db: Database session.
-            start_date: Start date of period.
-            end_date: End date of period.
+            start_date: First included calendar date.
+            end_date: Last included calendar date.
 
         Returns:
             Sequence of (User, total_minutes, visits_count).

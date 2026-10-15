@@ -5,7 +5,7 @@ from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.dispatcher.flags import get_flag
-from aiogram.types import Message, TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject
 from dishka.integrations.aiogram import CONTAINER_NAME
 
 from ....core import logger
@@ -62,6 +62,14 @@ class RoleMiddleware(BaseMiddleware):
             roles.update(RoleMiddleware._normalize_roles(value))
         return roles
 
+    @staticmethod
+    async def _reject(event: TelegramObject, text: str) -> None:
+        """Tell the user why the action was blocked: a reply to a message, an alert for a button press."""
+        if isinstance(event, Message):
+            await event.answer(text)
+        elif isinstance(event, CallbackQuery):
+            await event.answer(text, show_alert=True)
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
@@ -81,15 +89,13 @@ class RoleMiddleware(BaseMiddleware):
         user_db_id = data.get("user_id")
         if not user_db_id:
             logger.warning("Role check failed: user not found in DB")
-            if isinstance(event, Message):
-                await event.answer(ROLE_AUTH_ERROR)
+            await self._reject(event, ROLE_AUTH_ERROR)
             return
 
         container = data.get(CONTAINER_NAME)
         if not container:
             logger.error("Role check failed: Dishka container not found in data")
-            if isinstance(event, Message):
-                await event.answer(ROLE_AUTH_ERROR)
+            await self._reject(event, ROLE_AUTH_ERROR)
             return
 
         async with container() as request_container:
@@ -118,6 +124,5 @@ class RoleMiddleware(BaseMiddleware):
             required_roles=sorted(required_roles),
             required_policy=sorted(policy_key.value for policy_key in required_policy_keys),
         )
-        if isinstance(event, Message):
-            await event.answer(ROLE_ACCESS_DENIED)
+        await self._reject(event, ROLE_ACCESS_DENIED)
         return

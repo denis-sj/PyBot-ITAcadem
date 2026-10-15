@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import pytest
+from datetime import date
+from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pybot.core.config import AppSettings
-from pybot.core.constants import PointsTypeEnum, RoleEnum
-from pybot.db.models import UserLevel
+from pybot.core.constants import PointsTypeEnum, RequestStatus, RoleEnum
+from pybot.db.models import Role, RoleRequest, User, UserLevel
 from pybot.domain.exceptions import InitialLevelsNotFoundError, RoleNotFoundError, UserNotFoundError
 from pybot.dto import UserReadDTO, UserRegistrationDTO
 from pybot.infrastructure.competence_repository import CompetenceRepository
 from pybot.infrastructure.level_repository import LevelRepository
 from pybot.infrastructure.role_repository import RoleRepository
+from pybot.infrastructure.roles.role_request_repository import RoleRequestRepository
 from pybot.infrastructure.user_repository import UserRepository
+from pybot.services.ports import NotificationPort
 from pybot.services.user_services import UserCompetenceService, UserRolesService, UserService
 from pybot.services.user_services.user_registration import UserRegistrationService
 from tests.factories import (
@@ -582,20 +586,27 @@ async def test_find_all_user_roles_returns_none_when_user_has_no_roles(
 
 @pytest.mark.asyncio
 async def test_add_user_role_commits_before_telegram_update_and_handles_telegram_error() -> None:
-    db = AsyncMock()
+    db = MagicMock()
     order_of_events: list[str] = []
 
     async def fake_commit():
         order_of_events.append("commit")
 
-    db.commit = fake_commit
+    db.commit = AsyncMock(side_effect=fake_commit)
 
     user_repo = AsyncMock(spec=UserRepository)
     role_repo = AsyncMock(spec=RoleRepository)
     role_req_repo = AsyncMock(spec=RoleRequestRepository)
     notification = AsyncMock(spec=NotificationPort)
 
-    user = User(id=1, telegram_id=12345, first_name="Тест")
+    user = User(
+        id=1,
+        telegram_id=12345,
+        first_name="Тест",
+        join_date=date.today(),
+        academic_points=0,
+        reputation_points=0,
+    )
     user_repo.get_by_telegram_id.return_value = user
     user_repo.find_user_roles.return_value = []
     user_repo.find_user_by_telegram_id.return_value = user

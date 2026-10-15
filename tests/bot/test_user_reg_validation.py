@@ -25,6 +25,7 @@ from pybot.presentation.bot import (
     request_contact_prompt,
     request_contact_kb,
 )
+from pybot.presentation.bot.keyboards.main_menu import get_main_menu_keyboard
 from pybot.presentation.texts import (
     REGISTRATION_CONTACT_PROMPT,
     REGISTRATION_INTERNAL_ERROR,
@@ -309,7 +310,7 @@ async def test_competence_submit_registers_user_and_shows_profile_on_success(moc
     render_mock.assert_called_once()
     assert answer_mock.await_count == 2
     answer_mock.assert_any_await(registration_profile_created("Иван"))
-    answer_mock.assert_any_await("profile text", parse_mode="HTML")
+    answer_mock.assert_any_await("profile text", parse_mode="HTML", reply_markup=get_main_menu_keyboard())
     callback.answer.assert_awaited_once()
     manager_state.done_mock.assert_awaited_once()
 
@@ -358,7 +359,7 @@ async def test_competence_skip_clears_selection_and_registers_user(mocker: Mocke
     render_mock.assert_called_once()
     assert answer_mock.await_count == 2
     answer_mock.assert_any_await(registration_profile_created("Иван"))
-    answer_mock.assert_any_await("profile text", parse_mode="HTML")
+    answer_mock.assert_any_await("profile text", parse_mode="HTML", reply_markup=get_main_menu_keyboard())
     callback.answer.assert_awaited_once()
     manager_state.done_mock.assert_awaited_once()
 

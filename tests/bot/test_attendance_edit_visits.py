@@ -103,14 +103,14 @@ async def test_cmd_edit_visits_private_chat_renders_screen_1(monkeypatch: pytest
     assert await state.get_state() == EditVisitsSG.waiting_for_user_number.state
     answer_mock.assert_awaited_once()
     text = answer_mock.call_args[0][0]
-    assert "<blockquote expandable>" in text
+    assert "<blockquote>" in text
     assert "1. Иванов Иван Иванович" in text
     assert "2. Петров Петр" in text
     assert "Введите номер участника." in text
 
     markup = answer_mock.call_args.kwargs["reply_markup"]
     buttons = [b for row in markup.inline_keyboard for b in row]
-    assert any(b.text == "✖ Закрыть" for b in buttons)
+    assert not any(b.text == "✖ Закрыть" for b in buttons)
 
 
 @pytest.mark.asyncio
@@ -195,7 +195,7 @@ async def test_cb_edit_visits_back_to_users_restores_state() -> None:
     assert await state.get_state() == EditVisitsSG.waiting_for_user_number.state
     callback.message.edit_text.assert_awaited_once()
     text = callback.message.edit_text.call_args[0][0]
-    assert "<blockquote expandable>" in text
+    assert "<blockquote>" in text
     assert "1. Иванов Иван" in text
     callback.answer.assert_awaited_once()
 
@@ -274,11 +274,11 @@ async def test_cb_edit_visits_open_user_and_open_month_and_record_flow() -> None
     s4_text = callback.message.edit_text.call_args[0][0]
     assert "Иванов И. И. · 25.09.2026" in s4_text
     assert "Время: <b>18:00–20:00</b> (2 ч)" in s4_text
-    assert "Источник: импорт #12" in s4_text
+    assert "Источник: Номер фото #12" in s4_text
 
     s4_markup = callback.message.edit_text.call_args.kwargs["reply_markup"]
     s4_buttons = [b for row in s4_markup.inline_keyboard for b in row]
-    assert any(b.text == "📷 Фото импорта #12" for b in s4_buttons)
+    assert any(b.text == "📷 Номер фото #12" for b in s4_buttons)
     assert any(b.text == "🕒 Изменить время" for b in s4_buttons)
     assert any(b.text == "🗑 Удалить" for b in s4_buttons)
     assert any(b.text == "← К датам" for b in s4_buttons)
@@ -498,8 +498,8 @@ async def test_manual_add_flow(monkeypatch: pytest.MonkeyPatch, settings_obj: Ap
     attendance_service.create_manual_visit.assert_awaited_once()
     callback.message.edit_text.assert_awaited_once()
     s4_text = callback.message.edit_text.call_args[0][0]
-    assert "15.09.2026" in s4_text
-    assert "Источник: добавлено вручную" in s4_text
+    assert s4_text == "✅ Добавлено посещение 15.09.2026: 18:00–20:00"
+    assert callback.message.edit_text.call_args.kwargs["reply_markup"] is None
 
 
 @pytest.mark.asyncio

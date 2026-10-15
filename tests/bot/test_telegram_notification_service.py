@@ -296,7 +296,7 @@ async def test_send_attendance_notification_with_photo_button(
     assert call_kwargs["parse_mode"] == "HTML"
     reply_markup = call_kwargs["reply_markup"]
     assert reply_markup is not None
-    assert reply_markup.inline_keyboard[0][0].text == "📷 Фото импорта #42"
+    assert reply_markup.inline_keyboard[0][0].text == "📷 Номер фото #42"
 
 
 @pytest.mark.asyncio

@@ -98,6 +98,51 @@ async def test_find_draft_by_id_returns_entity_when_found(repository: Attendance
 
 
 @pytest.mark.asyncio
+async def test_find_import_photo_months_and_recorded_dates(
+    repository: AttendanceRepository, sqlite_session: AsyncSession
+) -> None:
+    confirmed_with_photo = AttendanceImport(
+        author_tg_id=1,
+        status=AttendanceImportStatus.CONFIRMED.value,
+        photo_data=b"photo",
+        photo_mime_type="image/jpeg",
+    )
+    confirmed_without_photo = AttendanceImport(
+        author_tg_id=1,
+        status=AttendanceImportStatus.CONFIRMED.value,
+        photo_data=None,
+        photo_mime_type="image/jpeg",
+    )
+    draft_with_photo = AttendanceImport(
+        author_tg_id=1,
+        status=AttendanceImportStatus.DRAFT.value,
+        photo_data=b"draft-photo",
+        photo_mime_type="image/jpeg",
+    )
+    sqlite_session.add_all([confirmed_with_photo, confirmed_without_photo, draft_with_photo])
+    await sqlite_session.flush()
+    sqlite_session.add_all(
+        [
+            AttendanceDate(import_id=confirmed_with_photo.id, date=date(2026, 9, 25)),
+            AttendanceDate(import_id=confirmed_with_photo.id, date=date(2026, 9, 27)),
+            AttendanceDate(import_id=confirmed_without_photo.id, date=date(2026, 8, 30)),
+            AttendanceDate(import_id=draft_with_photo.id, date=date(2026, 7, 1)),
+        ]
+    )
+    await sqlite_session.flush()
+
+    months = await repository.find_import_photo_months(sqlite_session)
+    dates = await repository.find_import_photo_dates_for_month(
+        sqlite_session,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+
+    assert months == [(2026, 9)]
+    assert dates == [(date(2026, 9, 25), confirmed_with_photo.id), (date(2026, 9, 27), confirmed_with_photo.id)]
+
+
+@pytest.mark.asyncio
 async def test_get_draft_by_id_raises_when_missing_per_adr_008(repository: AttendanceRepository) -> None:
     db = AsyncMock()
     result_mock = MagicMock()
@@ -450,10 +495,10 @@ def test_is_attendance_record_duplicate_error_patterns() -> None:
     assert _is_attendance_record_duplicate_error(pg_exc) is True
 
     # Postgres orig attribute constraint_name
-    class MockOrig:
+    class MockOrig(Exception):
         constraint_name = "uq_attendance_records_user_date"
 
-    pg_attr_exc = IntegrityError("duplicate", params=None, orig=MockOrig())  # type: ignore[arg-type]
+    pg_attr_exc = IntegrityError("duplicate", params=None, orig=MockOrig("duplicate"))
     assert _is_attendance_record_duplicate_error(pg_attr_exc) is True
 
     # SQLite duplicate constraint pattern
@@ -542,14 +587,14 @@ async def test_get_user_monthly_summary(repository: AttendanceRepository) -> Non
 
 
 @pytest.mark.asyncio
-async def test_get_monthly_rankings(repository: AttendanceRepository) -> None:
+async def test_get_rankings_for_period(repository: AttendanceRepository) -> None:
     db = AsyncMock()
     result_mock = MagicMock()
     mock_user = User(id=1, first_name="Иван")
     result_mock.all.return_value = [(mock_user, 120, 2)]
     db.execute.return_value = result_mock
 
-    rankings = await repository.get_monthly_rankings(
+    rankings = await repository.get_rankings_for_period(
         db=db,
         start_date=date(2026, 9, 1),
         end_date=date(2026, 9, 30),
@@ -595,6 +640,36 @@ async def test_get_import_dates(repository: AttendanceRepository) -> None:
     db.execute.return_value = result_mock
 
     dates = await repository.get_import_dates(db, import_id=10)
+
+
+@pytest.mark.asyncio
+async def test_get_rankings_for_period_filters_by_inclusive_dates(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.all.return_value = []
+    db.execute.return_value = result_mock
+
+    await repository.get_rankings_for_period(db, date(2026, 9, 28), date(2026, 10, 3))
+
+    statement = str(db.execute.call_args[0][0])
+    assert "attendance_records.date >=" in statement
+    assert "attendance_records.date <=" in statement
+    assert "attendance_imports" not in statement
+
+
+@pytest.mark.asyncio
+async def test_find_months_with_visits(repository: AttendanceRepository) -> None:
+    db = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.all.return_value = [(2026, 9), (2026, 6)]
+    db.execute.return_value = result_mock
+
+    months = await repository.find_months_with_visits(db)
+
+    assert months == [(2026, 9), (2026, 6)]
+    statement = str(db.execute.call_args[0][0])
+    assert "attendance_records.duration_minutes >" in statement
+    assert "attendance_records.user_id" not in statement.split("WHERE")[1].split("ORDER")[0]
 
 
 @pytest.mark.asyncio

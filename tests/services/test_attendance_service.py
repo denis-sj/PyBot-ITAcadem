@@ -1,6 +1,7 @@
 """Unit tests for AttendanceService orchestration and use cases."""
 
 from datetime import UTC, date, datetime, time, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
@@ -104,6 +105,34 @@ def service(
     )
 
 
+@pytest.mark.asyncio
+async def test_photo_browser_service_uses_month_date_range(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.find_import_photo_months.return_value = [(2026, 9)]
+    mock_attendance_repo.find_import_photo_dates_for_month.return_value = [(date(2026, 9, 25), 42)]
+
+    months = await service.get_import_photo_months()
+    dates = await service.get_import_photo_dates_for_month(year=2026, month=9)
+
+    assert months == [(2026, 9)]
+    assert dates == [(date(2026, 9, 25), 42)]
+    mock_attendance_repo.find_import_photo_dates_for_month.assert_awaited_once()
+    args = mock_attendance_repo.find_import_photo_dates_for_month.await_args
+    assert args is not None
+    assert args.args[1:] == (date(2026, 9, 1), date(2026, 9, 30))
+
+
+@pytest.mark.asyncio
+async def test_photo_browser_service_rejects_invalid_month_without_query(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    assert await service.get_import_photo_dates_for_month(year=2026, month=13) == []
+    mock_attendance_repo.find_import_photo_dates_for_month.assert_not_awaited()
+
+
 # ============ PHOTO INGESTION TESTS ============
 
 
@@ -199,7 +228,7 @@ async def test_ingest_attendance_photo_happy_path(
     date_block = draft.dates[0]
     assert date_block.date == today
     assert date_block.is_ignored is False
-    assert len(date_block.items) == 1
+    assert len(date_block.items) == 2
 
     # Check item 1: Иванов Иван, 120 min duration, recognized
     item1 = date_block.items[0]
@@ -207,6 +236,15 @@ async def test_ingest_attendance_photo_happy_path(
     assert item1.duration_minutes == 120
     assert item1.status == "recognized"
     assert item1.is_empty_time is False
+
+    # Absence rows stay visible in the draft as N markers but cannot be confirmed as visits.
+    item2 = date_block.items[1]
+    assert item2.raw_name == "Петров Петр"
+    assert item2.is_empty_time is True
+    assert item2.duration_minutes == 0
+    assert item2.start_time is None
+    assert item2.end_time is None
+    assert item2.is_excluded is True
     # Verify stale drafts expired before draft creation
     mock_attendance_repo.expire_stale_drafts.assert_awaited_once()
     # Transactions committed (stale drafts expired + draft created)
@@ -943,6 +981,49 @@ async def test_ingest_attendance_photo_preserves_needs_manual_review_and_low_con
     assert items[2].status == "needs_manual_review"
 
 
+@pytest.mark.asyncio
+async def test_ingest_attendance_photo_keeps_incomplete_time_for_manual_entry(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
+    mock_recognition_port: AsyncMock,
+    settings_obj: AppSettings,
+) -> None:
+    tz = ZoneInfo(str(settings_obj.attendance_timezone))
+    now = datetime.now(tz)
+    today = date(now.year, now.month, 15)
+    mock_user_repo.find_all_users.return_value = [User(id=1, first_name="Иван", last_name="Иванов")]
+    mock_recognition_port.recognize_attendance_sheet.return_value = AttendanceRecognitionResultDTO(
+        quality=AttendanceQualityDTO(is_good=True, comment="ОК", problems=[]),
+        dates=[
+            AttendanceRecognizedDateBlockDTO(
+                date=today,
+                rows=[
+                    AttendanceRecognizedRowDTO(
+                        raw_name="Иванов Иван",
+                        time_raw="8:40-",
+                        is_empty_time=False,
+                        confidence=0.95,
+                        status="needs_manual_review",
+                    )
+                ],
+            )
+        ],
+    )
+    mock_attendance_repo.create_draft.return_value = AttendanceImport(id=44, status=AttendanceImportStatus.DRAFT.value)
+
+    draft = await service.ingest_attendance_photo(author_tg_id=777, photo_bytes=b"photo", mime_type="image/jpeg")
+
+    item = draft.dates[0].items[0]
+    assert item.time_raw == "8:40-"
+    assert item.start_time is None
+    assert item.end_time is None
+    assert item.duration_minutes == 0
+    assert item.is_empty_time is False
+    assert item.is_excluded is False
+    assert item.status == "needs_manual_review"
+
+
 # ============ PHOTO EVIDENCE TESTS ============
 
 
@@ -1295,7 +1376,7 @@ async def test_get_user_monthly_summary(
     user2 = User(id=20, first_name="Петр", last_name="Петров")
     user3 = User(id=30, first_name="Сидор", last_name="Сидоров")
     mock_user_repo.find_user_by_id.return_value = user
-    mock_attendance_repo.get_monthly_rankings.return_value = [
+    mock_attendance_repo.get_rankings_for_period.return_value = [
         (user, 180, 2),
         (user2, 120, 1),
         (user3, 60, 1),
@@ -1320,7 +1401,7 @@ async def test_get_user_monthly_summary_without_visits(
     user = User(id=99, first_name="Новый", last_name="Участник")
     active_user = User(id=1, first_name="Иван", last_name="Иванов")
     mock_user_repo.find_user_by_id.return_value = user
-    mock_attendance_repo.get_monthly_rankings.return_value = [
+    mock_attendance_repo.get_rankings_for_period.return_value = [
         (active_user, 180, 2),
     ]
 
@@ -1343,7 +1424,7 @@ async def test_get_monthly_rankings_competition_rule(
     u2 = User(id=2, first_name="Борис", last_name="Борисов")
     u3 = User(id=3, first_name="Василий", last_name="Васильев")
     u4 = User(id=4, first_name="Григорий", last_name="Григорьев")
-    mock_attendance_repo.get_monthly_rankings.return_value = [
+    mock_attendance_repo.get_rankings_for_period.return_value = [
         (u1, 200, 2),
         (u2, 150, 2),
         (u3, 150, 1),
@@ -1354,6 +1435,183 @@ async def test_get_monthly_rankings_competition_rule(
 
     assert [r.rank for r in rankings] == [1, 2, 2, 4]
     assert [r.user_id for r in rankings] == [1, 2, 3, 4]
+
+
+class _FrozenDateTime(datetime):
+    """Datetime whose now() is Sunday 2026-10-04 19:30 UTC, i.e. Monday 00:30 in Yekaterinburg."""
+
+    @classmethod
+    def now(cls, tz=None):  # noqa: ANN001, ANN206
+        moment = datetime(2026, 10, 4, 19, 30, tzinfo=UTC)
+        return moment.astimezone(tz) if tz else moment
+
+
+def _ranking_rows(minutes_and_visits: list[tuple[int, int]]) -> list[tuple[User, int, int]]:
+    return [
+        (User(id=index, first_name=f"Имя{index}", last_name=f"Фамилия{index}"), minutes, visits)
+        for index, (minutes, visits) in enumerate(minutes_and_visits, start=1)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("today", "expected_monday", "expected_saturday"),
+    [
+        (date(2026, 9, 28), date(2026, 9, 28), date(2026, 10, 3)),
+        (date(2026, 9, 29), date(2026, 9, 28), date(2026, 10, 3)),
+        (date(2026, 10, 3), date(2026, 9, 28), date(2026, 10, 3)),
+        (date(2026, 10, 4), date(2026, 9, 28), date(2026, 10, 3)),
+        (date(2026, 10, 5), date(2026, 10, 5), date(2026, 10, 10)),
+        (date(2025, 12, 31), date(2025, 12, 29), date(2026, 1, 3)),
+    ],
+)
+def test_get_attendance_week_bounds_is_monday_to_saturday(
+    today: date,
+    expected_monday: date,
+    expected_saturday: date,
+) -> None:
+    assert AttendanceService.get_attendance_week_bounds(today) == (expected_monday, expected_saturday)
+
+
+def test_get_attendance_week_bounds_uses_yekaterinburg_business_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("pybot.services.attendance_service.datetime", _FrozenDateTime)
+
+    # Sunday 19:30 UTC is already Monday in Yekaterinburg, so the new week has started.
+    assert AttendanceService.get_attendance_week_bounds() == (date(2026, 10, 5), date(2026, 10, 10))
+
+
+@pytest.mark.asyncio
+async def test_get_week_top_limits_rows_to_top_five_and_finds_viewer(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("pybot.services.attendance_service.datetime", _FrozenDateTime)
+    mock_attendance_repo.get_rankings_for_period.return_value = _ranking_rows(
+        [(600, 4), (500, 3), (500, 2), (400, 2), (300, 1), (200, 1), (100, 1)]
+    )
+
+    top = await service.get_week_top(user_id=7)
+
+    mock_attendance_repo.get_rankings_for_period.assert_awaited_once_with(
+        service._db, date(2026, 10, 5), date(2026, 10, 10)
+    )
+    assert (top.period_start, top.period_end) == (date(2026, 10, 5), date(2026, 10, 10))
+    assert [row.rank for row in top.rows] == [1, 2, 2, 4, 5]
+    assert top.total_participants == 7
+    assert top.current_user is not None
+    assert (top.current_user.rank, top.current_user.total_minutes) == (7, 100)
+
+
+@pytest.mark.asyncio
+async def test_get_week_top_keeps_everyone_tied_for_fifth_place(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.get_rankings_for_period.return_value = _ranking_rows(
+        [(600, 1), (500, 1), (400, 1), (300, 1), (200, 1), (200, 1), (200, 1), (100, 1)]
+    )
+
+    top = await service.get_week_top(user_id=99)
+
+    assert [row.rank for row in top.rows] == [1, 2, 3, 4, 5, 5, 5]
+    assert top.total_participants == 8
+    assert top.current_user is None
+
+
+@pytest.mark.asyncio
+async def test_get_week_top_without_participants(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.get_rankings_for_period.return_value = []
+
+    top = await service.get_week_top(user_id=1)
+
+    assert top.rows == []
+    assert top.total_participants == 0
+    assert top.current_user is None
+
+
+@pytest.mark.asyncio
+async def test_get_week_top_ignores_participants_without_minutes(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.get_rankings_for_period.return_value = _ranking_rows([(90, 1), (0, 1)])
+
+    top = await service.get_week_top(user_id=2)
+
+    assert [row.user_id for row in top.rows] == [1]
+    assert top.total_participants == 1
+    assert top.current_user is None
+
+
+@pytest.mark.asyncio
+async def test_get_month_top_uses_calendar_month_bounds(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.get_rankings_for_period.return_value = _ranking_rows([(120, 2), (60, 1)])
+
+    top = await service.get_month_top(user_id=2, year=2026, month=2)
+
+    mock_attendance_repo.get_rankings_for_period.assert_awaited_once_with(
+        service._db, date(2026, 2, 1), date(2026, 2, 28)
+    )
+    assert (top.period_start, top.period_end) == (date(2026, 2, 1), date(2026, 2, 28))
+    assert [row.rank for row in top.rows] == [1, 2]
+    assert top.current_user is not None
+    assert top.current_user.user_id == 2
+
+
+@pytest.mark.asyncio
+async def test_get_attendance_months_delegates_to_repository(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+) -> None:
+    mock_attendance_repo.find_months_with_visits.return_value = [(2026, 9), (2026, 6)]
+
+    assert await service.get_attendance_months() == [(2026, 9), (2026, 6)]
+    mock_attendance_repo.find_months_with_visits.assert_awaited_once_with(service._db)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("shown", "expected"),
+    [
+        ((2026, 9), ((2026, 8), None)),
+        ((2026, 8), ((2026, 6), (2026, 9))),
+        ((2026, 6), (None, (2026, 8))),
+        ((2026, 7), ((2026, 6), (2026, 8))),
+    ],
+)
+async def test_find_adjacent_attendance_months_skips_months_without_visits(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+    shown: tuple[int, int],
+    expected: tuple[tuple[int, int] | None, tuple[int, int] | None],
+) -> None:
+    monkeypatch.setattr("pybot.services.attendance_service.datetime", _FrozenDateTime)
+    mock_attendance_repo.find_months_with_visits.return_value = [(2026, 9), (2026, 8), (2026, 6)]
+
+    # "Now" is October 2026, which has no visits yet; September stays the latest reachable month.
+    assert await service.find_adjacent_attendance_months(*shown) == expected
+
+
+@pytest.mark.asyncio
+async def test_find_adjacent_attendance_months_never_pages_into_the_future(
+    service: AttendanceService,
+    mock_attendance_repo: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("pybot.services.attendance_service.datetime", _FrozenDateTime)
+    mock_attendance_repo.find_months_with_visits.return_value = [(2026, 12), (2026, 10), (2026, 9)]
+
+    previous_month, next_month = await service.find_adjacent_attendance_months(2026, 9)
+
+    assert previous_month is None
+    assert next_month == (2026, 10)
 
 
 @pytest.mark.asyncio
@@ -1391,7 +1649,7 @@ async def test_get_monthly_report(
 ) -> None:
     user1 = User(id=1, first_name="Иван", last_name="Иванов")
     user2 = User(id=2, first_name="Петр", last_name="Петров")
-    mock_attendance_repo.get_monthly_rankings.return_value = [
+    mock_attendance_repo.get_rankings_for_period.return_value = [
         (user1, 300, 3),
         (user2, 120, 1),
     ]

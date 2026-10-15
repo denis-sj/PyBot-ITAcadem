@@ -8,6 +8,7 @@ from pydantic import Field
 
 from .base_dto import BaseDTO
 
+ATTENDANCE_TOP_LIMIT = 5
 _HOURS_PER_DAY = 24
 _MINUTES_PER_HOUR = 60
 _TIME_RANGE_PATTERN = re.compile(r"^\s*(\d{1,2})[:.](\d{2})\s*[-—–~]\s*(\d{1,2})[:.](\d{2})\s*$")
@@ -123,6 +124,10 @@ class AttendanceDraftItemDTO(BaseDTO):
     is_empty_time: bool
     confidence: float
     status: Literal["recognized", "needs_manual_review"]
+    time_raw: str | None = Field(
+        default=None,
+        description="Handwritten time exactly as read from the sheet, kept even when it is incomplete.",
+    )
     is_duplicate_date: bool = False
     is_out_of_month: bool = False
     is_excluded: bool = False
@@ -192,6 +197,23 @@ class AttendanceMonthlyRankingItemDTO(BaseDTO):
     user_full_name: str
     total_minutes: int
     visits_count: int
+
+
+class AttendanceTopDTO(BaseDTO):
+    """Top of the attendance ranking for one period as shown in the personal /visits section.
+
+    ``rows`` holds every participant whose competition rank is within the requested limit,
+    so a tie on the last place may produce more rows than the limit.
+    """
+
+    period_start: date
+    period_end: date
+    rows: list[AttendanceMonthlyRankingItemDTO] = Field(default_factory=list)
+    total_participants: int = 0
+    current_user: AttendanceMonthlyRankingItemDTO | None = Field(
+        default=None,
+        description="Ranking entry of the viewing user, or None when the user has no visits in the period.",
+    )
 
 
 class AttendanceMonthlyReportDTO(BaseDTO):
