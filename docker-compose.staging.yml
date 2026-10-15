@@ -90,11 +90,7 @@ services:
     profiles: [validation]
     restart: "no"
     command:
-      [
-        "python",
-        "-c",
-        "from pybot.core.config import get_settings; settings = get_settings(); assert settings.bot_mode == 'prod', settings.bot_mode; settings.active_bot_token; print('Runtime configuration is valid')",
-      ]
+      ["python", "-m", "pybot.core.config_check"]
 
   migrate:
     <<: *app-base

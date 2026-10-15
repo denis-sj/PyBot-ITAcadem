@@ -5,13 +5,7 @@ import sys
 
 from pybot.core.config import AppSettings
 
-_CONFIG_CHECK_COMMAND = (
-    "from pybot.core.config import get_settings; "
-    "settings = get_settings(); "
-    "assert settings.bot_mode == 'prod', settings.bot_mode; "
-    "settings.active_bot_token; "
-    "print('Runtime configuration is valid')"
-)
+_CONFIG_CHECK_COMMAND = "from pybot.core.config_check import main; main()"
 
 
 def test_app_settings_do_not_include_deploy_only_fields() -> None:
@@ -126,6 +120,7 @@ def test_config_check_contract_succeeds_with_valid_production_like_runtime_env(t
     runtime_env["BOT_TOKEN"] = "123456:prod"
     runtime_env["ROLE_REQUEST_ADMIN_TG_ID"] = "1"
     runtime_env["DATABASE_URL"] = "postgresql+asyncpg://test:test@127.0.0.1:5432/pybot_unit_test"
+    runtime_env["TELEGRAM_PROXY_URL"] = "socks5h://proxy.example:1080"
 
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", _CONFIG_CHECK_COMMAND],  # noqa: S607
@@ -193,4 +188,36 @@ def test_config_check_contract_fails_fast_on_empty_production_bot_token(tmp_path
     )
 
     assert result.returncode != 0
-    assert "BOT_TOKEN must be set" in result.stderr or "ValidationError" in result.stderr
+    assert "BOT_TOKEN" in result.stderr
+    assert "must be set" in result.stderr
+
+
+def test_config_check_reports_unsupported_telegram_proxy_scheme_without_value(tmp_path: Path) -> None:
+    runtime_env = os.environ.copy()
+    project_root = Path(__file__).resolve().parents[2]
+    runtime_env["PYTHONPATH"] = os.pathsep.join(
+        [
+            str(project_root / "src"),
+            str(project_root),
+            runtime_env.get("PYTHONPATH", ""),
+        ]
+    )
+    runtime_env["BOT_MODE"] = "prod"
+    runtime_env["BOT_TOKEN"] = "123456:prod"
+    runtime_env["ROLE_REQUEST_ADMIN_TG_ID"] = "1"
+    runtime_env["DATABASE_URL"] = "postgresql+asyncpg://test:test@127.0.0.1:5432/pybot_unit_test"
+    runtime_env["TELEGRAM_PROXY_URL"] = "ftp://proxy-user:secret-password@proxy.example:1080"
+
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-m", "pybot.core.config_check"],  # noqa: S607
+        capture_output=True,
+        check=False,
+        cwd=tmp_path,
+        env=runtime_env,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "TELEGRAM_PROXY_URL" in result.stderr
+    assert "Supported schemes: http, socks4, socks5, socks5h" in result.stderr
+    assert "secret-password" not in result.stderr

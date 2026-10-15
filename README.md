@@ -275,7 +275,7 @@ HEALTH_API_PORT=8001
 - `BOT_MODE=test` использует `BOT_TOKEN_TEST`, `BOT_MODE=prod` использует `BOT_TOKEN`;
 - `BOT_MODE` отвечает за runtime mode и выбор активного bot token, а `LOG_FORMAT` — за формат stdout-логов; это две независимые настройки;
 - `ROLE_REQUEST_ADMIN_TG_ID` обязателен, потому что role request flow уже является частью рабочего сценария;
-- `TELEGRAM_PROXY_URL` опционален и нужен только там, где Telegram Bot API доступен через proxy;
+- `TELEGRAM_PROXY_URL` опционален и нужен только там, где Telegram Bot API доступен через proxy; поддерживаются `http://`, `socks4://`, `socks5://` и `socks5h://` (удалённый DNS), неподдерживаемые схемы config-check отклоняет до запуска;
 - `RUNTIME_ALERTS_ENABLED` и `RUNTIME_ALERTS_CHAT_ID` опциональны и включают runtime alerts только для основного bot-процесса;
 - локальный и production Compose используют PostgreSQL 18 и обращаются к нему по service hostname `postgres`;
 - `POSTGRES_DB`, `POSTGRES_USER` и `POSTGRES_PASSWORD` обязательны, а `POSTGRES_PORT` задаёт только локальный bind на `127.0.0.1`;

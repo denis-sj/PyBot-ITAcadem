@@ -125,13 +125,7 @@ services:
     <<: *app-base
     profiles: ["validation"]
     restart: "no"
-    # TODO: replace inline Python with a dedicated `pybot-config-check` CLI when we are ready to widen scope.
-    command:
-      [
-        "python",
-        "-c",
-        "from pybot.core.config import get_settings; settings = get_settings(); assert settings.bot_mode == 'prod', settings.bot_mode; settings.active_bot_token; print('Runtime configuration is valid')",
-      ]
+    command: ["python", "-m", "pybot.core.config_check"]
 
   migrate:
     <<: *app-base

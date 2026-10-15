@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 from typing import Annotated, Literal, Self
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator, model_validator
@@ -414,6 +415,22 @@ class AppSettings(BaseSettings):
         normalized = value.strip()
         if not normalized:
             return None
+
+        try:
+            proxy_url = urlsplit(normalized)
+            port = proxy_url.port
+        except ValueError as err:
+            raise ValueError("TELEGRAM_PROXY_URL must be a valid proxy URL with a numeric port") from err
+
+        supported_schemes = {"http", "socks4", "socks5", "socks5h"}
+        scheme = proxy_url.scheme.lower()
+        if scheme not in supported_schemes:
+            supported = ", ".join(sorted(supported_schemes))
+            raise ValueError(f"TELEGRAM_PROXY_URL has an unsupported scheme. Supported schemes: {supported}")
+
+        if proxy_url.hostname is None or port is None or port == 0:
+            raise ValueError("TELEGRAM_PROXY_URL must include a host and a valid port")
+
         return normalized
 
     @field_validator("bot_token_test", mode="after")

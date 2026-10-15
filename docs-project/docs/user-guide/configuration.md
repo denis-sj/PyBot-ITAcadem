@@ -27,7 +27,7 @@
 | `FSM_STORAGE_BACKEND` | backend хранения FSM |
 | `REDIS_URL` | Redis для FSM и TaskIQ |
 | `NOTIFICATION_BACKEND` | `telegram` или `logging` |
-| `TELEGRAM_PROXY_URL` | optional proxy для Telegram Bot API |
+| `TELEGRAM_PROXY_URL` | Необязательный proxy для Telegram Bot API. Поддерживаются `http://`, `socks4://`, `socks5://` и `socks5h://`; последний преобразуется в `socks5://` с удалённым DNS. Остальные схемы config-check отклоняет до запуска сервисов. |
 | `RUNTIME_ALERTS_ENABLED` | включает runtime alerts для bot startup/shutdown |
 | `RUNTIME_ALERTS_CHAT_ID` | chat id для runtime alerts |
 | `HEALTH_API_ENABLED` | отдельный health API |

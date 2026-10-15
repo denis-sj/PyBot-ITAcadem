@@ -2,7 +2,6 @@ from collections.abc import AsyncGenerator
 
 import httpx2
 from aiogram import Bot
-from aiogram.client.session.aiohttp import AiohttpSession
 from dishka import AsyncContainer, Provider, Scope, make_async_container, provide
 from dishka.integrations.aiogram import AiogramProvider
 from dishka.integrations.taskiq import TaskiqProvider
@@ -39,6 +38,7 @@ from ..infrastructure.ports.telegram_meeting_delivery import TelegramMeetingDeli
 from ..infrastructure.ports.telegram_pulse_report_delivery import TelegramPulseReportDelivery
 from ..infrastructure.taskiq.taskiq_community_achievement_dispatcher import TaskIQCommunityAchievementDispatcher
 from ..infrastructure.taskiq.taskiq_notification_dispatcher import TaskIQNotificationDispatcher
+from ..infrastructure.telegram_proxy_session import create_telegram_proxy_session
 from ..infrastructure.user_notification_preference_repository import UserNotificationPreferenceRepository
 from ..infrastructure.weekly_checkin_repository import WeeklyCheckinRepository
 from ..services import (
@@ -608,7 +608,7 @@ class BotProvider(Provider):
         if settings.telegram_proxy_url is not None:
             bot = Bot(
                 settings.active_bot_token,
-                session=AiohttpSession(proxy=settings.telegram_proxy_url),
+                session=create_telegram_proxy_session(settings.telegram_proxy_url),
             )
         else:
             bot = Bot(settings.active_bot_token)

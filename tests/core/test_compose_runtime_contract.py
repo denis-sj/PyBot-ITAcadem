@@ -18,7 +18,7 @@ def test_taskiq_worker_command_preserves_container_shell_variable(compose_file: 
 
 @pytest.mark.parametrize(
     "compose_file",
-    ("docker-compose.yml", "docker-compose.prod.yml"),
+    ("docker-compose.yml", "docker-compose.prod.yml", "docker-compose.staging.yml"),
 )
 def test_compose_files_define_config_check_validation_process(compose_file: str) -> None:
     project_root = Path(__file__).resolve().parents[2]
@@ -26,12 +26,12 @@ def test_compose_files_define_config_check_validation_process(compose_file: str)
 
     assert "config-check:" in compose_config
     assert "config-check:\n    <<: *app-base" in compose_config
-    assert 'profiles: ["validation"]' in compose_config or 'profiles: [ "validation" ]' in compose_config
+    assert any(
+        profiles in compose_config
+        for profiles in ('profiles: ["validation"]', "profiles: [validation]", 'profiles: [ "validation" ]')
+    )
     assert 'restart: "no"' in compose_config
-    assert "from pybot.core.config import get_settings; settings = get_settings();" in compose_config
-    assert "assert settings.bot_mode == 'prod', settings.bot_mode;" in compose_config
-    assert "settings.active_bot_token;" in compose_config
-    assert "Runtime configuration is valid" in compose_config
+    assert '"python", "-m", "pybot.core.config_check"' in compose_config
 
 
 def test_staging_compose_is_isolated_and_keeps_backup_migration_order_contract() -> None:

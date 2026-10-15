@@ -86,3 +86,29 @@ async def test_container_uses_proxy_session_when_proxy_url_is_configured(
         assert isinstance(bot.session, AiohttpSession)
     finally:
         await container.close()
+
+
+@pytest.mark.asyncio
+async def test_container_normalizes_socks5h_and_enables_remote_dns(
+    monkeypatch: pytest.MonkeyPatch,
+    settings_obj: AppSettings,
+) -> None:
+    class FakeBot:
+        def __init__(self, token: str, session=None, **_: object) -> None:
+            self.token = token
+            self.session = session
+
+    monkeypatch.setattr(di_containers, "Bot", FakeBot)
+    settings_obj.bot_mode = "test"
+    settings_obj.bot_token_test = "123456:TEST_TOKEN"
+    settings_obj.telegram_proxy_url = "socks5h://proxy-user:proxy-password@proxy.example:1080"
+
+    container = make_async_container(di_containers.ConfigProvider(), di_containers.BotProvider())
+    try:
+        bot = await container.get(AiogramBot)
+
+        assert isinstance(bot.session, AiohttpSession)
+        assert bot.session._proxy == "socks5://proxy-user:proxy-password@proxy.example:1080"
+        assert bot.session._connector_init["rdns"] is True
+    finally:
+        await container.close()

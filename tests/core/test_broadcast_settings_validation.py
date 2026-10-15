@@ -125,6 +125,40 @@ def test_telegram_proxy_url_is_parsed_from_env_var() -> None:
     assert parsed_settings.telegram_proxy_url == "socks5://127.0.0.1:1080"
 
 
+def test_telegram_proxy_url_accepts_socks5h_for_remote_dns() -> None:
+    parsed_settings = AppSettingsWithoutDotenv(
+        BOT_TOKEN="123456:prod",
+        BOT_TOKEN_TEST="123456:test",
+        DATABASE_URL="postgresql+asyncpg://test:test@127.0.0.1:5432/pybot_unit_test",
+        ROLE_REQUEST_ADMIN_TG_ID=ADMIN_TG_ID,
+        TELEGRAM_PROXY_URL="socks5h://proxy.example:1080",
+    )
+
+    assert parsed_settings.telegram_proxy_url == "socks5h://proxy.example:1080"
+
+
+def test_telegram_proxy_url_rejects_unsupported_scheme() -> None:
+    with pytest.raises(ValidationError, match="Supported schemes: http, socks4, socks5, socks5h"):
+        AppSettingsWithoutDotenv(
+            BOT_TOKEN="123456:prod",
+            BOT_TOKEN_TEST="123456:test",
+            DATABASE_URL="postgresql+asyncpg://test:test@127.0.0.1:5432/pybot_unit_test",
+            ROLE_REQUEST_ADMIN_TG_ID=ADMIN_TG_ID,
+            TELEGRAM_PROXY_URL="ftp://proxy.example:1080",
+        )
+
+
+def test_telegram_proxy_url_requires_host_and_port() -> None:
+    with pytest.raises(ValidationError, match="must include a host and a valid port"):
+        AppSettingsWithoutDotenv(
+            BOT_TOKEN="123456:prod",
+            BOT_TOKEN_TEST="123456:test",
+            DATABASE_URL="postgresql+asyncpg://test:test@127.0.0.1:5432/pybot_unit_test",
+            ROLE_REQUEST_ADMIN_TG_ID=ADMIN_TG_ID,
+            TELEGRAM_PROXY_URL="socks5://proxy.example",
+        )
+
+
 def test_runtime_alerts_default_to_disabled_without_chat_id() -> None:
     parsed_settings = AppSettingsWithoutDotenv(
         BOT_TOKEN="123456:prod",
