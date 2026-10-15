@@ -62,3 +62,14 @@ def test_meeting_publication_destination_accepts_negative_chat_and_positive_topi
 
     assert settings.events_chat_id == -1001234567890
     assert settings.events_topic_id == 17
+
+
+def test_events_topic_name_is_trimmed_for_previews() -> None:
+    settings = _base_settings(EVENTS_TOPIC_NAME="  Python-встречи  ")
+
+    assert settings.events_topic_name == "Python-встречи"
+
+
+def test_events_topic_name_cannot_be_blank() -> None:
+    with pytest.raises(ValidationError, match="EVENTS_TOPIC_NAME must be non-empty"):
+        _base_settings(EVENTS_TOPIC_NAME="   ")

@@ -29,8 +29,8 @@ async def test_create_meeting_shows_service_preview_before_author_confirmation(a
         "Создать встречу «Разбор Docker Compose»?\n"
         "Когда: в воскресенье, 18 октября, в 14:00\n"
         "Место: Коворкинг на Ленина, 5\n"
-        "Аудитория: всех участников\n"
-        "Приглашение получат: 8 чел."
+        "Аудитория: все участники\n"
+        "Анонс в группе: Встречи"
     )
     actions.create_meeting.return_value = "Встреча создана, анонс опубликован."
 
@@ -46,7 +46,8 @@ async def test_create_meeting_shows_service_preview_before_author_confirmation(a
 
     assert pending.status == AgentReplyStatus.SUCCESS
     assert pending.confirmation_id is not None
-    assert "Приглашение получат: 8 чел." in pending.text
+    assert "Анонс в группе: Встречи" in pending.text
+    assert "Приглашение получат:" not in pending.text
     assert actions.preview_meeting_creation.await_count == 2
     actions.create_meeting.assert_not_awaited()
     memory.append.assert_not_awaited()

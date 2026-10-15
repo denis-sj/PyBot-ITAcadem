@@ -44,6 +44,7 @@ class _PreparedMeeting:
     audience_label: str
     members: tuple[MeetingAudienceMemberDTO, ...]
     recipient_count: int
+    publication_topic_name: str | None
 
 
 class CommunityMeetingService:
@@ -66,7 +67,13 @@ class CommunityMeetingService:
     ) -> str:
         """Validate permissions, date, audience and destination before approval."""
         prepared = await self._prepare_creation(actor_user_id, draft, now=now)
-        return render_meeting_draft(draft, prepared.starts_at, prepared.audience_label, prepared.recipient_count)
+        return render_meeting_draft(
+            draft,
+            prepared.starts_at,
+            prepared.audience_label,
+            prepared.recipient_count,
+            prepared.publication_topic_name,
+        )
 
     async def create_meeting(
         self, actor_user_id: int, draft: CommunityMeetingDraftDTO, *, now: datetime | None = None
@@ -238,13 +245,11 @@ class CommunityMeetingService:
         self._require_creator_role(actor_roles)
         starts_at = self._parse_start(draft.meeting_date, draft.start_time, now=now)
         audience, label = await self._resolve_audience(actor_user_id, actor_roles, draft)
-        members = tuple(await self._repository.find_audience_members(self._db, audience)) if audience != "all" else ()
-        recipient_count = (
-            await self._repository.count_users(self._db)
-            if audience == "all"
-            else sum(member.invitations_enabled and not member.bot_is_blocked for member in members)
-        )
-        return _PreparedMeeting(starts_at, audience, label, members, recipient_count)
+        audience_members = await self._repository.find_audience_members(self._db, audience) if audience != "all" else ()
+        members = tuple(member for member in audience_members if member.user_id != actor_user_id)
+        recipient_count = sum(member.invitations_enabled and not member.bot_is_blocked for member in members)
+        publication_topic_name = self._publication_topic_name() if audience == "all" else None
+        return _PreparedMeeting(starts_at, audience, label, members, recipient_count, publication_topic_name)
 
     async def _resolve_audience(
         self, actor_user_id: int, actor_roles: frozenset[str], draft: CommunityMeetingDraftDTO
@@ -254,7 +259,7 @@ class CommunityMeetingService:
                 raise DomainError("Ментор может создать встречу только для своей компетенции или технологии.")
             if self._publication_target() is None:
                 raise DomainError(self._missing_publication_text())
-            return "all", "всех участников"
+            return "all", "все участники"
         target = draft.audience_target
         if target is None or not target:
             raise DomainError("Уточните компетенцию или технологию аудитории встречи.")
@@ -264,13 +269,13 @@ class CommunityMeetingService:
                 owned_competences = await self._repository.find_user_competence_ids(self._db, actor_user_id)
                 if competence.id not in owned_competences:
                     raise DomainError("Ментор может создавать встречу только по своей компетенции.")
-            return f"competence:{competence.id}", f"участников с компетенцией «{competence.name}»"
+            return f"competence:{competence.id}", f"участники с компетенцией «{competence.name}»"
         technology = self._normalize_audience_technology(target)
         if "Admin" not in actor_roles:
             known_technologies = await self._repository.find_user_known_technologies(self._db, actor_user_id)
             if not any(self._same_technology(technology, known) for known in known_technologies):
                 raise DomainError("Ментор может создавать встречу по технологии, которую сам отметил «знаю».")
-        return f"stack:{technology}", f"участников со стеком «{technology}»"
+        return f"stack:{technology}", f"участники со стеком «{technology}»"
 
     async def _resolve_competence(self, target: str) -> CompetenceReadDTO:
         target_text = target.strip()
@@ -418,6 +423,13 @@ class CommunityMeetingService:
             return self._settings.events_chat_id, self._settings.events_topic_id
         if self._settings.agent_group_chat_id is not None and self._settings.agent_topic_id is not None:
             return self._settings.agent_group_chat_id, self._settings.agent_topic_id
+        return None
+
+    def _publication_topic_name(self) -> str | None:
+        if self._settings.events_chat_id is not None and self._settings.events_topic_id is not None:
+            return self._settings.events_topic_name
+        if self._settings.agent_group_chat_id is not None and self._settings.agent_topic_id is not None:
+            return "тема агента"
         return None
 
     @staticmethod

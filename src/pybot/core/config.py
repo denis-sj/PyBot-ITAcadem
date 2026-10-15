@@ -292,6 +292,7 @@ class AppSettings(BaseSettings):
     agent_topic_id: int | None = Field(None, alias="AGENT_TOPIC_ID", gt=0)
     events_chat_id: int | None = Field(None, alias="EVENTS_CHAT_ID", lt=0)
     events_topic_id: int | None = Field(None, alias="EVENTS_TOPIC_ID", gt=0)
+    events_topic_name: str = Field("Встречи", alias="EVENTS_TOPIC_NAME", min_length=1, max_length=64)
     agent_memory_max_messages: int = Field(10, alias="AGENT_MEMORY_MAX_MESSAGES", ge=2, le=10)
     agent_memory_ttl_s: int = Field(1800, alias="AGENT_MEMORY_TTL_S", ge=1, le=1800)
     agent_reply_mark_ttl_s: int = Field(604800, alias="AGENT_REPLY_MARK_TTL_S", ge=1)
@@ -352,6 +353,15 @@ class AppSettings(BaseSettings):
         normalized = value.strip()
         if not normalized:
             raise ValueError("AGENT_MODEL must be non-empty")
+        return normalized
+
+    @field_validator("events_topic_name")
+    @classmethod
+    def normalize_events_topic_name(cls, value: str) -> str:
+        """Keep the human-readable forum topic title non-empty and trimmed."""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("EVENTS_TOPIC_NAME must be non-empty")
         return normalized
 
     @field_validator("agent_group_chat_id", "agent_topic_id", "events_chat_id", "events_topic_id", mode="before")

@@ -32,15 +32,25 @@ def render_meeting_date(value: datetime) -> str:
     )
 
 
-def render_meeting_draft(draft: CommunityMeetingDraftDTO, starts_at: datetime, audience: str, recipients: int) -> str:
+def render_meeting_draft(
+    draft: CommunityMeetingDraftDTO,
+    starts_at: datetime,
+    audience: str,
+    recipients: int,
+    publication_topic_name: str | None = None,
+) -> str:
     """Show the exact action values and audience size before a user confirms."""
     description = f"\nОписание: {draft.description}" if draft.description else ""
+    delivery_summary = (
+        f"Анонс в группе: {publication_topic_name}"
+        if publication_topic_name is not None
+        else f"Приглашение получат: {recipients} чел."
+    )
     return (
         f"Создать встречу «{draft.title}»?\n"
         f"Когда: {render_meeting_date(starts_at)}\n"
         f"Место: {draft.venue}\n"
-        f"Аудитория: {audience}\n"
-        f"Приглашение получат: {recipients} чел.{description}"
+        f"Аудитория: {audience}\n{delivery_summary}{description}"
     )
 
 

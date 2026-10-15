@@ -112,6 +112,7 @@ async def test_creation_checks_roles_and_preview_matches_persisted_meeting(
 ) -> None:
     settings_obj.events_chat_id = -1001234567890
     settings_obj.events_topic_id = 61
+    settings_obj.events_topic_name = "Встречи"
     delivery = RecordingMeetingDelivery()
     service = _service(db_session, settings_obj, delivery)
     student = await _create_user(db_session, "Студент", 8_885_001)
@@ -146,9 +147,14 @@ async def test_creation_checks_roles_and_preview_matches_persisted_meeting(
     assert "Создать встречу «Разбор Docker Compose»?" in preview
     assert "в воскресенье, 18 октября, в 14:00" in preview
     assert "Место: Коворкинг на Ленина, 5" in preview
-    assert "Аудитория: участников с компетенцией «Python»" in preview
+    assert "Аудитория: участники с компетенцией «Python»" in preview
     assert "Приглашение получат: 0 чел." in preview
     assert await db_session.scalar(select(CommunityMeeting.id)) is None
+
+    all_preview = await service.preview_creation(admin.id, _draft(), now=_CREATED_AT)
+    assert "Аудитория: все участники" in all_preview
+    assert "Анонс в группе: Встречи" in all_preview
+    assert "Приглашение получат:" not in all_preview
 
     result = await service.create_meeting(mentor.id, draft, now=_CREATED_AT)
     stored = await db_session.scalar(select(CommunityMeeting))
@@ -185,6 +191,9 @@ async def test_all_audience_falls_back_to_agent_topic_or_refuses_without_saving(
 
     settings_obj.agent_group_chat_id = -1001234567891
     settings_obj.agent_topic_id = 19
+    preview = await service.preview_creation(admin.id, _draft(), now=_CREATED_AT)
+    assert "Анонс в группе: тема агента" in preview
+    assert "Приглашение получат:" not in preview
     result = await service.create_meeting(admin.id, _draft(), now=_CREATED_AT)
     assert result == "Встреча создана, анонс опубликован в группе. Доставлено 1, не удалось 0."
     assert delivery.announcements[-1][:2] == (-1001234567891, 19)
@@ -212,6 +221,14 @@ async def test_stack_audience_matches_technology_aliases_and_snapshots_delivered
     await db_session.commit()
     delivery = RecordingMeetingDelivery(blocked_telegram_ids=frozenset({participant.telegram_id}))
     service = _service(db_session, settings_obj, delivery)
+
+    stack_preview = await service.preview_creation(
+        mentor.id,
+        _draft(audience_kind="stack", audience_target="постгрес"),
+        now=_CREATED_AT,
+    )
+    assert "Аудитория: участники со стеком «PostgreSQL»" in stack_preview
+    assert "Приглашение получат: 2 чел." in stack_preview
 
     result = await service.create_meeting(
         mentor.id,
