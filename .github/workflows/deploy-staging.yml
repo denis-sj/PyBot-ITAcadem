@@ -1,0 +1,284 @@
+name: CD - Deploy Staging
+
+on:
+  workflow_run:
+    workflows:
+      - CI - Code Quality
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Выполнить seed после миграций (только при первичной настройке или по необходимости)"
+        required: false
+        default: false
+        type: boolean
+      rollback_image_tag:
+        description: "Необязательно: полный SHA-образа GHCR для отката к ранее развёрнутой версии"
+        required: false
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: pybot-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.repository == 'denis-sj/PyBot-ITAcadem' &&
+      ((github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main') ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      packages: write
+    env:
+      STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+      STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+      STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+      STAGING_DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH }}
+      STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+      STAGING_DEPLOY_KNOWN_HOSTS: ${{ secrets.STAGING_DEPLOY_KNOWN_HOSTS }}
+      STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+      TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      ROLLBACK_IMAGE_TAG: ${{ github.event.inputs.rollback_image_tag || '' }}
+      RUN_SEED: ${{ github.event.inputs.seed || false }}
+
+    steps:
+      - name: Checkout deployment source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+
+      - name: Validate staging secrets and prepare private runtime environment
+        id: prepare
+        run: |
+          set -eu
+          for var in \
+            STAGING_DEPLOY_HOST \
+            STAGING_DEPLOY_USER \
+            STAGING_DEPLOY_PATH \
+            STAGING_DEPLOY_SSH_KEY \
+            STAGING_DEPLOY_KNOWN_HOSTS \
+            STAGING_ENV_FILE; do
+            if [ -z "${!var}" ]; then
+              echo "Missing required staging environment secret: $var" >&2
+              exit 1
+            fi
+          done
+
+          STAGING_DEPLOY_PORT="${STAGING_DEPLOY_PORT:-22}"
+          if ! [[ "$STAGING_DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]] || \
+             [ "$STAGING_DEPLOY_PORT" -lt 1 ] || [ "$STAGING_DEPLOY_PORT" -gt 65535 ]; then
+            echo "STAGING_DEPLOY_PORT must be a TCP port from 1 to 65535." >&2
+            exit 1
+          fi
+          if [ "$STAGING_DEPLOY_PATH" = "/" ] || \
+             [[ "$STAGING_DEPLOY_PATH" != /* ]] || \
+             [[ "$STAGING_DEPLOY_PATH" =~ [^A-Za-z0-9_./-] ]] || \
+             [[ "/$STAGING_DEPLOY_PATH/" == *"/../"* ]]; then
+            echo "STAGING_DEPLOY_PATH must be an absolute path containing only letters, digits, /, _, . and -." >&2
+            exit 1
+          fi
+
+          if [ -n "$ROLLBACK_IMAGE_TAG" ]; then
+            if ! [[ "$ROLLBACK_IMAGE_TAG" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "rollback_image_tag must be a full 40-character image SHA." >&2
+              exit 1
+            fi
+            if [ "$RUN_SEED" = "true" ]; then
+              echo "Seed cannot be combined with an image rollback." >&2
+              exit 1
+            fi
+            image_tag="$ROLLBACK_IMAGE_TAG"
+            rollback_mode=true
+          else
+            image_tag="$TARGET_SHA"
+            rollback_mode=false
+          fi
+
+          image_repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          image_ref="${image_repository}:${image_tag}"
+          runtime_env_path="$RUNNER_TEMP/staging.env"
+          printf '%s\n' "$STAGING_ENV_FILE" > "$runtime_env_path"
+          if grep -q '^APP_IMAGE=' "$runtime_env_path"; then
+            echo "STAGING_ENV_FILE must not define APP_IMAGE; the workflow manages it." >&2
+            exit 1
+          fi
+          printf 'APP_IMAGE=%s\n' "$image_ref" >> "$runtime_env_path"
+
+          {
+            echo "image_repository=$image_repository"
+            echo "image_ref=$image_ref"
+            echo "image_tag=$image_tag"
+            echo "rollback_mode=$rollback_mode"
+            echo "runtime_env_path=$runtime_env_path"
+            echo "deploy_port=$STAGING_DEPLOY_PORT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate staging Compose config
+        env:
+          IMAGE_REF: ${{ steps.prepare.outputs.image_ref }}
+          RUNTIME_ENV_PATH: ${{ steps.prepare.outputs.runtime_env_path }}
+        run: |
+          set -eu
+          APP_IMAGE="$IMAGE_REF" \
+          APP_RUNTIME_ENV_FILE="$RUNTIME_ENV_PATH" \
+          docker compose \
+            --env-file "$RUNTIME_ENV_PATH" \
+            -p pybot-staging \
+            -f docker-compose.staging.yml \
+            config --quiet
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push staging image
+        if: steps.prepare.outputs.rollback_mode != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.prepare.outputs.image_ref }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify rollback image exists
+        if: steps.prepare.outputs.rollback_mode == 'true'
+        env:
+          IMAGE_REF: ${{ steps.prepare.outputs.image_ref }}
+        run: docker buildx imagetools inspect "$IMAGE_REF" > /dev/null
+
+      - name: Prepare SSH
+        run: |
+          set -eu
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$STAGING_DEPLOY_SSH_KEY" > "$HOME/.ssh/staging_ed25519"
+          chmod 600 "$HOME/.ssh/staging_ed25519"
+          printf '%s\n' "$STAGING_DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/staging_known_hosts"
+          chmod 644 "$HOME/.ssh/staging_known_hosts"
+
+      - name: Upload staging Compose and runtime environment
+        env:
+          RUNTIME_ENV_PATH: ${{ steps.prepare.outputs.runtime_env_path }}
+          DEPLOY_PORT: ${{ steps.prepare.outputs.deploy_port }}
+        run: |
+          set -eu
+          remote="${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}"
+          ssh_options=(
+            -i "$HOME/.ssh/staging_ed25519"
+            -p "$DEPLOY_PORT"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$HOME/.ssh/staging_known_hosts"
+          )
+          ssh "${ssh_options[@]}" "$remote" \
+            "mkdir -p '$STAGING_DEPLOY_PATH' && chmod 700 '$STAGING_DEPLOY_PATH'"
+          scp -i "$HOME/.ssh/staging_ed25519" \
+            -P "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$HOME/.ssh/staging_known_hosts" \
+            docker-compose.staging.yml \
+            "$remote:$STAGING_DEPLOY_PATH/docker-compose.staging.yml"
+          scp -i "$HOME/.ssh/staging_ed25519" \
+            -P "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$HOME/.ssh/staging_known_hosts" \
+            "$RUNTIME_ENV_PATH" \
+            "$remote:$STAGING_DEPLOY_PATH/.env.next"
+          ssh "${ssh_options[@]}" "$remote" \
+            "chmod 600 '$STAGING_DEPLOY_PATH/.env.next' && mv '$STAGING_DEPLOY_PATH/.env.next' '$STAGING_DEPLOY_PATH/.env'"
+
+      - name: Deploy staging image
+        env:
+          DEPLOY_PORT: ${{ steps.prepare.outputs.deploy_port }}
+          IMAGE_REPOSITORY: ${{ steps.prepare.outputs.image_repository }}
+          IMAGE_TAG: ${{ steps.prepare.outputs.image_tag }}
+          ROLLBACK_MODE: ${{ steps.prepare.outputs.rollback_mode }}
+          RUN_SEED: ${{ github.event.inputs.seed || false }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          remote="${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}"
+          {
+            printf '%s\n' "$GHCR_TOKEN"
+            cat <<'REMOTE'
+          set -eu
+          deploy_path="$1"
+          image_repository="$2"
+          image_tag="$3"
+          rollback_mode="$4"
+          run_seed="$5"
+          cd "$deploy_path"
+          compose() {
+            docker compose -p pybot-staging -f docker-compose.staging.yml "$@"
+          }
+          cleanup_registry_login() {
+            docker logout ghcr.io >/dev/null 2>&1 || true
+          }
+          trap cleanup_registry_login EXIT
+
+          compose --profile validation --profile backup --profile migration --profile seed pull
+          cleanup_registry_login
+          trap - EXIT
+          compose --profile validation run --rm --no-deps config-check
+          compose up -d postgres redis
+          for service in postgres redis; do
+            container_id="$(compose ps -q "$service")"
+            if [ -z "$container_id" ]; then
+              echo "No container found for $service." >&2
+              exit 1
+            fi
+            healthy=false
+            for attempt in $(seq 1 60); do
+              status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id")"
+              if [ "$status" = healthy ]; then
+                healthy=true
+                break
+              fi
+              sleep 3
+            done
+            if [ "$healthy" != true ]; then
+              echo "$service did not become healthy." >&2
+              exit 1
+            fi
+          done
+
+          compose --profile backup run --rm backup
+          if [ "$rollback_mode" != true ]; then
+            compose --profile migration run --rm migrate
+            if [ "$run_seed" = true ]; then
+              compose --profile seed run --rm seed
+            fi
+          else
+            echo "Image rollback: database migrations and seed are skipped."
+          fi
+
+          compose up -d --remove-orphans bot taskiq-worker taskiq-scheduler
+          compose ps
+          REMOTE
+          } | ssh \
+            -i "$HOME/.ssh/staging_ed25519" \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$HOME/.ssh/staging_known_hosts" \
+            "$remote" \
+            "set -eu; IFS= read -r ghcr_token; printf '%s' \"\$ghcr_token\" | docker login ghcr.io --username '$GITHUB_ACTOR' --password-stdin; unset ghcr_token; exec sh -s -- '$STAGING_DEPLOY_PATH' '$IMAGE_REPOSITORY' '$IMAGE_TAG' '$ROLLBACK_MODE' '$RUN_SEED'"

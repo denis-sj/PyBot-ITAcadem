@@ -259,6 +259,7 @@ async def test_track_activity_updates_last_active_and_returns_user_id(
     service = await dishka_request_container.get(UserService)
     user_repository = await dishka_request_container.get(UserRepository)
     user = await create_user(db, spec=UserSpec(telegram_id=700_777))
+    user.bot_is_blocked = True
     await db.commit()
 
     tracked_user_id = await service.track_activity(user.telegram_id, "petrov")
@@ -267,6 +268,7 @@ async def test_track_activity_updates_last_active_and_returns_user_id(
     mapped_user = await service.find_user_by_telegram_id(user.telegram_id)
     assert tracked_user_id == user.id
     assert refreshed_user.last_active_at is not None
+    assert refreshed_user.bot_is_blocked is False
     assert refreshed_user.telegram_username == "petrov"
     assert mapped_user is not None and mapped_user.telegram_username == "petrov"
 

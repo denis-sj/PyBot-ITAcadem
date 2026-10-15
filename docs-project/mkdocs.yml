@@ -60,6 +60,8 @@ nav:
     - Конфигурация: user-guide/configuration.md
     - Примеры: user-guide/examples.md
     - ИИ-агент: user-guide/ai-agent.md
+    - Цели и еженедельный чекин: user-guide/community-checkins.md
+    - Встречи сообщества: user-guide/community-meetings.md
   - Руководство разработчика:
     - Обзор: developer-guide/index.md
     - Архитектура: developer-guide/architecture.md

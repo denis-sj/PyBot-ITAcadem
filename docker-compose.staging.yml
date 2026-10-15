@@ -1,0 +1,212 @@
+name: pybot-staging
+
+x-postgres-environment: &postgres-environment
+  POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+  POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+
+x-postgres-client-environment: &postgres-client-environment
+  PGHOST: postgres
+  PGPORT: "5432"
+  PGDATABASE: ${POSTGRES_DB:?POSTGRES_DB must be set}
+  PGUSER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+  PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+
+x-app-dependencies: &app-dependencies
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+
+x-app-base: &app-base
+  image: ${APP_IMAGE:?APP_IMAGE must be set for staging deploys}
+  init: true
+  env_file:
+    - ${APP_RUNTIME_ENV_FILE:-.env}
+  environment:
+    DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set}
+    TELEGRAM_PROXY_URL: ${TELEGRAM_PROXY_URL:-}
+    FSM_STORAGE_BACKEND: ${FSM_STORAGE_BACKEND:-redis}
+    REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    LOG_FORMAT: json
+  logging:
+    driver: json-file
+    options:
+      max-size: "5m"
+      max-file: "3"
+
+x-app-service: &app-service
+  <<: *app-base
+  restart: unless-stopped
+  depends_on: *app-dependencies
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment: *postgres-environment
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready --username \"$${POSTGRES_USER}\" --dbname \"$${POSTGRES_DB}\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    <<: *app-service
+    command:
+      [
+        "sh",
+        "-c",
+        "HEALTH_API_ORCHESTRATION_ENABLED=${HEALTH_API_ENABLED:-false} HEALTH_API_ENABLED=false exec python run.py",
+      ]
+
+  taskiq-worker:
+    <<: *app-service
+    command:
+      [
+        "sh",
+        "-c",
+        "TASKIQ_WORKERS='${TASKIQ_WORKERS:-1}'; if [ \"$$TASKIQ_WORKERS\" != \"1\" ]; then echo \"TASKIQ_WORKERS=$$TASKIQ_WORKERS is not supported yet; only TASKIQ_WORKERS=1 is allowed until the runtime is ready for multi-instance workers.\" >&2; exit 1; fi; exec taskiq worker src.pybot.infrastructure.taskiq.entrypoint:broker --workers \"$$TASKIQ_WORKERS\"",
+      ]
+
+  taskiq-scheduler:
+    <<: *app-service
+    command:
+      [
+        "taskiq",
+        "scheduler",
+        "src.pybot.infrastructure.taskiq.entrypoint:scheduler",
+        "--skip-first-run",
+      ]
+
+  config-check:
+    <<: *app-base
+    profiles: [validation]
+    restart: "no"
+    command:
+      [
+        "python",
+        "-c",
+        "from pybot.core.config import get_settings; settings = get_settings(); assert settings.bot_mode == 'prod', settings.bot_mode; settings.active_bot_token; print('Runtime configuration is valid')",
+      ]
+
+  migrate:
+    <<: *app-base
+    profiles: [migration]
+    restart: "no"
+    depends_on: *app-dependencies
+    command: ["alembic", "upgrade", "head"]
+
+  seed:
+    <<: *app-base
+    profiles: [seed]
+    restart: "no"
+    depends_on: *app-dependencies
+    command: ["pybot-seed", "--skip-fake-users"]
+
+  backup:
+    image: postgres:18-alpine
+    profiles: [backup]
+    restart: "no"
+    environment: *postgres-client-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - postgres_backups:/backups
+    command:
+      - sh
+      - -ec
+      - |
+        umask 077
+        timestamp="$$(date -u +%Y%m%dT%H%M%SZ)"
+        backup_file="/backups/pybot-staging-$${timestamp}.dump"
+        trap 'rm -f "$${backup_file}"' EXIT
+        pg_dump \
+          --format=custom \
+          --no-owner \
+          --no-privileges \
+          --file="$${backup_file}"
+        chmod 600 "$${backup_file}"
+        test -s "$${backup_file}"
+        trap - EXIT
+        printf 'Staging backup created: %s\n' "$${backup_file}"
+
+  restore:
+    image: postgres:18-alpine
+    profiles: [restore]
+    restart: "no"
+    environment:
+      <<: *postgres-client-environment
+      RESTORE_FILE: ${RESTORE_FILE:-}
+      CONFIRM_RESTORE: ${CONFIRM_RESTORE:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - postgres_backups:/backups
+    command:
+      - sh
+      - -ec
+      - |
+        if [ "$${CONFIRM_RESTORE:-}" != "YES" ]; then
+          echo "Restore refused: set CONFIRM_RESTORE=YES." >&2
+          exit 1
+        fi
+        restore_file="$${RESTORE_FILE:-}"
+        case "$${restore_file}" in
+          ""|"."|".."|*/*|*\\*)
+            echo "Restore refused: RESTORE_FILE must be a dump basename." >&2
+            exit 1
+            ;;
+        esac
+        backup_file="/backups/$${restore_file}"
+        if [ ! -f "$${backup_file}" ]; then
+          echo "Restore refused: dump file does not exist." >&2
+          exit 1
+        fi
+        pg_restore --list "$${backup_file}" >/dev/null
+        psql \
+          --dbname="$${PGDATABASE}" \
+          --set=ON_ERROR_STOP=1 \
+          --command="SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid();"
+        pg_restore \
+          --clean \
+          --if-exists \
+          --no-owner \
+          --no-privileges \
+          --exit-on-error \
+          --dbname="$${PGDATABASE}" \
+          "$${backup_file}"
+        printf 'Staging restore completed from: %s\n' "$${backup_file}"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    name: pybot_staging_postgres_data
+  postgres_backups:
+    name: pybot_staging_postgres_backups
+  redis_data:
+    name: pybot_staging_redis_data

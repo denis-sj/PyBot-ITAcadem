@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramNetworkError, TelegramRetryAfter
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+)
 from aiogram.methods import SendMessage
 from pytest_mock import MockerFixture
 
@@ -14,7 +20,7 @@ from pybot.presentation.bot import get_admin_decision_kb
 from pybot.core.config import AppSettings
 from pybot.dto import NotifyDTO
 from pybot.infrastructure.ports.telegram_notification_service import TelegramNotificationService
-from pybot.services.ports import NotificationPermanentError, NotificationTemporaryError
+from pybot.services.ports import NotificationBlockedError, NotificationPermanentError, NotificationTemporaryError
 
 ADMIN_TG_ID = 987_654_321
 REQUEST_ID = 15
@@ -235,6 +241,21 @@ async def test_send_message_maps_network_error_to_temporary_error(
     with pytest.raises(NotificationTemporaryError):
         await service.send_message(NotifyDTO(recipient_id=RECIPIENT_USER_ID, message="hello"))
 
+    fake_bot.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_message_maps_forbidden_to_blocked_recipient(
+    fake_bot: BotFixture,
+    settings_obj: AppSettings,
+) -> None:
+    fake_bot.send_message.side_effect = TelegramForbiddenError(_dummy_method(), "bot was blocked by the user")
+    service = TelegramNotificationService(fake_bot.bot, settings_obj)
+
+    with pytest.raises(NotificationBlockedError) as exc_info:
+        await service.send_message(NotifyDTO(recipient_id=RECIPIENT_USER_ID, message="hello"))
+
+    assert isinstance(exc_info.value, NotificationPermanentError)
     fake_bot.send_message.assert_awaited_once()
 
 

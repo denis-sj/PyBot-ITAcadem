@@ -14,6 +14,8 @@ from ...domain.exceptions import (
     UserNotFoundError,
     ZeroPointsAdjustmentError,
 )
+from ...domain.services.community_checkins import normalize_goal_text
+from ...domain.services.technology_stack import TechnologyLevel
 from ...dto import (
     AdjustUserPointsDTO,
     BroadcastDTO,
@@ -24,17 +26,22 @@ from ...dto import (
     UserReadDTO,
 )
 from ...dto.attendance import AttendanceRecordReadDTO
+from ...dto.community_meetings import CommunityMeetingDraftDTO
 from ...dto.competence_dto import CompetenceReadDTO
 from ...dto.role_dto import CreateRoleRequestDTO
 from ...dto.value_objects import Points
+from ...presentation.texts.technology_stack import render_helper_recommendation
 from ...utils import normalize_message
 from ..attendance_service import AttendanceService
 from ..broadcast import BroadcastService
+from ..community_goals import CommunityGoalService
+from ..community_meetings import CommunityMeetingService
 from ..competence import CompetenceService
 from ..notification_facade import NotificationFacade
 from ..points import PointsService
 from ..ports.agent import AgentBroadcastAudience
 from ..role_request import RoleRequestService
+from ..technology_stack import TechnologyStackService
 from ..user_services.user_competence import UserCompetenceService
 from ..user_services.user_roles import UserRolesService
 from ..user_services.users import UserService
@@ -55,6 +62,9 @@ class AgentActionService:
         notifications: NotificationFacade,
         broadcasts: BroadcastService,
         settings: AppSettings,
+        technology_stack: TechnologyStackService | None = None,
+        community_goals: CommunityGoalService | None = None,
+        community_meetings: CommunityMeetingService | None = None,
     ) -> None:
         self.role_requests = role_requests
         self.users = users
@@ -66,6 +76,9 @@ class AgentActionService:
         self.notifications = notifications
         self.broadcasts = broadcasts
         self.settings = settings
+        self.technology_stack = technology_stack
+        self.community_goals = community_goals
+        self.community_meetings = community_meetings
 
     async def validate_role_request(self, user_id: int) -> None:
         """Check current eligibility before asking the user to confirm a role request."""
@@ -183,6 +196,99 @@ class AgentActionService:
             await self.user_competences.remove_user_competencies_by_names(user.id, (competence_name,))
             action = "снята"
         return f"Компетенция {competence_name} {action} у участника {self._full_name(user)}."
+
+    async def validate_my_stack_item(self, user_id: int, technology: str, level: TechnologyLevel) -> None:
+        """Validate the caller-owned stack update before the agent requests approval."""
+        if self.technology_stack is None:
+            raise DomainError("Стек участников сейчас недоступен.")
+        await self.technology_stack.validate_set_user_technology(user_id, technology, level)
+
+    async def set_my_stack_item(self, user_id: int, technology: str, level: TechnologyLevel) -> str:
+        """Add or update one caller-owned stack entry after explicit approval."""
+        if self.technology_stack is None:
+            raise DomainError("Стек участников сейчас недоступен.")
+        await self.technology_stack.set_user_technology(user_id, technology, level)
+        result = f"Технология {technology} добавлена или обновлена в вашем стеке: {level.value}."
+        if level == TechnologyLevel.LEARNING:
+            recommendation = await self.technology_stack.find_helpers(user_id, technology)
+            result += " " + render_helper_recommendation(recommendation)
+        return result
+
+    async def validate_my_stack_item_removal(self, user_id: int, technology: str) -> None:
+        """Validate the caller-owned stack removal before confirmation."""
+        if self.technology_stack is None:
+            raise DomainError("Стек участников сейчас недоступен.")
+        await self.technology_stack.validate_remove_user_technology(user_id, technology)
+
+    async def remove_my_stack_item(self, user_id: int, technology: str) -> str:
+        """Remove only one caller-owned technology after explicit approval."""
+        if self.technology_stack is None:
+            raise DomainError("Стек участников сейчас недоступен.")
+        await self.technology_stack.remove_user_technology(user_id, technology)
+        return f"Технология {technology} удалена из вашего стека."
+
+    async def validate_my_goal(self, text: str) -> None:
+        """Validate a new goal before an author-owned approval is issued."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        normalize_goal_text(text)
+
+    async def set_my_goal(self, user_id: int, text: str) -> str:
+        """Replace the caller's active goal after the agent confirmation."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        goal = await self.community_goals.set_goal(user_id, text)
+        return f"Записал твою новую цель: «{goal.text}»."
+
+    async def validate_my_goal_completion(self, user_id: int) -> None:
+        """Require an active own goal before preparing a completion action."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        if await self.community_goals.get_active_goal(user_id) is None:
+            raise DomainError("Активной цели нет.")
+
+    async def complete_my_goal(self, user_id: int) -> str:
+        """Complete the caller's active goal and award its durable badge."""
+        if self.community_goals is None:
+            raise DomainError("Цели сейчас недоступны.")
+        goal = await self.community_goals.complete_active_goal(user_id)
+        if goal is None:
+            raise DomainError("Активной цели нет.")
+        return f"Цель «{goal.text}» отмечена достигнутой. Добавил достижение «Цель взята»."
+
+    async def preview_meeting_creation(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Prepare a code-owned meeting preview after checking the current actor."""
+        if self.community_meetings is None:
+            raise DomainError("Создание встреч сейчас недоступно.")
+        return await self.community_meetings.preview_creation(user_id, draft)
+
+    async def create_meeting(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Create a checked meeting and publish its RSVP controls."""
+        if self.community_meetings is None:
+            raise DomainError("Создание встреч сейчас недоступно.")
+        return await self.community_meetings.create_meeting(user_id, draft)
+
+    async def preview_meeting_reschedule(
+        self, user_id: int, meeting_id: int, meeting_date: date, start_time: str
+    ) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.preview_reschedule(meeting_id, user_id, meeting_date, start_time)
+
+    async def reschedule_meeting(self, user_id: int, meeting_id: int, meeting_date: date, start_time: str) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.reschedule(meeting_id, user_id, meeting_date, start_time)
+
+    async def preview_meeting_cancellation(self, user_id: int, meeting_id: int) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.preview_cancellation(meeting_id, user_id)
+
+    async def cancel_meeting(self, user_id: int, meeting_id: int) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.cancel(meeting_id, user_id)
 
     async def validate_visit_update(
         self,

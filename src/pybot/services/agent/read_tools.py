@@ -3,6 +3,7 @@
 from pydantic_ai import RunContext
 
 from ...dto.agent_read import AgentMonth
+from ...dto.technology_stack import TechnologyName
 from ...presentation.texts.texts import INFO_GLOBAL
 from .dependencies import AgentDependencies
 from .reads import format_user_candidates
@@ -13,6 +14,45 @@ ADMIN_AGENT_ROLES = frozenset({"Admin"})
 async def get_my_profile(ctx: RunContext[AgentDependencies]) -> str:
     """Мой профиль: баллы, уровни, роли и компетенции (/profile)."""
     return await ctx.deps.reads.get_profile(await ctx.deps.get_actor())
+
+
+async def get_my_achievements(ctx: RunContext[AgentDependencies]) -> str:
+    """Мои достижения, значки и текущая серия посещений."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_my_achievements(user.id)
+
+
+async def get_my_goal(ctx: RunContext[AgentDependencies]) -> str:
+    """Текущая цель участника и её статус."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_my_goal(user.id)
+
+
+async def get_upcoming_meetings(ctx: RunContext[AgentDependencies]) -> str:
+    """Ближайшие встречи, доступные пользователю по аудитории."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_upcoming_meetings(user.id)
+
+
+async def get_meeting_attendees(ctx: RunContext[AgentDependencies], meeting_id: int) -> str:
+    """Кто придёт на встречу (только создатель или Admin)."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_meeting_attendees(meeting_id, user.id)
+
+
+async def get_my_technology_stack(ctx: RunContext[AgentDependencies]) -> str:
+    """Мой стек технологий с уровнями «знаю» и «изучаю»."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_my_stack(user.id)
+
+
+async def find_technology_helpers(
+    ctx: RunContext[AgentDependencies],
+    technology: TechnologyName,
+) -> str:
+    """Кто поможет с указанной технологией: сначала подходящие менторы, затем участники."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.find_stack_helpers(user.id, technology)
 
 
 async def get_my_attendance(ctx: RunContext[AgentDependencies]) -> str:

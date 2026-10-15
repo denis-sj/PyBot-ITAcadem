@@ -5,13 +5,21 @@ from datetime import datetime, timedelta
 
 from ...core.constants import YEKATERINBURG_TZ, PointsTypeEnum
 from ...db.models import User
+from ...domain.exceptions import DomainError
 from ...dto import ProfileViewDTO, UserReadDTO
 from ...dto.agent_read import AgentMonth, AgentUserCandidate, AgentUserSearchResult
 from ...dto.attendance import AttendanceMonthlyRankingItemDTO, AttendanceMonthlyReportDTO, AttendanceTopDTO
 from ...presentation.texts.attendance import MONTH_NAMES_RU_CAPITALIZED
+from ...presentation.texts.community_achievements import render_achievement_profile_section
+from ...presentation.texts.community_meetings import render_meeting_attendees, render_upcoming_meetings
+from ...presentation.texts.technology_stack import render_helper_recommendation, render_stack_read
 from ..attendance_service import AttendanceService
+from ..community_achievements import CommunityAchievementService
+from ..community_goals import CommunityGoalService
+from ..community_meetings import CommunityMeetingService
 from ..competence import CompetenceService
 from ..leaderboard import LeaderboardService
+from ..technology_stack import TechnologyStackService
 from ..user_services.user_competence import UserCompetenceService
 from ..user_services.user_profile import UserProfileService
 from ..user_services.user_roles import UserRolesService
@@ -55,6 +63,10 @@ class AgentReadService:
         user_competences: UserCompetenceService,
         competences: CompetenceService,
         users: UserService,
+        community_achievements: CommunityAchievementService | None = None,
+        technology_stack: TechnologyStackService | None = None,
+        community_goals: CommunityGoalService | None = None,
+        community_meetings: CommunityMeetingService | None = None,
     ) -> None:
         self.profiles = profiles
         self.attendance = attendance
@@ -63,6 +75,53 @@ class AgentReadService:
         self.user_competences = user_competences
         self.competences = competences
         self.users = users
+        self.community_achievements = community_achievements
+        self.technology_stack = technology_stack
+        self.community_goals = community_goals
+        self.community_meetings = community_meetings
+
+    async def get_my_achievements(self, user_id: int) -> str:
+        """Return the caller's current weekly streak and durable achievement history."""
+        if self.community_achievements is None:
+            return render_achievement_profile_section(0, ())
+        summary = await self.community_achievements.get_user_summary(user_id)
+        return render_achievement_profile_section(summary.current_streak, summary.achievements)
+
+    async def get_my_goal(self, user_id: int) -> str:
+        """Return only the caller's active goal and its current status."""
+        if self.community_goals is None:
+            return "Цели сейчас недоступны."
+        goal = await self.community_goals.get_active_goal(user_id)
+        return f"Моя активная цель: «{goal.text}»." if goal is not None else "Активная цель пока не задана."
+
+    async def get_my_stack(self, user_id: int) -> str:
+        """Return only the requesting participant's self-reported stack."""
+        if self.technology_stack is None:
+            return "Стек участников сейчас недоступен."
+        return render_stack_read(await self.technology_stack.get_user_stack(user_id))
+
+    async def find_stack_helpers(self, user_id: int, technology: str) -> str:
+        """Find unblocked mentors and peers who can help with one technology."""
+        if self.technology_stack is None:
+            return "Подбор помощников сейчас недоступен."
+        recommendation = await self.technology_stack.find_helpers(user_id, technology)
+        return render_helper_recommendation(recommendation)
+
+    async def get_upcoming_meetings(self, user_id: int) -> str:
+        """List only meetings available to the requesting participant."""
+        if self.community_meetings is None:
+            return "Встречи сейчас недоступны."
+        return render_upcoming_meetings(await self.community_meetings.list_upcoming(user_id))
+
+    async def get_meeting_attendees(self, meeting_id: int, user_id: int) -> str:
+        """List «going» responses only to the meeting creator or an administrator."""
+        if self.community_meetings is None:
+            return "Встречи сейчас недоступны."
+        try:
+            attendees = await self.community_meetings.get_attendees(meeting_id, user_id)
+        except DomainError as error:
+            return str(error)
+        return render_meeting_attendees(attendees)
 
     async def get_profile(self, user: UserReadDTO) -> str:
         """Return the caller's profile and the already calculated level progress."""

@@ -56,6 +56,62 @@ def _is_attendance_record_duplicate_error(exc: IntegrityError) -> bool:
 class AttendanceRepository:
     """Stateless repository for managing attendance imports and records."""
 
+    async def find_visit_dates_for_users(
+        self,
+        db: AsyncSession,
+        user_ids: Sequence[int],
+    ) -> dict[int, list[dt.date]]:
+        """Return confirmed visit dates grouped by user for one report batch."""
+        if not user_ids:
+            return {}
+        result = await db.execute(
+            select(AttendanceRecord.user_id, AttendanceRecord.date)
+            .where(AttendanceRecord.user_id.in_(user_ids))
+            .order_by(AttendanceRecord.user_id, AttendanceRecord.date)
+        )
+        visit_dates: dict[int, list[dt.date]] = {}
+        for user_id, visit_date in result.all():
+            visit_dates.setdefault(user_id, []).append(visit_date)
+        return visit_dates
+
+    async def find_visit_counts_for_period(
+        self,
+        db: AsyncSession,
+        *,
+        start_date: dt.date,
+        end_date: dt.date,
+        user_ids: Sequence[int],
+    ) -> dict[int, int]:
+        """Count each participant's confirmed visits in an inclusive calendar period."""
+        if not user_ids:
+            return {}
+        result = await db.execute(
+            select(AttendanceRecord.user_id, func.count(AttendanceRecord.id))
+            .where(
+                AttendanceRecord.user_id.in_(user_ids),
+                AttendanceRecord.date >= start_date,
+                AttendanceRecord.date <= end_date,
+            )
+            .group_by(AttendanceRecord.user_id)
+        )
+        return {user_id: count for user_id, count in result.all()}
+
+    async def count_visits_for_period(
+        self,
+        db: AsyncSession,
+        *,
+        start_date: dt.date,
+        end_date: dt.date,
+    ) -> int:
+        """Count all confirmed attendance records in an inclusive date range."""
+        count = await db.scalar(
+            select(func.count(AttendanceRecord.id)).where(
+                AttendanceRecord.date >= start_date,
+                AttendanceRecord.date <= end_date,
+            )
+        )
+        return count or 0
+
     async def create_draft(  # noqa: PLR0913
         self,
         db: AsyncSession,
@@ -519,6 +575,14 @@ class AttendanceRepository:
         )
         result = await db.execute(stmt)
         return [(int(y), int(m)) for y, m in result.all()]
+
+    async def find_user_visit_dates(self, db: AsyncSession, user_id: int) -> list[dt.date]:
+        """Return all recorded visit dates for a participant in chronological order."""
+        statement = (
+            select(AttendanceRecord.date).where(AttendanceRecord.user_id == user_id).order_by(AttendanceRecord.date)
+        )
+        result = await db.execute(statement)
+        return list(result.scalars().all())
 
     async def get_user_monthly_summary(
         self,

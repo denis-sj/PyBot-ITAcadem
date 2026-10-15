@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @font-face {
+      font-family: "Noto Sans";
+      src: url("fonts/NotoSans-Variable-Latin-Cyrillic.ttf") format("truetype");
+      font-style: normal;
+      font-weight: 100 900;
+    }
+    @page {
+      size: A4;
+      margin: 12mm 13mm 15mm;
+      @bottom-left {
+        content: "ITAcadem · Пульс сообщества";
+        color: #6b7080;
+        font: 7pt "Noto Sans", sans-serif;
+      }
+      @bottom-right {
+        content: counter(page) " / " counter(pages);
+        color: #6b7080;
+        font: 7pt "Noto Sans", sans-serif;
+      }
+    }
+    :root {
+      --ink: #14161c;
+      --muted: #6b7080;
+      --line: #e6e8ee;
+      --bg: #f5f6f9;
+      --brand: #3b5bdb;
+      --brand-soft: #e8edff;
+      --ok: #2f9e44;
+      --ok-soft: #e6f6ea;
+      --warn: #e8590c;
+      --warn-soft: #fff0e6;
+      --stuck: #c92a2a;
+      --stuck-soft: #ffecec;
+      --gold: #b8860b;
+      --gold-soft: #fff7dc;
+      --card: #fff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); font: 9.2pt/1.38 "Noto Sans", sans-serif; }
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 20px;
+      padding: 17px 20px;
+      border-radius: 14px;
+      color: #fff;
+      background: linear-gradient(135deg, #1f2a5a 0%, #3b5bdb 60%, #5c7cfa 100%);
+    }
+    h1 { margin: 0; font-size: 23pt; line-height: 1.1; font-weight: 800; letter-spacing: -.3px; }
+    .hero-sub { margin: 5px 0 0; opacity: .88; }
+    .hero-meta { min-width: 220px; text-align: right; font-size: 9pt; opacity: .92; }
+    .hero-meta strong { display: block; font-size: 10pt; font-weight: 700; }
+    h2 { display: flex; align-items: center; gap: 8px; margin: 15px 0 7px; font-size: 12pt; line-height: 1.25; }
+    h2 .dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; }
+    h2 .count { color: var(--muted); font-size: 8pt; font-weight: 500; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+    .kpi, .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; }
+    .kpi .value { font-size: 17pt; line-height: 1; font-weight: 800; }
+    .kpi .label { margin-top: 5px; color: var(--muted); font-size: 7.5pt; }
+    .kpi .delta { margin-top: 3px; color: var(--muted); font-size: 7pt; font-weight: 600; }
+    .positive { color: var(--ok) !important; }
+    .negative { color: var(--stuck) !important; }
+    .participant-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .card { margin-bottom: 0; break-inside: avoid; }
+    .card.stuck { border-left: 4px solid var(--stuck); }
+    .card.goal { border-left: 4px solid var(--ok); }
+    .card.progress { border-left: 4px solid var(--brand); }
+    .who { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+    .name { font-size: 10pt; font-weight: 700; }
+    .username { color: var(--muted); font-size: 8pt; }
+    .status-line, .goal-line { margin-top: 5px; font-size: 8.3pt; }
+    .goal-line span { color: var(--muted); }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; white-space: nowrap; font-size: 7pt; font-weight: 700; }
+    .badge.stuck { color: var(--stuck); background: var(--stuck-soft); }
+    .badge.goal { color: var(--ok); background: var(--ok-soft); }
+    .badge.progress { color: var(--brand); background: var(--brand-soft); }
+    .summary { margin-top: 5px; padding: 6px 8px; border-radius: 7px; background: var(--bg); }
+    .annotation { margin-top: 4px; color: var(--muted); font-size: 7.6pt; font-style: italic; }
+    .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+    .chip { padding: 2px 7px; border-radius: 6px; background: #f0f1f5; color: #3a3f4c; font-size: 7.5pt; }
+    .chip.know { color: var(--brand); background: var(--brand-soft); font-weight: 600; }
+    .help { margin-top: 6px; padding: 6px 8px; border-radius: 7px; color: #6b2c03; background: var(--warn-soft); font-size: 8pt; }
+    .participant-achievements { margin-top: 6px; color: #6b5a1e; font-size: 7.6pt; }
+    .foot { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 7px; color: var(--muted); font-size: 7.4pt; }
+    .foot b { color: var(--ink); }
+    .achievement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .achievement { text-align: center; background: var(--gold-soft); border-color: #f1e2a8; }
+    .award-icon { display: block; width: 25px; height: 25px; margin: 0 auto; color: var(--gold); }
+    .ach-title { margin-top: 3px; font-weight: 800; }
+    .table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 8pt; }
+    .table th { padding: 6px 7px; background: #f0f1f5; color: var(--muted); text-align: left; font-size: 7.4pt; font-weight: 600; }
+    .table td { padding: 6px 7px; border-top: 1px solid var(--line); }
+    .table .silent-critical { color: var(--stuck); font-weight: 700; }
+    .bars { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+    .bar { display: grid; grid-template-columns: 84px 1fr 24px; gap: 7px; align-items: center; font-size: 8pt; }
+    .track { height: 8px; border-radius: 5px; background: #eceef3; overflow: hidden; }
+    .fill { height: 100%; border-radius: 5px; background: var(--brand); }
+    .empty { padding: 10px; border-radius: 9px; background: var(--bg); color: var(--muted); }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .icon-library { position: absolute; width: 0; height: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div class="icon-library" aria-hidden="true">
+    <svg class="award-icon" data-code="first_step" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 36h11l7-10 6 5 8-17" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/><path d="M31 14h9v9" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/></svg>
+    <svg class="award-icon" data-code="streak_4" viewBox="0 0 48 48" aria-hidden="true"><path d="M25 5c2 9-7 10-4 18 2-3 5-5 8-7 8 8 11 14 8 21-2 5-7 7-13 7S12 39 11 32C10 24 17 20 18 13c3 3 4 6 4 9 4-5 5-10 3-17Z" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/></svg>
+    <svg class="award-icon" data-code="streak_8" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 5c3 8-5 11-2 18 2-3 5-5 8-7 8 7 11 14 8 21-2 5-7 7-14 7S12 40 10 33c-2-8 5-12 8-19 2 3 3 6 3 9 4-5 5-11 3-18Z" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/><path d="M24 25c4 4 5 7 3 10-1 2-5 2-6 0-2-3 0-6 3-10Z" fill="none" stroke="#b8860b" stroke-width="2"/></svg>
+    <svg class="award-icon" data-code="streak_16" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4c2 8-6 12-3 20 2-4 5-6 8-8 9 8 12 15 8 22-2 5-7 7-13 7S11 41 10 33c-1-8 6-13 9-20 2 3 3 6 3 9 4-5 4-11 2-18Z" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/><path d="M22 28c-3 4-4 7-2 10m7-11c3 3 4 6 3 9" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-width="2"/></svg>
+    <svg class="award-icon" data-code="visits_10" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="#b8860b" stroke-width="3"/><path d="M15 20h8m-4-4v16m7-12h7m-7 0c0-3 7-4 7 0 0 2-7 7-7 9h8" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"/></svg>
+    <svg class="award-icon" data-code="visits_25" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="#b8860b" stroke-width="3"/><path d="M16 18h8m-8 0 1 5h5m-4 2c-2 0-3 1-3 3h8m3-10h7m-7 0-1 5h5c2 0 3 1 3 3s-2 3-4 3h-5" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.3"/></svg>
+    <svg class="award-icon" data-code="visits_50" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="#b8860b" stroke-width="3"/><path d="M23 16h-7v6h5c2 0 3 1 3 3s-1 4-4 4h-4m10-13h7l-5 14m-14 8 3-5m18 5-3-5" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"/></svg>
+    <svg class="award-icon" data-code="comeback" viewBox="0 0 48 48" aria-hidden="true"><path d="M15 17H7l8-8m-8 8c4-6 10-9 17-8 9 1 15 8 15 17 0 3-1 6-2 8M33 31l4 5 5-4" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/></svg>
+    <svg class="award-icon" data-code="top_week" viewBox="0 0 48 48" aria-hidden="true"><path d="M15 8h18v10c0 8-4 13-9 13s-9-5-9-13V8Zm0 4H8v5c0 6 3 9 9 9m16-14h7v5c0 6-3 9-9 9m-7 5v7m-8 3h16m-12-10h8" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/></svg>
+    <svg class="award-icon" data-code="goal_done" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="#b8860b" stroke-width="3"/><circle cx="24" cy="24" r="9" fill="none" stroke="#b8860b" stroke-width="3"/><path d="m19 24 4 4 8-9" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/></svg>
+    <svg class="award-icon" data-code="mentor" viewBox="0 0 48 48" aria-hidden="true"><path d="m5 18 19-10 19 10-19 10L5 18Zm7 5v10c7 6 17 6 24 0V23m7-5v13" fill="none" stroke="#b8860b" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/><circle cx="24" cy="38" r="2" fill="#b8860b"/></svg>
+  </div>
+  <header class="hero">
+    <div>
+      <h1>Пульс сообщества</h1>
+      <p class="hero-sub">Еженедельный отчёт по чекинам участников ITAcadem</p>
+    </div>
+    <div class="hero-meta"><strong>@@REPORT_PERIOD@@</strong>Екатеринбургское время</div>
+  </header>
+
+  <section class="kpis">
+    @@KPI_CARDS@@
+  </section>
+
+  <h2><span class="dot" style="background:var(--stuck)"></span>Нужна помощь <span class="count">@@NEEDS_HELP_COUNT@@</span></h2>
+  @@NEEDS_HELP@@
+
+  <h2><span class="dot" style="background:var(--ok)"></span>Цели взяты <span class="count">@@GOALS_COUNT@@</span></h2>
+  @@GOALS_ACHIEVED@@
+
+  <h2><span class="dot" style="background:var(--brand)"></span>Кто чем занимается <span class="count">@@ANSWERED_COUNT@@</span></h2>
+  @@ANSWERED_PARTICIPANTS@@
+
+  <h2><span class="dot" style="background:var(--gold)"></span>Достижения недели</h2>
+  @@ACHIEVEMENTS@@
+
+  <div class="two-col">
+    <div>
+      <h2><span class="dot" style="background:var(--muted)"></span>Не ответили <span class="count">@@NON_RESPONDER_COUNT@@</span></h2>
+      @@NON_RESPONDERS@@
+    </div>
+    <div>
+      <h2><span class="dot" style="background:var(--brand)"></span>Что изучают сейчас</h2>
+      @@LEARNING_TECHNOLOGIES@@
+    </div>
+  </div>
+</body>
+</html>

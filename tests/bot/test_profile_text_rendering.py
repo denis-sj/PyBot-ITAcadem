@@ -1,8 +1,15 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
 from pybot.presentation.texts import render_profile_message
 from pybot.core.constants import PointsTypeEnum
-from pybot.dto import CompetenceReadDTO, LevelReadDTO, ProfileViewDTO, UserLevelReadDTO, UserReadDTO
+from pybot.dto import (
+    AchievementAwardReadDTO,
+    CompetenceReadDTO,
+    LevelReadDTO,
+    ProfileViewDTO,
+    UserLevelReadDTO,
+    UserReadDTO,
+)
 from pybot.dto.value_objects import Points
 
 
@@ -46,6 +53,10 @@ def test_render_profile_message_keeps_sections_and_actions_left_aligned() -> Non
         reputation_next_points=Points(value=100, point_type=PointsTypeEnum.REPUTATION),
         roles_data=["Student", "Admin"],
         competences=[],
+        current_attendance_streak=3,
+        achievements=[
+            AchievementAwardReadDTO(code="streak_4", achieved_at=datetime(2026, 10, 1, tzinfo=UTC)),
+        ],
     )
 
     rendered = render_profile_message(profile_view)
@@ -55,6 +66,8 @@ def test_render_profile_message_keeps_sections_and_actions_left_aligned() -> Non
     assert "\n<b>⭐ Репутационный уровень</b>\n" in rendered
     assert "\n<b>🎭 Роли</b>\n- Student\n- Admin\n" in rendered
     assert "\n<b>🧩 Компетенции</b>\nПока не указаны\n" in rendered
+    assert "🔥 Текущая серия посещений: 3 недели" in rendered
+    assert "Постоянство · 4 недели" in rendered
     assert "\nОбновить профиль: /profile\nПосмотреть команды: /help" in rendered
     assert "        📘 Академический уровень" not in rendered
     assert "        🎭 Роли" not in rendered

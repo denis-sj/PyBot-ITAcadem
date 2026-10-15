@@ -35,6 +35,17 @@ def test_relative_month_instruction_anchors_followup_to_last_assistant_answer():
     assert "«позапрошлый» — два месяца до него" in instructions
 
 
+def test_technology_stack_instructions_route_reads_and_confirm_only_own_stack_actions():
+    instructions = build_agent_instructions()
+
+    assert "На запрос «мой стек»" in instructions
+    assert "find_technology_helpers" in instructions
+    assert "set_my_technology" in instructions
+    assert "remove_my_technology" in instructions
+    assert "только для стека автора" in instructions
+    assert "не утверждай, что стек изменён до результата" in instructions
+
+
 @pytest.mark.asyncio
 async def test_capabilities_use_service_roles_and_persist_only_final_text(agent_settings, conversation):
     service, users, memory = build_service(agent_settings)

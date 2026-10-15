@@ -81,6 +81,7 @@ class AttendanceDate(Base):
     """Calendar date block tied to a confirmed or draft attendance import."""
 
     __tablename__ = "attendance_dates"
+    __table_args__ = (UniqueConstraint("date", name="uq_attendance_dates_date"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     import_id: Mapped[int] = mapped_column(

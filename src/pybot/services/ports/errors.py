@@ -24,3 +24,10 @@ class NotificationPermanentError(NotificationError):
 
     def __str__(self) -> str:
         return self.message
+
+
+class NotificationBlockedError(NotificationPermanentError):
+    """Telegram reports that the recipient blocked the bot."""
+
+    def __str__(self) -> str:
+        return self.message

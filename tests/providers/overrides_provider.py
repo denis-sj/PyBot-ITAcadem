@@ -6,7 +6,15 @@ from aiogram.types import InlineKeyboardMarkup
 from dishka import Provider, Scope, provide
 
 from pybot.dto import AttendanceRecognitionResultDTO, NotifyDTO
-from pybot.services.ports import AttendanceRecognitionPort, NotificationPort
+from pybot.dto.community_checkins import ParsedCheckinResponseDTO
+from pybot.services.ports import (
+    AttendanceRecognitionPort,
+    CheckinResponseParserPort,
+    CommunityAchievementDispatchPort,
+    MeetingDeliveryPort,
+    NotificationPort,
+    PulseReportDeliveryPort,
+)
 
 __test__ = False
 
@@ -21,6 +29,39 @@ class FakeAttendanceRecognitionPort:
         candidate_user_names: list[str],
     ) -> AttendanceRecognitionResultDTO:
         raise AssertionError("Photo recognition requires an explicit test result; network calls are forbidden")
+
+
+class FakeCommunityAchievementDispatchPort(CommunityAchievementDispatchPort):
+    async def recalculate_user_achievements(self, user_id: int) -> None:
+        return None
+
+
+class FakeCheckinResponseParserPort(CheckinResponseParserPort):
+    """Fail loudly if a test unexpectedly tries to invoke the model-backed parser."""
+
+    async def parse(self, text: str) -> ParsedCheckinResponseDTO:
+        del text
+        raise AssertionError("Weekly check-in parsing requires an explicit test result; model calls are forbidden")
+
+
+class FakePulseReportDeliveryPort(PulseReportDeliveryPort):
+    """Keep report delivery inside the test process."""
+
+    async def send_pdf(self, *, recipient_id: int, filename: str, content: bytes, caption: str) -> None:
+        del recipient_id, filename, content, caption
+
+
+class FakeMeetingDeliveryPort(MeetingDeliveryPort):
+    """Keep meeting notifications inside tests without using Telegram."""
+
+    async def send_announcement(self, chat_id: int, topic_id: int, text: str, meeting_id: int) -> None:
+        del chat_id, topic_id, text, meeting_id
+
+    async def send_invitation(self, telegram_id: int, text: str, meeting_id: int) -> None:
+        del telegram_id, text, meeting_id
+
+    async def send_text(self, telegram_id: int, text: str) -> None:
+        del telegram_id, text
 
 
 class FakeNotificationPort(NotificationPort):
@@ -129,6 +170,22 @@ class TestOverridesProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_attendance_recognition_port(self) -> AttendanceRecognitionPort:
         return self._attendance_recognition_port
+
+    @provide(scope=Scope.APP)
+    def provide_community_achievement_dispatch_port(self) -> CommunityAchievementDispatchPort:
+        return FakeCommunityAchievementDispatchPort()
+
+    @provide(scope=Scope.APP)
+    def provide_checkin_response_parser(self) -> CheckinResponseParserPort:
+        return FakeCheckinResponseParserPort()
+
+    @provide(scope=Scope.APP)
+    def provide_pulse_report_delivery_port(self) -> PulseReportDeliveryPort:
+        return FakePulseReportDeliveryPort()
+
+    @provide(scope=Scope.APP)
+    def provide_meeting_delivery_port(self) -> MeetingDeliveryPort:
+        return FakeMeetingDeliveryPort()
 
     @provide(scope=Scope.APP)
     def provide_fake_notification_port(self) -> FakeNotificationPort:

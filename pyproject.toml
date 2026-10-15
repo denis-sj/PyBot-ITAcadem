@@ -35,6 +35,7 @@ dependencies = [
     "pydantic-ai-slim[openai]>=2.54.0",
     "httpx2>=2.13.1",
     "opencv-python-headless>=4.10.0.84,<5",
+    "weasyprint>=70,<71",
 ]
 
 [project.scripts]
@@ -234,3 +235,4 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 # The pybot package lives under src/, tell hatchling where to find it.
 packages = ["src/pybot"]
+artifacts = ["src/pybot/infrastructure/templates/**"]

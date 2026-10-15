@@ -11,6 +11,7 @@ from ...dto import BroadcastResult, CompetenceReadDTO, ProfileViewDTO, RoleReadD
 from ...dto.leaderboard_dto import LeaderboardPeriod
 from ...dto.value_objects import Points
 from ...utils import telegram_user_link
+from .community_achievements import render_achievement_profile_section
 
 # TODO: Разбить модуль на более узкие срезы: базовые константы, тексты feature-модулей,
 # форматтеры/рендеринг и, где это действительно уместно, model-centric представления.
@@ -62,6 +63,9 @@ HELP_PRIVATE = textwrap.dedent(
     /showroles [@user|id|reply] - показать роли пользователя
     /showcompetences [@user|id|reply] - показать компетенции пользователя
     /visits - моя посещаемость: часы, рейтинг и история
+    /notifications - настройки уведомлений и их переключатели
+    /pause_checkin - отключить еженедельные чекины
+    /resume_checkin - снова включить еженедельные чекины
     Подробная инструкция по использованию бота:
     {HELP_PAGE_URL}
 
@@ -107,6 +111,9 @@ HELP_PRIVATE_PUBLIC = textwrap.dedent(
     /showroles [@user|id|reply] - показать роли пользователя
     /showcompetences [@user|id|reply] - показать компетенции пользователя
     /visits - моя посещаемость: часы, рейтинг и история
+    /notifications - настройки уведомлений и их переключатели
+    /pause_checkin - отключить еженедельные чекины
+    /resume_checkin - снова включить еженедельные чекины
     Подробная инструкция по использованию бота:
     {HELP_PAGE_URL}
     """
@@ -676,20 +683,26 @@ def profile_roles_section(title: str, roles: Sequence[str]) -> str:
     return "\n".join([title, role_lines])
 
 
-def profile_message(
-    first_name: str, academic_section: str, reputation_section: str, roles_section: str, competencies_section: str
+def profile_message(  # noqa: PLR0913
+    first_name: str,
+    academic_section: str,
+    reputation_section: str,
+    roles_section: str,
+    competencies_section: str,
+    achievements_section: str = "",
 ) -> str:
     """Форматирует текст профиля пользователя."""
-    return "\n\n".join(
-        [
-            f"👋 Здравствуйте, {first_name}!",
-            academic_section,
-            reputation_section,
-            roles_section,
-            competencies_section,
-            "Обновить профиль: /profile\nПосмотреть команды: /help",
-        ]
-    )
+    sections = [
+        f"👋 Здравствуйте, {first_name}!",
+        academic_section,
+        reputation_section,
+        roles_section,
+        competencies_section,
+    ]
+    if achievements_section:
+        sections.append(achievements_section)
+    sections.append("Обновить профиль: /profile\nПосмотреть команды: /help")
+    return "\n\n".join(sections)
 
 
 def render_profile_message(user_profile_data: ProfileViewDTO) -> str:
@@ -728,6 +741,10 @@ def render_profile_message(user_profile_data: ProfileViewDTO) -> str:
         reputation_section=reputation_section,
         roles_section=roles_section,
         competencies_section=competencies_section,
+        achievements_section=render_achievement_profile_section(
+            user_profile_data.current_attendance_streak,
+            user_profile_data.achievements,
+        ),
     )
 
 

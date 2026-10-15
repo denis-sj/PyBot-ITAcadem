@@ -17,6 +17,7 @@ from pydantic_ai.tools import ToolDefinition
 
 from evals.agent.run import (
     MAX_BUDGET_RUB,
+    BudgetStopError,
     CaseRun,
     ObservedPolzaModel,
     TARGET_MODEL,
@@ -28,7 +29,9 @@ from evals.agent.run import (
     _exception_diagnostic,
     _load_cases,
     _maximum_request_cost,
+    _parse_args,
     _response_cost,
+    _run_budget,
     _role_prefix_token_counts,
     _safe_http_metadata,
 )
@@ -76,12 +79,34 @@ def test_eval_cases_cover_required_scenarios_and_have_unique_names() -> None:
         "admin_broadcast_requires_audience",
         "admin_two_actions_one_confirmation",
         "student_injection_grant_admin",
+        "student_upcoming_meetings",
         "student_followup_previous_month",
         "off_topic",
     } <= names
     previous_month_case = next(case for case in cases if case.name == "student_followup_previous_month")
     assert "2020-09" in previous_month_case.history[-1].text
     assert previous_month_case.expected_call_args[0].args == {"period": {"year": 2020, "month": 8}}
+
+
+def test_eval_cli_accepts_a_per_run_ledger_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        ["eval", "--case", "my_technology_stack", "--repeat", "1", "--max-run-cost-rub", "1"],
+    )
+
+    args = _parse_args()
+
+    assert args.case == ["my_technology_stack"]
+    assert args.repeat == 1
+    assert args.max_run_cost_rub == Decimal("1")
+
+
+def test_run_budget_is_capped_by_global_limit_and_rejects_non_positive_values() -> None:
+    assert _run_budget(Decimal("1"), Decimal("34")) == Decimal("35")
+    assert _run_budget(Decimal("20"), Decimal("34")) == MAX_BUDGET_RUB
+    assert _run_budget(None, Decimal("34")) == MAX_BUDGET_RUB
+    with pytest.raises(ValueError, match="greater than zero"):
+        _run_budget(Decimal("0"), Decimal("34"))
 
 
 def test_request_cost_guard_reserves_forecast_maximum() -> None:
@@ -257,6 +282,35 @@ async def test_missing_cost_prices_usage_tokens_and_marks_estimate(tmp_path) -> 
     assert ledger.total_cost_rub == Decimal("0.007407")
     assert ledger.entries == [{"cost_rub": "0.007407", "estimated": True, "source": "usage_tokens"}]
     assert ledger.request_count == 1
+
+
+@pytest.mark.asyncio
+async def test_run_budget_stops_before_a_request_that_could_exceed_the_ledger_cap(tmp_path) -> None:
+    invoked = False
+
+    def respond(messages, info):
+        nonlocal invoked
+        invoked = True
+        return ModelResponse(parts=[])
+
+    ledger = SpendLedger(tmp_path / "ledger.json")
+    model = ObservedPolzaModel(
+        FunctionModel(respond),
+        TARGET_MODEL,
+        ledger,
+        Decimal("0.001"),
+    )
+
+    with pytest.raises(BudgetStopError, match="maximum cost of one request"):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("synthetic")])],
+            {"max_tokens": 1000},
+            ModelRequestParameters(),
+        )
+
+    assert invoked is False
+    assert ledger.total_cost_rub == Decimal("0")
+    assert ledger.request_count == 0
 
 
 @pytest.mark.asyncio

@@ -145,6 +145,124 @@ If you use `GHCR_DEPLOY_USERNAME` or `GHCR_DEPLOY_TOKEN`, provide both together.
 
 `PROD_ENV_FILE` is treated as a deploy artifact, not as an input to `AppSettings`. Runtime env used by the Python application and deploy/orchestration env used by Compose may live in the same `.env` file operationally, but only the runtime subset is materialized by `get_settings()`.
 
+## Staging
+
+Staging is an isolated deployment for the `denis-sj/PyBot-ITAcadem` fork. The staging workflow never runs in the upstream repository: its job checks the exact `github.repository` value before reading the `staging` environment or connecting to a server. Automatic deployment runs only after a successful `CI - Code Quality` run caused by a push to the fork's `main`. A manual run can deploy any selected branch. The production workflows and production secrets are not used by this flow.
+
+Staging uses the dedicated [`docker-compose.staging.yml`](docker-compose.staging.yml) manifest and Compose project `pybot-staging`. Its persistent volumes are separate from production:
+
+- `pybot_staging_postgres_data` — staging PostgreSQL data;
+- `pybot_staging_postgres_backups` — custom-format PostgreSQL backups;
+- `pybot_staging_redis_data` — staging Redis data.
+
+Each normal deploy validates the application configuration, starts PostgreSQL and Redis, creates a database backup, applies Alembic migrations, optionally runs seed, and only then updates the bot and TaskIQ processes. The backup is retained in the staging backup volume. There is no automatic backup-retention policy.
+
+### 1. Prepare a staging server
+
+Use a dedicated Debian or Ubuntu server or VM. Give it a public DNS name or static IP. The bot needs outbound HTTPS access to Telegram and GHCR; expose SSH to the GitHub Actions runner/network policy you use. The Compose file does not publish PostgreSQL or Redis ports.
+
+Run the following one-time setup as a server administrator with `sudo`:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin openssh-server
+sudo systemctl enable --now docker ssh
+sudo adduser --disabled-password --gecos "" deploy
+sudo usermod -aG docker deploy
+sudo install -d -o deploy -g deploy -m 0750 /home/deploy/pybot-staging
+```
+
+The deployment account is `deploy`; it does not need `sudo`. Adding it to the `docker` group lets it run Docker without `sudo` as required by the workflow. Docker group membership grants root-equivalent control of this server, so use this account only for deployments. Log out and back in after adding the group, then verify from a new session:
+
+```bash
+ssh deploy@staging.example.com 'docker version && docker compose version && docker ps'
+```
+
+Generate a dedicated SSH key on your workstation. This key is for this staging target only; do not reuse a personal or production key. GitHub Actions cannot answer an interactive passphrase prompt, so store the private key as an environment secret and restrict access to the `staging` environment.
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-pybot-staging" -f ~/.ssh/pybot-staging-actions -N ""
+```
+
+Install the contents of `~/.ssh/pybot-staging-actions.pub` in `/home/deploy/.ssh/authorized_keys` on the server. For example, from an administrator session on the server, replace the sample key line with the complete output of `cat ~/.ssh/pybot-staging-actions.pub` from your workstation:
+
+```bash
+sudo install -d -o deploy -g deploy -m 0700 /home/deploy/.ssh
+sudo sh -c 'cat >> /home/deploy/.ssh/authorized_keys' <<'EOF'
+ssh-ed25519 AAAA_REPLACE_WITH_THE_PUBLIC_KEY github-actions-pybot-staging
+EOF
+sudo chown deploy:deploy /home/deploy/.ssh/authorized_keys
+sudo chmod 0600 /home/deploy/.ssh/authorized_keys
+```
+
+Check the server's SSH host-key fingerprint through the cloud/server console or its administrator. Then collect the `known_hosts` line and compare its fingerprint before saving it in GitHub:
+
+```bash
+ssh-keyscan -p 22 staging.example.com > staging_known_hosts
+ssh-keygen -lf staging_known_hosts
+```
+
+`ssh-keyscan` only collects a key; it does not verify that the key belongs to your server. Do not trust the result until its fingerprint matches the value obtained through a separate trusted channel.
+
+### 2. Create the GitHub staging environment and secrets
+
+In the fork, open **Settings → Environments → New environment**, create an environment named exactly `staging`, then add the secrets below under that environment. The workflow references no `PROD_*` secrets.
+
+| Secret | Required | Where to get the value |
+| --- | --- | --- |
+| `STAGING_DEPLOY_HOST` | Yes | The staging server's public DNS name or static IP from its hosting provider. |
+| `STAGING_DEPLOY_USER` | Yes | `deploy`, created in step 1. |
+| `STAGING_DEPLOY_PORT` | No | SSH port; leave unset for `22`. If changed, configure the server firewall and `sshd` to use the same port. |
+| `STAGING_DEPLOY_PATH` | Yes | Absolute writable application directory; with the commands above use `/home/deploy/pybot-staging`. |
+| `STAGING_DEPLOY_SSH_KEY` | Yes | The complete private-key text from `~/.ssh/pybot-staging-actions`, including the `BEGIN` and `END` lines. Never use the `.pub` file here. |
+| `STAGING_DEPLOY_KNOWN_HOSTS` | Yes | The verified complete host-key line from `staging_known_hosts`; include the correct port/host form if SSH uses a non-default port. |
+| `STAGING_ENV_FILE` | Yes | The complete multiline runtime `.env` contents for staging, described below. Do not include `APP_IMAGE`; the workflow writes the selected immutable image reference itself. |
+
+The workflow uses GitHub's short-lived `GITHUB_TOKEN` to publish and pull the image from GHCR; you do not need to create a registry token. Grant the workflow's package permission through `packages: write` as declared in the workflow. No `PROD_*` or unprefixed user-created deployment secret is read by staging.
+
+Build `STAGING_ENV_FILE` from the variable names in [`.env.example`](.env.example), replacing every example value with staging values. At minimum, include:
+
+```env
+BOT_TOKEN=<token отдельного staging-бота из BotFather>
+BOT_MODE=prod
+ROLE_REQUEST_ADMIN_TG_ID=<Telegram ID администратора staging>
+POSTGRES_DB=pybot_staging
+POSTGRES_USER=pybot_staging
+POSTGRES_PASSWORD=<длинный случайный пароль>
+DATABASE_URL=postgresql+asyncpg://pybot_staging:<url-encoded-пароль>@postgres:5432/pybot_staging
+FSM_STORAGE_BACKEND=redis
+REDIS_URL=redis://redis:6379/0
+TASKIQ_WORKERS=1
+HEALTH_API_ENABLED=false
+```
+
+Use a separate Telegram bot and test group for staging. `BOT_MODE=prod` is required by the deployment configuration check; it does not mean this is the production bot. The `BOT_TOKEN` above must be the staging bot's token. Generate a strong password, for example with `openssl rand -hex 32`; keep the raw value in `POSTGRES_PASSWORD`, and percent-encode reserved URL characters in the password portion of `DATABASE_URL`. You may add other runtime settings from `.env.example` as needed, for example the agent and its provider key. Do not put `APP_IMAGE` or deploy-only `PROD_*` values into this secret.
+
+### 3. Run a staging deployment
+
+After this workflow exists on the fork's default branch, open **Actions → CD - Deploy Staging → Run workflow**. Choose the branch/ref to deploy; manual runs are accepted for any branch in the fork. Keep `seed` unchecked for routine deploys. Check it only for an initial setup or a controlled seed run; the seed command skips fake users. A push to `main` deploys automatically only after its CI run succeeds.
+
+For a manual rollback, enter a full 40-character SHA image tag previously built by this staging workflow in `rollback_image_tag`. The workflow verifies that image exists in GHCR, takes a fresh staging database backup, skips migrations and seed, and deploys the selected image. Do not combine `rollback_image_tag` with `seed`. An image rollback does not undo a database migration; use it only when the previous image supports the current schema.
+
+### 4. Restore staging data when schema rollback is required
+
+Database restore is a separate, destructive operator action. First stop the staging writers and inspect the staging-only backup volume:
+
+```bash
+cd /home/deploy/pybot-staging
+docker compose -p pybot-staging -f docker-compose.staging.yml stop bot taskiq-worker taskiq-scheduler
+docker compose -p pybot-staging -f docker-compose.staging.yml --profile backup run --rm --entrypoint sh backup -c 'ls -lh /backups'
+```
+
+Choose a dump created before the problematic migration. Set its basename explicitly and type the confirmation value `YES` for this one command:
+
+```bash
+RESTORE_FILE=pybot-staging-20261015T120000Z.dump CONFIRM_RESTORE=YES \
+  docker compose -p pybot-staging -f docker-compose.staging.yml --profile restore run --rm restore
+```
+
+The restore service refuses to run without `CONFIRM_RESTORE=YES`, rejects paths, and reads only from `pybot_staging_postgres_backups`. After restoring, deploy the matching compatible application image using `rollback_image_tag`; the rollback workflow skips migrations and seed. Confirm PostgreSQL health and bot logs before returning staging to use. This does not read or modify production volumes.
+
 ## Expected server shape
 
 The regular CD deploy assumes:
@@ -478,6 +596,46 @@ That service is attached to the `migration` profile, so:
 - a plain `docker compose up -d` or `docker compose up --build` does not start it.
 
 The active migration history begins with the PostgreSQL initial baseline. It is not connected to the removed SQLite migration history. Apply it only to a new PostgreSQL database or to a database already managed by this baseline.
+
+### Community achievements
+
+Revision `b17c4d8e6a21_add_community_achievement_awards` adds the one-time award table and the user bot-block marker.
+It does not rewrite existing attendance or user data. Upgrade and downgrade are limited to those additions.
+
+Public group posts are disabled by default. To enable them, set both variables in the production `.env`:
+
+- `ACHIEVEMENTS_CHAT_ID` — negative Telegram group ID;
+- `ACHIEVEMENTS_TOPIC_ID` — positive topic ID in that group.
+
+Leaving both blank keeps personal congratulations enabled and removes the two TaskIQ publication schedules. Supplying
+only one value makes application configuration invalid.
+
+On the first rollout, run the historical award backfill after the new image is available and migrations are applied,
+but before refreshing the `bot` and TaskIQ services. This prevents the first live attendance or Mentor event from
+sending congratulations for old history. The previous bot process can keep handling updates while the one-shot command
+runs. The command is idempotent and sends no personal or group messages; rerunning it inserts only missing awards.
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm bot python -m pybot.cli.community_achievements_backfill
+```
+
+The command uses the production `.env`, PostgreSQL service, and already deployed image. Verify its final count in the
+command output. The daily digest runs at 19:00 Yekaterinburg time; the weekly attendance top runs Monday at 12:00.
+
+### Community meetings
+
+Revision `e4a8c6d29f10_add_community_meetings` adds the meeting, immutable invitee snapshot, and RSVP tables. Apply it
+through the regular migration service before starting the updated bot and TaskIQ processes.
+
+All-participant announcements use the optional `EVENTS_CHAT_ID` (negative group ID) and `EVENTS_TOPIC_ID` (positive
+topic ID). Configure both or neither. When unset, the bot falls back to `AGENT_GROUP_CHAT_ID` and `AGENT_TOPIC_ID`;
+if neither destination is configured, creating an all-participant meeting is refused before saving it. Competence and
+technology meetings use private invitations and do not require a group topic. Users can disable those invitations with
+the existing meeting-invitations switch in `/notifications`.
+
+The TaskIQ scheduler runs the meeting reminder and completion-status job every minute in `Asia/Yekaterinburg`. RSVP
+participants receive reminders around 24 hours and 1 hour before the start; a meeting created less than 24 hours ahead
+does not receive the day-before reminder.
 
 ### Attendance Photo Accounting Rollout & Migration Safety
 

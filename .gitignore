@@ -185,3 +185,9 @@ cython_debug/
 *.db
 
 *.tmp
+
+# Local backups of Docker volumes
+/backups/
+
+# macOS Finder metadata
+.DS_Store

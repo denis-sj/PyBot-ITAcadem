@@ -13,4 +13,6 @@ class CreateProfileSG(StatesGroup):
     last_name = State()
     patronymic = State()
     competencies = State()
+    technology_stack = State()
+    technology_stack_confirmation = State()
     finish = State()

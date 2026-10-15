@@ -211,6 +211,19 @@ class AppSettings(BaseSettings):
         ge=1,
     )
 
+    achievements_chat_id: int | None = Field(
+        None,
+        alias="ACHIEVEMENTS_CHAT_ID",
+        description="Optional Telegram group chat for community achievement publications",
+        lt=0,
+    )
+    achievements_topic_id: int | None = Field(
+        None,
+        alias="ACHIEVEMENTS_TOPIC_ID",
+        description="Optional Telegram topic for community achievement publications",
+        gt=0,
+    )
+
     # Middleware toggles
     enable_logging_middleware: bool = Field(
         True,
@@ -277,6 +290,9 @@ class AppSettings(BaseSettings):
     )
     agent_group_chat_id: int | None = Field(None, alias="AGENT_GROUP_CHAT_ID", lt=0)
     agent_topic_id: int | None = Field(None, alias="AGENT_TOPIC_ID", gt=0)
+    events_chat_id: int | None = Field(None, alias="EVENTS_CHAT_ID", lt=0)
+    events_topic_id: int | None = Field(None, alias="EVENTS_TOPIC_ID", gt=0)
+    events_topic_name: str = Field("Встречи", alias="EVENTS_TOPIC_NAME", min_length=1, max_length=64)
     agent_memory_max_messages: int = Field(10, alias="AGENT_MEMORY_MAX_MESSAGES", ge=2, le=10)
     agent_memory_ttl_s: int = Field(1800, alias="AGENT_MEMORY_TTL_S", ge=1, le=1800)
     agent_reply_mark_ttl_s: int = Field(604800, alias="AGENT_REPLY_MARK_TTL_S", ge=1)
@@ -323,6 +339,13 @@ class AppSettings(BaseSettings):
             raise ValueError("POLZA_API_KEY must be set when AGENT_ENABLED=true")
         return self
 
+    @model_validator(mode="after")
+    def validate_events_destination(self) -> Self:
+        """Require both event destination identifiers or leave the destination disabled."""
+        if (self.events_chat_id is None) != (self.events_topic_id is None):
+            raise ValueError("EVENTS_CHAT_ID and EVENTS_TOPIC_ID must be configured together")
+        return self
+
     @field_validator("agent_model")
     @classmethod
     def normalize_agent_model(cls, value: str) -> str:
@@ -332,7 +355,16 @@ class AppSettings(BaseSettings):
             raise ValueError("AGENT_MODEL must be non-empty")
         return normalized
 
-    @field_validator("agent_group_chat_id", "agent_topic_id", mode="before")
+    @field_validator("events_topic_name")
+    @classmethod
+    def normalize_events_topic_name(cls, value: str) -> str:
+        """Keep the human-readable forum topic title non-empty and trimmed."""
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("EVENTS_TOPIC_NAME must be non-empty")
+        return normalized
+
+    @field_validator("agent_group_chat_id", "agent_topic_id", "events_chat_id", "events_topic_id", mode="before")
     @classmethod
     def parse_agent_optional_id(cls, value: int | str | None) -> int | None:
         """Allow blank optional IDs in .env.example."""
@@ -419,6 +451,17 @@ class AppSettings(BaseSettings):
             return int(normalized)
         return value
 
+    @field_validator("achievements_chat_id", "achievements_topic_id", mode="before")
+    @classmethod
+    def parse_optional_achievement_id(cls, value: int | str | None) -> int | None:
+        """Allow empty publication IDs in local and production environment files."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return int(normalized) if normalized else None
+        return value
+
     @field_validator("leaderboard_weekly_recipient_id", "leaderboard_weekly_thread_id")
     @classmethod
     def validate_weekly_ids(cls, value: int | None) -> int | None:
@@ -493,6 +536,17 @@ class AppSettings(BaseSettings):
                 "LEADERBOARD_WEEKLY_RETRY_MAX_DELAY_S must be greater than or equal to LEADERBOARD_WEEKLY_RETRY_DELAY_S"
             )
         return self
+
+    @model_validator(mode="after")
+    def validate_achievement_publication_config(self: Self) -> Self:
+        if (self.achievements_chat_id is None) != (self.achievements_topic_id is None):
+            raise ValueError("ACHIEVEMENTS_CHAT_ID and ACHIEVEMENTS_TOPIC_ID must be configured together")
+        return self
+
+    @property
+    def achievements_publication_enabled(self: Self) -> bool:
+        """Return whether the complete group publication destination is configured."""
+        return self.achievements_chat_id is not None and self.achievements_topic_id is not None
 
 
 @functools.lru_cache(maxsize=1)

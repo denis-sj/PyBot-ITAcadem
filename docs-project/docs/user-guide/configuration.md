@@ -31,6 +31,11 @@
 | `RUNTIME_ALERTS_ENABLED` | включает runtime alerts для bot startup/shutdown |
 | `RUNTIME_ALERTS_CHAT_ID` | chat id для runtime alerts |
 | `HEALTH_API_ENABLED` | отдельный health API |
+| `EVENTS_CHAT_ID` и `EVENTS_TOPIC_ID` | необязательная тема анонсов встреч всем; задайте обе переменные или оставьте обе пустыми |
+| `EVENTS_TOPIC_NAME` | название темы из Telegram, показываемое в предпросмотре; по умолчанию `Встречи` |
+
+Если обе переменные пусты, бот использует настроенную тему агента (`AGENT_GROUP_CHAT_ID` и `AGENT_TOPIC_ID`). Если не
+настроена ни одна пара, создание встречи для всех отключено; личные приглашения по компетенции и стеку работают отдельно.
 
 ## Logging contract
 

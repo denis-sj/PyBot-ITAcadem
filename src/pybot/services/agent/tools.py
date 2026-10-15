@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
 from pydantic import JsonValue, TypeAdapter
@@ -32,8 +32,28 @@ from .admin_action_tools import (
 )
 from .broadcast_tools import broadcast_confirmation_summary, send_broadcast, validate_broadcast
 from .dependencies import AgentDependencies
+from .goal_action_tools import (
+    goal_confirmation_summary,
+    mark_my_goal_achieved,
+    set_my_goal,
+    validate_goal_completion,
+    validate_my_goal,
+)
+from .meeting_action_tools import (
+    cancel_community_meeting,
+    create_community_meeting,
+    meeting_confirmation_summary,
+    preview_meeting_cancellation,
+    preview_meeting_creation,
+    preview_meeting_reschedule,
+    reschedule_community_meeting,
+    validate_meeting_cancellation,
+    validate_meeting_creation,
+    validate_meeting_reschedule,
+)
 from .read_tools import (
     ADMIN_AGENT_ROLES,
+    find_technology_helpers,
     find_user_candidates,
     get_attendance_month_top,
     get_attendance_week_top,
@@ -42,17 +62,29 @@ from .read_tools import (
     get_competences_catalog,
     get_current_chat_id,
     get_current_month,
+    get_meeting_attendees,
+    get_my_achievements,
     get_my_attendance,
     get_my_competences,
+    get_my_goal,
     get_my_profile,
     get_my_roles,
+    get_my_technology_stack,
     get_my_visits,
     get_points_leaderboard,
     get_roles_catalog,
+    get_upcoming_meetings,
     get_user_attendance,
     get_user_profile,
 )
 from .role_tools import request_mentor_role, validate_mentor_request
+from .stack_action_tools import (
+    remove_my_technology,
+    set_my_technology,
+    stack_confirmation_summary,
+    validate_my_technology_removal,
+    validate_my_technology_update,
+)
 
 _ACTION_ARGUMENTS_ADAPTER = TypeAdapter(dict[str, JsonValue])
 
@@ -65,6 +97,7 @@ class RegisteredAgentTool:
     allowed_roles: frozenset[str] = frozenset()
     confirmation_summary: Callable[[ToolCallPart, str | None], str] | None = None
     uses_broadcast_roles: bool = False
+    confirmation_previewer: Callable[[ToolCallPart, AgentDependencies], Awaitable[str]] | None = None
 
 
 class AgentToolRegistry:
@@ -83,6 +116,12 @@ class AgentToolRegistry:
                 for function in (
                     bot_capabilities,
                     get_my_profile,
+                    get_my_achievements,
+                    get_my_goal,
+                    get_my_technology_stack,
+                    find_technology_helpers,
+                    get_upcoming_meetings,
+                    get_meeting_attendees,
                     get_my_attendance,
                     get_my_visits,
                     get_attendance_week_top,
@@ -171,6 +210,56 @@ class AgentToolRegistry:
                 frozenset({"Student"}),
                 _role_request_summary,
             )
+            stack_action_tools = (
+                RegisteredAgentTool(
+                    Tool(
+                        set_my_technology,
+                        args_validator=validate_my_technology_update,
+                        requires_approval=True,
+                    ),
+                    confirmation_summary=stack_confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        remove_my_technology,
+                        args_validator=validate_my_technology_removal,
+                        requires_approval=True,
+                    ),
+                    confirmation_summary=stack_confirmation_summary,
+                ),
+            )
+            goal_action_tools = (
+                RegisteredAgentTool(
+                    Tool(set_my_goal, args_validator=validate_my_goal, requires_approval=True),
+                    confirmation_summary=goal_confirmation_summary,
+                ),
+                RegisteredAgentTool(
+                    Tool(mark_my_goal_achieved, args_validator=validate_goal_completion, requires_approval=True),
+                    confirmation_summary=goal_confirmation_summary,
+                ),
+            )
+            meeting_action_tools = (
+                RegisteredAgentTool(
+                    Tool(create_community_meeting, args_validator=validate_meeting_creation, requires_approval=True),
+                    frozenset({"Admin", "Mentor"}),
+                    meeting_confirmation_summary,
+                    confirmation_previewer=preview_meeting_creation,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        reschedule_community_meeting, args_validator=validate_meeting_reschedule, requires_approval=True
+                    ),
+                    confirmation_summary=meeting_confirmation_summary,
+                    confirmation_previewer=preview_meeting_reschedule,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        cancel_community_meeting, args_validator=validate_meeting_cancellation, requires_approval=True
+                    ),
+                    confirmation_summary=meeting_confirmation_summary,
+                    confirmation_previewer=preview_meeting_cancellation,
+                ),
+            )
             broadcast_tool = RegisteredAgentTool(
                 Tool(
                     send_broadcast,
@@ -180,7 +269,16 @@ class AgentToolRegistry:
                 confirmation_summary=broadcast_confirmation_summary,
                 uses_broadcast_roles=True,
             )
-            self.entries = (*public_tools, role_request_tool, *admin_tools, *admin_action_tools, broadcast_tool)
+            self.entries = (
+                *public_tools,
+                role_request_tool,
+                *admin_tools,
+                *admin_action_tools,
+                *stack_action_tools,
+                *goal_action_tools,
+                *meeting_action_tools,
+                broadcast_tool,
+            )
         else:
             self.entries = entries
         for entry in self.entries:
@@ -203,7 +301,11 @@ class AgentToolRegistry:
                 recipient = await self._recipient_label(canonical_args, dependencies)
                 if "telegram_id" in canonical_args and recipient is None:
                     return None
-                return canonical_call, entry.confirmation_summary(canonical_call, recipient)
+                if entry.confirmation_previewer is not None:
+                    summary = await entry.confirmation_previewer(canonical_call, dependencies)
+                else:
+                    summary = entry.confirmation_summary(canonical_call, recipient)
+                return canonical_call, summary
         raise AgentAccessDeniedError
 
     @staticmethod
@@ -283,6 +385,8 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
     roles = await ctx.deps.get_roles()
     commands = (
         "Профиль и баллы — /profile; посещаемость — /visits; рейтинг — /leaderboard; "
+        "мои достижения и серия — через вопрос «мои достижения»; моя цель — через вопрос агенту; "
+        "уведомления — /notifications, чекины — /pause_checkin и /resume_checkin; "
         "роли — /roles и /showroles; компетенции — /competences и /showcompetences; "
         "информация — /info; заявка на роль — /role_request."
     )
@@ -298,9 +402,12 @@ async def bot_capabilities(ctx: RunContext[AgentDependencies]) -> str:
     if roles.intersection(ctx.deps.settings.broadcast_allowed_roles):
         commands += " Рассылка — /broadcast или кнопка рассылки в меню."
     introduction = (
-        "Через агента доступны мой профиль и баллы, мои посещения, топ посещаемости недели и месяца, "
+        "Через агента доступны мой профиль и баллы, мои достижения и серия, моя цель, мои посещения, "
+        "мой стек технологий и поиск помощников, "
+        "топ посещаемости недели и месяца, "
         "лидерборд баллов, каталоги ролей и компетенций, мои роли и компетенции, информация о боте. "
-        "Инструменты чтения и изменения для администратора доступны только его роли. "
+        "Инструменты администратора доступны только его роли, а изменение собственного стека и цели "
+        "требует подтверждения. "
         "Подать заявку на роль Mentor можно через агента после подтверждения. "
     )
     return introduction + commands

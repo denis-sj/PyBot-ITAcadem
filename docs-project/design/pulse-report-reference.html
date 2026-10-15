@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 0; }
+  :root{
+    --ink:#14161c; --muted:#6b7080; --line:#e6e8ee; --bg:#f5f6f9; --card:#ffffff;
+    --brand:#3b5bdb; --brand-soft:#e8edff;
+    --ok:#2f9e44; --ok-soft:#e6f6ea;
+    --warn:#e8590c; --warn-soft:#fff0e6;
+    --stuck:#c92a2a; --stuck-soft:#ffecec;
+    --gold:#b8860b; --gold-soft:#fff7dc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter, "DejaVu Sans", sans-serif;color:var(--ink);background:var(--bg);font-size:10.5pt;line-height:1.4}
+  .page{width:210mm;min-height:297mm;padding:14mm 14mm 12mm;page-break-after:always;position:relative}
+  .page:last-child{page-break-after:auto}
+  header.hero{background:linear-gradient(135deg,#1f2a5a 0%,#3b5bdb 60%,#5c7cfa 100%);color:#fff;border-radius:16px;padding:18px 22px;display:flex;justify-content:space-between;align-items:flex-end}
+  .hero h1{margin:0;font-family:"Inter Display",Inter,sans-serif;font-weight:800;font-size:24pt;letter-spacing:-.5px}
+  .hero .sub{opacity:.85;margin-top:4px;font-size:10.5pt}
+  .hero .meta{text-align:right;font-size:9pt;opacity:.85}
+  .hero .meta b{display:block;font-size:12pt;opacity:1}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .kpi .v{font-family:"Inter Display",Inter;font-weight:800;font-size:20pt;line-height:1}
+  .kpi .l{color:var(--muted);font-size:8.5pt;margin-top:6px}
+  .kpi .d{font-size:8.5pt;margin-top:2px;font-weight:600}
+  .up{color:var(--ok)} .down{color:var(--stuck)}
+  h2{font-family:"Inter Display",Inter;font-size:13pt;margin:16px 0 8px;display:flex;align-items:center;gap:8px}
+  h2 .dot{width:10px;height:10px;border-radius:50%}
+  h2 .count{font-family:Inter;font-weight:600;font-size:9pt;color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;break-inside:avoid}
+  .card.stuck{border-left:4px solid var(--stuck)}
+  .card.goal{border-left:4px solid var(--ok)}
+  .card.prog{border-left:4px solid var(--brand)}
+  .who{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .name{font-weight:700;font-size:11pt}
+  .uname{color:var(--muted);font-size:9pt}
+  .badge{font-size:8pt;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .b-stuck{background:var(--stuck-soft);color:var(--stuck)}
+  .b-ok{background:var(--ok-soft);color:var(--ok)}
+  .b-prog{background:var(--brand-soft);color:var(--brand)}
+  .goalline{margin-top:6px;font-size:9.5pt}
+  .goalline span{color:var(--muted)}
+  .week{margin-top:6px;font-size:9.5pt;background:var(--bg);border-radius:8px;padding:7px 9px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+  .chip{font-size:8pt;padding:2px 7px;border-radius:6px;background:#f0f1f5;color:#3a3f4c}
+  .chip.know{background:var(--brand-soft);color:var(--brand);font-weight:600}
+  .foot{display:flex;gap:12px;margin-top:8px;font-size:8.5pt;color:var(--muted)}
+  .foot b{color:var(--ink)}
+  .help{margin-top:8px;font-size:9pt;background:var(--warn-soft);color:#8a3b07;border-radius:8px;padding:6px 9px}
+  .help b{color:#6b2c03}
+  .ach{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .ach .card{background:var(--gold-soft);border-color:#f1e2a8;text-align:center}
+  .ach .ico{font-size:20pt;line-height:1}
+  .ach .t{font-weight:800;margin-top:4px}
+  .ach .p{font-size:9pt;color:#6b5a1e}
+  table.silent{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:9.5pt}
+  table.silent th{background:#f0f1f5;text-align:left;font-weight:600;color:var(--muted);font-size:8.5pt;padding:7px 10px}
+  table.silent td{padding:7px 10px;border-top:1px solid var(--line)}
+  .stackbar{display:flex;flex-direction:column;gap:6px}
+  .bar{display:grid;grid-template-columns:90px 1fr 40px;align-items:center;gap:8px;font-size:9pt}
+  .bar .track{height:9px;background:#eceef3;border-radius:6px;overflow:hidden}
+  .bar .fill{height:100%;background:var(--brand);border-radius:6px}
+  .note{font-size:8pt;color:var(--muted);position:absolute;bottom:8mm;left:14mm;right:14mm;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+
+<section class="page">
+  <header class="hero">
+    <div>
+      <h1>Пульс сообщества</h1>
+      <div class="sub">Еженедельный отчёт по чекинам участников ITAcadem</div>
+    </div>
+    <div class="meta"><b>Неделя 14–20 октября 2026</b>Опрос: ср 15:00 · отчёт: чт 15:00</div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">18<span style="font-size:12pt;color:var(--muted)">/24</span></div><div class="l">ответили на чекин</div><div class="d up">▲ +3 к прошлой неделе</div></div>
+    <div class="kpi"><div class="v" style="color:var(--stuck)">3</div><div class="l">нужна помощь</div><div class="d down">▲ +1</div></div>
+    <div class="kpi"><div class="v" style="color:var(--ok)">2</div><div class="l">цели достигнуты</div><div class="d up">новые: 4 цели</div></div>
+    <div class="kpi"><div class="v">41</div><div class="l">посещение за неделю</div><div class="d up">▲ +6</div></div>
+  </div>
+
+  <h2><span class="dot" style="background:var(--stuck)"></span>Нужна помощь <span class="count">3 участника</span></h2>
+  <div class="grid2">
+    <div class="card stuck">
+      <div class="who"><div><div class="name">Иван Иванов</div><div class="uname">@ivan_dev</div></div><span class="badge b-stuck">Застрял</span></div>
+      <div class="goalline"><span>Цель:</span> собеседование Python Junior к декабрю</div>
+      <div class="week">Разбирает асинхронность, не понимает разницу между asyncio.gather и create_task.</div>
+      <div class="help">Могут помочь: <b>@anna_test</b> (ментор, Python), <b>@kirill_py</b> (знает asyncio)</div>
+      <div class="foot"><span>Визиты: <b>2</b></span><span>Серия: <b>5 нед.</b></span></div>
+    </div>
+    <div class="card stuck">
+      <div class="who"><div><div class="name">Мария Соколова</div><div class="uname">@masha_s</div></div><span class="badge b-stuck">Застряла</span></div>
+      <div class="goalline"><span>Цель:</span> задеплоить пет-проект</div>
+      <div class="week">Не получается настроить Docker Compose: контейнер с БД падает при старте.</div>
+      <div class="help">Могут помочь: <b>@den4ik</b> (ментор, Docker), <b>@oleg_ops</b> (знает Docker)</div>
+      <div class="foot"><span>Визиты: <b>1</b></span><span>Серия: <b>2 нед.</b></span></div>
+    </div>
+  </div>
+  <div class="grid2" style="margin-top:10px">
+    <div class="card stuck">
+      <div class="who"><div><div class="name">Тимур Галиев</div><div class="uname">@timur_g</div></div><span class="badge b-stuck">Нет мотивации</span></div>
+      <div class="goalline"><span>Цель:</span> закончить курс по SQL</div>
+      <div class="week">Пишет, что устал и третью неделю не открывал курс.</div>
+      <div class="help">Совет агента: лично пригласить на ближайшую встречу</div>
+      <div class="foot"><span>Визиты: <b>0</b></span><span>Серия: <b>прервана</b></span></div>
+    </div>
+    <div class="card goal">
+      <div class="who"><div><div class="name">Анна Петрова</div><div class="uname">@anna_test</div></div><span class="badge b-ok">Цель взята</span></div>
+      <div class="goalline"><span>Цель:</span> пройти собеседование в стажировку</div>
+      <div class="week">Прошла собеседование и получила оффер на стажировку бэкенд-разработчиком.</div>
+      <div class="chips"><span class="chip">🏆 Цель взята</span><span class="chip">🔥 Постоянство · 8 нед.</span></div>
+      <div class="foot"><span>Визиты: <b>3</b></span><span>Серия: <b>8 нед.</b></span></div>
+    </div>
+  </div>
+
+  <div class="note"><span>ITAcadem · Пульс сообщества</span><span>Стр. 1 из 2</span></div>
+</section>
+
+<section class="page">
+  <h2 style="margin-top:0"><span class="dot" style="background:var(--brand)"></span>Кто чем занимается <span class="count">13 в процессе · показаны 4</span></h2>
+  <div class="grid2">
+    <div class="card prog">
+      <div class="who"><div><div class="name">Кирилл Орлов</div><div class="uname">@kirill_py</div></div><span class="badge b-prog">В процессе</span></div>
+      <div class="goalline"><span>Цель:</span> собрать портфолио из 3 проектов</div>
+      <div class="week">Дописал Telegram-бота на aiogram, начал второй проект — парсер вакансий.</div>
+      <div class="chips"><span class="chip know">Python</span><span class="chip know">asyncio</span><span class="chip">PostgreSQL</span></div>
+      <div class="foot"><span>Визиты: <b>3</b></span><span>Серия: <b>6 нед.</b></span></div>
+    </div>
+    <div class="card prog">
+      <div class="who"><div><div class="name">Олег Смирнов</div><div class="uname">@oleg_ops</div></div><span class="badge b-prog">В процессе</span></div>
+      <div class="goalline"><span>Цель:</span> сертификация по Kubernetes</div>
+      <div class="week">Прошёл модуль по сетям в кластере, на следующей неделе — практика с Helm.</div>
+      <div class="chips"><span class="chip know">Docker</span><span class="chip know">Linux</span><span class="chip">Kubernetes</span></div>
+      <div class="foot"><span>Визиты: <b>2</b></span><span>Серия: <b>3 нед.</b></span></div>
+    </div>
+    <div class="card prog">
+      <div class="who"><div><div class="name">Елена Ким</div><div class="uname">@lena_kim</div></div><span class="badge b-prog">В процессе</span></div>
+      <div class="goalline"><span>Цель:</span> перейти из QA в автотесты</div>
+      <div class="week">Пишет первые тесты на pytest, разбирается с фикстурами.</div>
+      <div class="chips"><span class="chip know">QA</span><span class="chip">Python</span><span class="chip">pytest</span></div>
+      <div class="foot"><span>Визиты: <b>2</b></span><span>Серия: <b>4 нед.</b></span></div>
+    </div>
+    <div class="card prog">
+      <div class="who"><div><div class="name">Арсений Волков</div><div class="uname">@arseny_v</div></div><span class="badge b-prog">Новичок</span></div>
+      <div class="goalline"><span>Цель:</span> понять, с чего начать в IT</div>
+      <div class="week">Первая неделя в сообществе, пробует Python по рекомендации агента.</div>
+      <div class="chips"><span class="chip">Python</span></div>
+      <div class="foot"><span>Визиты: <b>1</b></span><span>🎉 Первый шаг</span></div>
+    </div>
+  </div>
+
+  <h2><span class="dot" style="background:var(--gold)"></span>Достижения недели</h2>
+  <div class="ach">
+    <div class="card"><div class="ico">🔥</div><div class="t">Постоянство · 8 нед.</div><div class="p">@anna_test</div></div>
+    <div class="card"><div class="ico">🔟</div><div class="t">Десятка</div><div class="p">@kirill_py, @lena_kim</div></div>
+    <div class="card"><div class="ico">🔄</div><div class="t">Камбэк</div><div class="p">@vlad_m вернулся после 5 недель</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:6px">
+    <div>
+      <h2><span class="dot" style="background:var(--muted)"></span>Не ответили <span class="count">6</span></h2>
+      <table class="silent">
+        <tr><th>Участник</th><th>Последний визит</th><th>Без ответа</th></tr>
+        <tr><td>@vlad_m</td><td>17 окт</td><td>1 нед.</td></tr>
+        <tr><td>@sveta_q</td><td>2 окт</td><td>2 нед.</td></tr>
+        <tr><td>@nikita_js</td><td>18 сен</td><td style="color:var(--stuck);font-weight:700">4 нед.</td></tr>
+        <tr><td colspan="3" style="color:var(--muted)">ещё 3 участника</td></tr>
+      </table>
+    </div>
+    <div>
+      <h2><span class="dot" style="background:var(--brand)"></span>Что изучают сейчас</h2>
+      <div class="card stackbar">
+        <div class="bar"><span>Python</span><div class="track"><div class="fill" style="width:92%"></div></div><b>11</b></div>
+        <div class="bar"><span>Docker</span><div class="track"><div class="fill" style="width:50%"></div></div><b>6</b></div>
+        <div class="bar"><span>SQL</span><div class="track"><div class="fill" style="width:42%"></div></div><b>5</b></div>
+        <div class="bar"><span>JavaScript</span><div class="track"><div class="fill" style="width:33%"></div></div><b>4</b></div>
+        <div class="bar"><span>Kubernetes</span><div class="track"><div class="fill" style="width:17%"></div></div><b>2</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><span>Данные синтетические — пример оформления</span><span>Стр. 2 из 2</span></div>
+</section>
+</body>
+</html>

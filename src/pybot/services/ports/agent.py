@@ -6,8 +6,10 @@ from typing import Literal, Protocol
 from pydantic_ai.models import Model
 
 from ...core.constants import PointsTypeEnum, RoleEnum
+from ...domain.services.technology_stack import TechnologyLevel
 from ...dto import UserReadDTO
 from ...dto.agent import AgentConversation, AgentMemoryMessage
+from ...dto.community_meetings import CommunityMeetingDraftDTO
 from ...dto.role_dto import CreateRoleRequestDTO
 
 AgentBroadcastAudience = Literal["all", "role", "competence"]
@@ -82,6 +84,64 @@ class AgentActionsPort(Protocol):
 
     async def change_competence(self, telegram_id: int, competence_name: str, add: bool) -> str:
         """Change a competence after confirmation."""
+        ...
+
+    async def validate_my_stack_item(self, user_id: int, technology: str, level: TechnologyLevel) -> None:
+        """Check the caller's technology stack update before confirmation."""
+        ...
+
+    async def set_my_stack_item(self, user_id: int, technology: str, level: TechnologyLevel) -> str:
+        """Add or update one technology in the caller's stack after confirmation."""
+        ...
+
+    async def validate_my_stack_item_removal(self, user_id: int, technology: str) -> None:
+        """Check the caller's stack removal before confirmation."""
+        ...
+
+    async def remove_my_stack_item(self, user_id: int, technology: str) -> str:
+        """Remove one technology from the caller's stack after confirmation."""
+        ...
+
+    async def validate_my_goal(self, text: str) -> None:
+        """Validate the caller's proposed goal before confirmation."""
+        ...
+
+    async def set_my_goal(self, user_id: int, text: str) -> str:
+        """Set the caller's active goal after confirmation."""
+        ...
+
+    async def validate_my_goal_completion(self, user_id: int) -> None:
+        """Check the caller has an active goal before confirmation."""
+        ...
+
+    async def complete_my_goal(self, user_id: int) -> str:
+        """Mark the caller's active goal complete after confirmation."""
+        ...
+
+    async def preview_meeting_creation(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Validate and summarize a meeting before confirmation."""
+        ...
+
+    async def create_meeting(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Create a meeting after confirmation."""
+        ...
+
+    async def preview_meeting_reschedule(
+        self, user_id: int, meeting_id: int, meeting_date: date, start_time: str
+    ) -> str:
+        """Validate and summarize a meeting reschedule before confirmation."""
+        ...
+
+    async def reschedule_meeting(self, user_id: int, meeting_id: int, meeting_date: date, start_time: str) -> str:
+        """Reschedule a meeting after confirmation."""
+        ...
+
+    async def preview_meeting_cancellation(self, user_id: int, meeting_id: int) -> str:
+        """Validate and summarize a meeting cancellation before confirmation."""
+        ...
+
+    async def cancel_meeting(self, user_id: int, meeting_id: int) -> str:
+        """Cancel a meeting after confirmation."""
         ...
 
     async def validate_visit_update(self, telegram_id: int, visit_date: date, start_time: time, end_time: time) -> None:

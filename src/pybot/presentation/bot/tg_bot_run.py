@@ -22,6 +22,9 @@ from .handlers import (
     attendance_router,
     broadcast_router,
     common_router,
+    community_checkin_router,
+    community_meetings_router,
+    notification_preferences_router,
     points_router,
     profile_router,
     roles_router,
@@ -114,6 +117,9 @@ def setup_handlers(dp: Dispatcher) -> None:
     dp.include_router(broadcast_router)
     dp.include_router(attendance_router)
     setup_dialogs(dp)
+    dp.include_router(community_checkin_router)
+    dp.include_router(notification_preferences_router)
+    dp.include_router(community_meetings_router)
 
 
 async def setup_agent_handler(dp: Dispatcher, container: AsyncContainer, settings: AppSettings) -> None:

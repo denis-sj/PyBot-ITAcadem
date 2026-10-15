@@ -61,6 +61,8 @@ class UserService:
 
         if user.telegram_username != username:
             user.telegram_username = username
+        if user.bot_is_blocked:
+            user.bot_is_blocked = False
         await self.user_repository.update_user_last_active(self.db, user.id)
         await self.db.commit()
         return user.id

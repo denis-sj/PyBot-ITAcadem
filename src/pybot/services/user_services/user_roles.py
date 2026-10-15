@@ -10,7 +10,7 @@ from ...infrastructure.role_repository import RoleRepository
 from ...infrastructure.roles import RoleRequestRepository
 from ...infrastructure.user_repository import UserRepository
 from ...mappers.user_mappers import map_orm_user_to_user_read_dto
-from ..ports import NotificationPort
+from ..ports import CommunityAchievementDispatchPort, NotificationPort
 
 
 class UserRolesService:
@@ -19,13 +19,14 @@ class UserRolesService:
     Обеспечивает бизнес-логику для проверки, добавления и удаления ролей.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         db: AsyncSession,
         user_repository: UserRepository,
         role_repository: RoleRepository,
         role_request_repository: RoleRequestRepository | None = None,
         notification_service: NotificationPort | None = None,
+        achievement_dispatch_port: CommunityAchievementDispatchPort | None = None,
     ) -> None:
         """Инициализирует сервис ролей пользователя."""
         self.db: AsyncSession = db
@@ -33,6 +34,7 @@ class UserRolesService:
         self.role_repository: RoleRepository = role_repository
         self.role_request_repository: RoleRequestRepository | None = role_request_repository
         self.notification_service: NotificationPort | None = notification_service
+        self._achievement_dispatch_port = achievement_dispatch_port
 
     async def check_user_role(
         self,
@@ -134,6 +136,12 @@ class UserRolesService:
         if not role:
             raise RoleNotFoundError(new_role.value)
 
+        mentor_was_assigned = new_role == RoleEnum.MENTOR and await self.user_repository.has_role(
+            self.db,
+            user.id,
+            RoleEnum.MENTOR.value,
+        )
+
         user.add_role(role)
 
         closed_request_id: int | None = None
@@ -145,6 +153,9 @@ class UserRolesService:
                 closed_request_id = pending_request.id
 
         await self.db.commit()
+
+        if new_role == RoleEnum.MENTOR and not mentor_was_assigned:
+            await self._queue_achievement_recalculation(user.id)
 
         if closed_request_id is not None and self.notification_service is not None:
             try:
@@ -160,3 +171,15 @@ class UserRolesService:
                 )
 
         return await map_orm_user_to_user_read_dto(user)
+
+    async def _queue_achievement_recalculation(self, user_id: int) -> None:
+        """Queue Mentor achievement calculation after role assignment commits."""
+        if self._achievement_dispatch_port is None:
+            return
+        try:
+            await self._achievement_dispatch_port.recalculate_user_achievements(user_id)
+        except Exception:
+            logger.exception(
+                "Failed to dispatch Mentor achievement recalculation | user_id={user_id}",
+                user_id=user_id,
+            )

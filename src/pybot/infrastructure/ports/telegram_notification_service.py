@@ -19,7 +19,12 @@ from ...dto import NotifyDTO
 from ...presentation.bot import get_admin_decision_kb
 from ...presentation.bot.handlers.attendance.keyboards import get_attendance_photo_button
 from ...presentation.texts import role_request_admin_notification
-from ...services.ports import NotificationPermanentError, NotificationPort, NotificationTemporaryError
+from ...services.ports import (
+    NotificationBlockedError,
+    NotificationPermanentError,
+    NotificationPort,
+    NotificationTemporaryError,
+)
 from ...utils import telegram_user_link
 
 
@@ -124,6 +129,7 @@ class TelegramNotificationService(NotificationPort):
         Raises:
             NotificationTemporaryError: При временных сбоях.
             NotificationPermanentError: При критических ошибках API.
+            NotificationBlockedError: Если пользователь заблокировал бота.
         """
         cleaned_text = message_data.message
         recipient_id = message_data.recipient_id
@@ -149,6 +155,12 @@ class TelegramNotificationService(NotificationPort):
                 message="Telegram rate limit encountered",
                 retry_after_seconds=float(exc.retry_after),
             ) from exc
+        except TelegramForbiddenError as exc:
+            logger.warning(
+                "Telegram recipient blocked the bot | recipient_id={recipient_id}",
+                recipient_id=recipient_id,
+            )
+            raise NotificationBlockedError(message="Telegram recipient blocked the bot") from exc
         except (TelegramNetworkError, TelegramServerError, RestartingTelegram) as exc:
             logger.warning(
                 "Temporary Telegram failure while sending message | recipient_id={recipient_id} error={error}",
@@ -158,7 +170,6 @@ class TelegramNotificationService(NotificationPort):
             raise NotificationTemporaryError(message="Temporary Telegram delivery failure") from exc
         except (
             TelegramBadRequest,
-            TelegramForbiddenError,
             TelegramUnauthorizedError,
             TelegramNotFound,
             TelegramEntityTooLarge,

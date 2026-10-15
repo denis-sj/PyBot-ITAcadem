@@ -34,6 +34,46 @@ def test_compose_files_define_config_check_validation_process(compose_file: str)
     assert "Runtime configuration is valid" in compose_config
 
 
+def test_staging_compose_is_isolated_and_keeps_backup_migration_order_contract() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    staging_compose = (project_root / "docker-compose.staging.yml").read_text(encoding="utf-8")
+
+    assert "name: pybot-staging" in staging_compose
+    assert "name: pybot_staging_postgres_data" in staging_compose
+    assert "name: pybot_staging_postgres_backups" in staging_compose
+    assert "name: pybot_staging_redis_data" in staging_compose
+    assert 'backup_file="/backups/pybot-staging-$${timestamp}.dump"' in staging_compose
+    assert 'command: ["alembic", "upgrade", "head"]' in staging_compose
+
+
+def test_ci_runs_for_feature_branches_and_validates_staging_compose() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    ci_workflow = (project_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+
+    assert "'feat/**'" in ci_workflow
+    assert "docker-compose.staging.yml config > /dev/null" in ci_workflow
+
+
+def test_staging_workflow_is_fork_scoped_and_uses_only_staging_secrets() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    staging_workflow = (project_root / ".github" / "workflows" / "deploy-staging.yml").read_text(encoding="utf-8")
+
+    assert "github.repository == 'denis-sj/PyBot-ITAcadem'" in staging_workflow
+    assert "github.event.workflow_run.event == 'push'" in staging_workflow
+    assert "github.event.workflow_run.head_branch == 'main'" in staging_workflow
+    assert "workflow_dispatch:" in staging_workflow
+    assert "environment: staging" in staging_workflow
+    assert "group: pybot-staging-deploy" in staging_workflow
+    assert "-p pybot-staging" in staging_workflow
+    assert "secrets.PROD_" not in staging_workflow
+    assert "secrets.STAGING_" in staging_workflow
+    assert "--profile backup run --rm backup" in staging_workflow
+    assert "--profile migration run --rm migrate" in staging_workflow
+    assert staging_workflow.index("--profile backup run --rm backup") < staging_workflow.index(
+        "--profile migration run --rm migrate"
+    )
+
+
 def test_ci_parity_override_mounts_existing_bot_smoke_helper_read_only() -> None:
     project_root = Path(__file__).resolve().parents[2]
     parity_override = (project_root / "docker-compose.ci.parity.override.yml").read_text(encoding="utf-8")

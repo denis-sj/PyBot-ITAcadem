@@ -15,24 +15,39 @@ from ..db.database import create_database_engine
 from ..domain.services import AttendanceRankingCalculator, LevelCalculator
 from ..infrastructure import (
     AttendanceRepository,
+    CommunityAchievementRepository,
     CompetenceRepository,
     LevelRepository,
     PointsTransactionRepository,
     RoleRepository,
     RoleRequestRepository,
     UserRepository,
+    UserTechnologyStackRepository,
     ValuationRepository,
 )
-from ..infrastructure.adapters import PolzaVisionAdapter
+from ..infrastructure.adapters import PolzaVisionAdapter, PydanticAITechnologyStackParser
 from ..infrastructure.adapters.agent_memory import RedisAgentMemory
 from ..infrastructure.adapters.polza_agent import PolzaAgentModel
+from ..infrastructure.adapters.pydantic_ai_checkin_response_parser import PydanticAICheckinResponseParser
+from ..infrastructure.community_goal_repository import CommunityGoalRepository
+from ..infrastructure.community_meeting_repository import CommunityMeetingRepository
 from ..infrastructure.health import RedisPingProbe, SessionExecutor
 from ..infrastructure.ports import LoggingNotificationService, TelegramNotificationService
+from ..infrastructure.ports.logging_meeting_delivery import LoggingMeetingDelivery
+from ..infrastructure.ports.logging_pulse_report_delivery import LoggingPulseReportDelivery
+from ..infrastructure.ports.telegram_meeting_delivery import TelegramMeetingDelivery
+from ..infrastructure.ports.telegram_pulse_report_delivery import TelegramPulseReportDelivery
+from ..infrastructure.taskiq.taskiq_community_achievement_dispatcher import TaskIQCommunityAchievementDispatcher
 from ..infrastructure.taskiq.taskiq_notification_dispatcher import TaskIQNotificationDispatcher
+from ..infrastructure.user_notification_preference_repository import UserNotificationPreferenceRepository
+from ..infrastructure.weekly_checkin_repository import WeeklyCheckinRepository
 from ..services import (
     AttendanceService,
+    CommunityAchievementService,
     LeaderboardService,
     SystemRuntimeAlertsService,
+    TechnologyStackParsingService,
+    TechnologyStackService,
     UserCompetenceService,
     UserProfileService,
     UserRegistrationService,
@@ -46,14 +61,28 @@ from ..services.agent.runtime import AgentRuntime
 from ..services.agent.service import AgentService
 from ..services.agent.tools import AgentToolRegistry
 from ..services.broadcast import BroadcastService
+from ..services.community_checkins import CommunityCheckinService
+from ..services.community_goals import CommunityGoalService
+from ..services.community_meetings import CommunityMeetingService
 from ..services.competence import CompetenceService
 from ..services.health import HealthService
 from ..services.levels import LevelService
 from ..services.notification_facade import NotificationFacade
 from ..services.points import PointsService
-from ..services.ports import AttendanceRecognitionPort, NotificationDispatchPort, NotificationPort
+from ..services.ports import (
+    AttendanceRecognitionPort,
+    CheckinResponseParserPort,
+    CommunityAchievementDispatchPort,
+    MeetingDeliveryPort,
+    NotificationDispatchPort,
+    NotificationPort,
+    PulseReportDeliveryPort,
+    TechnologyStackParserPort,
+)
 from ..services.ports.agent import AgentMemoryPort, AgentModelPort
+from ..services.pulse_report import PulseReportService
 from ..services.role_request import RoleRequestService
+from ..services.user_notification_preferences import UserNotificationPreferencesService
 
 global_engine: AsyncEngine | None = None
 
@@ -122,6 +151,30 @@ class RepositoryProvider(Provider):
     def attendance_repository(self) -> AttendanceRepository:
         return AttendanceRepository()
 
+    @provide(scope=Scope.APP)
+    def community_achievement_repository(self) -> CommunityAchievementRepository:
+        return CommunityAchievementRepository()
+
+    @provide(scope=Scope.APP)
+    def user_technology_stack_repository(self) -> UserTechnologyStackRepository:
+        return UserTechnologyStackRepository()
+
+    @provide(scope=Scope.APP)
+    def community_goal_repository(self) -> CommunityGoalRepository:
+        return CommunityGoalRepository()
+
+    @provide(scope=Scope.APP)
+    def community_meeting_repository(self) -> CommunityMeetingRepository:
+        return CommunityMeetingRepository()
+
+    @provide(scope=Scope.APP)
+    def user_notification_preference_repository(self) -> UserNotificationPreferenceRepository:
+        return UserNotificationPreferenceRepository()
+
+    @provide(scope=Scope.APP)
+    def weekly_checkin_repository(self) -> WeeklyCheckinRepository:
+        return WeeklyCheckinRepository()
+
 
 class ServiceProvider(Provider):
     """Application services."""
@@ -135,13 +188,14 @@ class ServiceProvider(Provider):
         return UserService(db, user_repository)
 
     @provide(scope=Scope.REQUEST)
-    def user_roles_service(
+    def user_roles_service(  # noqa: PLR0913
         self,
         db: AsyncSession,
         user_repository: UserRepository,
         role_repository: RoleRepository,
         role_request_repository: RoleRequestRepository,
         notification_service: NotificationPort,
+        achievement_dispatch_port: CommunityAchievementDispatchPort,
     ) -> UserRolesService:
         return UserRolesService(
             db=db,
@@ -149,6 +203,7 @@ class ServiceProvider(Provider):
             role_repository=role_repository,
             role_request_repository=role_request_repository,
             notification_service=notification_service,
+            achievement_dispatch_port=achievement_dispatch_port,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -196,9 +251,16 @@ class ServiceProvider(Provider):
         role_request_repository: RoleRequestRepository,
         notification_service: NotificationPort,
         settings: AppSettings,
+        achievement_dispatch_port: CommunityAchievementDispatchPort,
     ) -> RoleRequestService:
         return RoleRequestService(
-            db, role_repository, user_repository, role_request_repository, notification_service, settings
+            db,
+            role_repository,
+            user_repository,
+            role_request_repository,
+            notification_service,
+            settings,
+            achievement_dispatch_port,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -229,8 +291,14 @@ class ServiceProvider(Provider):
         level_service: LevelService,
         user_competence_service: UserCompetenceService,
         user_roles_service: UserRolesService,
+        community_achievement_service: CommunityAchievementService,
     ) -> UserProfileService:
-        return UserProfileService(level_service, user_competence_service, user_roles_service)
+        return UserProfileService(
+            level_service,
+            user_competence_service,
+            user_roles_service,
+            community_achievement_service,
+        )
 
     @provide(scope=Scope.REQUEST)
     def user_registration_service(  # noqa: PLR0913
@@ -256,6 +324,7 @@ class ServiceProvider(Provider):
         settings: AppSettings,
         ranking_calculator: AttendanceRankingCalculator,
         notification_service: NotificationPort,
+        achievement_dispatch_port: CommunityAchievementDispatchPort,
     ) -> AttendanceService:
         return AttendanceService(
             db=db,
@@ -265,7 +334,115 @@ class ServiceProvider(Provider):
             settings=settings,
             ranking_calculator=ranking_calculator,
             notification_service=notification_service,
+            achievement_dispatch_port=achievement_dispatch_port,
         )
+
+    @provide(scope=Scope.REQUEST)
+    def community_achievement_service(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        community_achievement_repository: CommunityAchievementRepository,
+        attendance_repository: AttendanceRepository,
+        attendance_service: AttendanceService,
+        user_repository: UserRepository,
+        notification_service: NotificationPort,
+        settings: AppSettings,
+        user_notification_preference_repository: UserNotificationPreferenceRepository,
+    ) -> CommunityAchievementService:
+        return CommunityAchievementService(
+            db=db,
+            community_achievement_repository=community_achievement_repository,
+            attendance_repository=attendance_repository,
+            attendance_service=attendance_service,
+            user_repository=user_repository,
+            notification_service=notification_service,
+            settings=settings,
+            preference_repository=user_notification_preference_repository,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def community_goal_service(
+        self,
+        db: AsyncSession,
+        community_goal_repository: CommunityGoalRepository,
+        community_achievement_service: CommunityAchievementService,
+    ) -> CommunityGoalService:
+        return CommunityGoalService(db, community_goal_repository, community_achievement_service)
+
+    @provide(scope=Scope.REQUEST)
+    def user_notification_preferences_service(
+        self,
+        db: AsyncSession,
+        user_notification_preference_repository: UserNotificationPreferenceRepository,
+        community_achievement_repository: CommunityAchievementRepository,
+    ) -> UserNotificationPreferencesService:
+        return UserNotificationPreferencesService(
+            db,
+            user_notification_preference_repository,
+            community_achievement_repository,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def community_checkin_service(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        weekly_checkin_repository: WeeklyCheckinRepository,
+        attendance_repository: AttendanceRepository,
+        user_notification_preference_repository: UserNotificationPreferenceRepository,
+        community_goal_service: CommunityGoalService,
+        technology_stack_service: TechnologyStackService,
+        checkin_response_parser: CheckinResponseParserPort,
+        notification_port: NotificationPort,
+    ) -> CommunityCheckinService:
+        return CommunityCheckinService(
+            db,
+            weekly_checkin_repository,
+            attendance_repository,
+            user_notification_preference_repository,
+            community_goal_service,
+            technology_stack_service,
+            checkin_response_parser,
+            notification_port,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def community_meeting_service(
+        self,
+        db: AsyncSession,
+        community_meeting_repository: CommunityMeetingRepository,
+        settings: AppSettings,
+        meeting_delivery: MeetingDeliveryPort,
+    ) -> CommunityMeetingService:
+        return CommunityMeetingService(db, community_meeting_repository, settings, meeting_delivery)
+
+    @provide(scope=Scope.REQUEST)
+    def pulse_report_service(  # noqa: PLR0913
+        self,
+        db: AsyncSession,
+        weekly_checkin_repository: WeeklyCheckinRepository,
+        attendance_repository: AttendanceRepository,
+        community_achievement_repository: CommunityAchievementRepository,
+        notification_port: NotificationPort,
+        pulse_report_delivery_port: PulseReportDeliveryPort,
+        technology_stack_service: TechnologyStackService,
+    ) -> PulseReportService:
+        return PulseReportService(
+            db,
+            weekly_checkin_repository,
+            attendance_repository,
+            community_achievement_repository,
+            notification_port,
+            pulse_report_delivery_port,
+            technology_stack_service,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def technology_stack_service(
+        self,
+        db: AsyncSession,
+        user_technology_stack_repository: UserTechnologyStackRepository,
+    ) -> TechnologyStackService:
+        return TechnologyStackService(db, user_technology_stack_repository)
 
 
 class AgentProvider(Provider):
@@ -275,6 +452,21 @@ class AgentProvider(Provider):
     async def model(self, settings: AppSettings) -> AsyncGenerator[AgentModelPort]:
         async with httpx2.AsyncClient(timeout=settings.agent_timeout_s) as client:
             yield PolzaAgentModel(settings, client)
+
+    @provide(scope=Scope.APP)
+    def technology_stack_parser(self, model: AgentModelPort) -> TechnologyStackParserPort:
+        return PydanticAITechnologyStackParser(model)
+
+    @provide(scope=Scope.APP)
+    def checkin_response_parser(self, model: AgentModelPort) -> CheckinResponseParserPort:
+        return PydanticAICheckinResponseParser(model)
+
+    @provide(scope=Scope.REQUEST)
+    def technology_stack_parsing_service(
+        self,
+        parser: TechnologyStackParserPort,
+    ) -> TechnologyStackParsingService:
+        return TechnologyStackParsingService(parser)
 
     @provide(scope=Scope.APP)
     def memory(self, redis_client: Redis, settings: AppSettings) -> AgentMemoryPort:
@@ -296,8 +488,24 @@ class AgentProvider(Provider):
         user_competences: UserCompetenceService,
         competences: CompetenceService,
         users: UserService,
+        community_achievements: CommunityAchievementService,
+        technology_stack: TechnologyStackService,
+        community_goals: CommunityGoalService,
+        community_meetings: CommunityMeetingService,
     ) -> AgentReadService:
-        return AgentReadService(profiles, attendance, leaderboard, roles, user_competences, competences, users)
+        return AgentReadService(
+            profiles,
+            attendance,
+            leaderboard,
+            roles,
+            user_competences,
+            competences,
+            users,
+            community_achievements,
+            technology_stack,
+            community_goals,
+            community_meetings,
+        )
 
     @provide(scope=Scope.REQUEST)
     def actions(  # noqa: PLR0913
@@ -311,7 +519,10 @@ class AgentProvider(Provider):
         attendance: AttendanceService,
         notifications: NotificationFacade,
         broadcasts: BroadcastService,
+        technology_stack: TechnologyStackService,
         settings: AppSettings,
+        community_goals: CommunityGoalService,
+        community_meetings: CommunityMeetingService,
     ) -> AgentActionService:
         return AgentActionService(
             role_request_service,
@@ -324,6 +535,9 @@ class AgentProvider(Provider):
             notifications,
             broadcasts,
             settings,
+            technology_stack,
+            community_goals,
+            community_meetings,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -416,8 +630,28 @@ class PortsProvider(Provider):
             raise ValueError(f"Unsupported NOTIFICATION_BACKEND value: {settings.notification_backend}")
 
     @provide(scope=Scope.APP)
+    async def pulse_report_delivery_port(self, settings: AppSettings, bot: Bot) -> PulseReportDeliveryPort:
+        if settings.notification_backend == "telegram":
+            return TelegramPulseReportDelivery(bot)
+        if settings.notification_backend == "logging":
+            return LoggingPulseReportDelivery()
+        raise ValueError(f"Unsupported NOTIFICATION_BACKEND value: {settings.notification_backend}")
+
+    @provide(scope=Scope.APP)
+    async def meeting_delivery(self, settings: AppSettings, bot: Bot) -> MeetingDeliveryPort:
+        if settings.notification_backend == "telegram":
+            return TelegramMeetingDelivery(bot)
+        if settings.notification_backend == "logging":
+            return LoggingMeetingDelivery()
+        raise ValueError(f"Unsupported NOTIFICATION_BACKEND value: {settings.notification_backend}")
+
+    @provide(scope=Scope.APP)
     async def notification_dispatch_port(self) -> NotificationDispatchPort:
         return TaskIQNotificationDispatcher()
+
+    @provide(scope=Scope.APP)
+    def community_achievement_dispatch_port(self) -> CommunityAchievementDispatchPort:
+        return TaskIQCommunityAchievementDispatcher()
 
     @provide(scope=Scope.APP)
     def attendance_recognition_port(self, settings: AppSettings) -> AttendanceRecognitionPort:
@@ -480,6 +714,7 @@ def setup_taskiq_container() -> AsyncContainer:
         SessionProvider(),
         RepositoryProvider(),
         ServiceProvider(),
+        AgentProvider(),
         DomainServiceProvider(),
         BotProvider(),
         PortsProvider(),
