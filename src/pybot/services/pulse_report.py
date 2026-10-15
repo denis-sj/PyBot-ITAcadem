@@ -200,6 +200,8 @@ class PulseReportService:
         """Deliver PDF or fallback while translating blocked and permanent failures."""
         if pdf is None:
             return await self._send_fallback(recipient, fallback)
+        if not await self._checkins.is_available_report_recipient(self._db, recipient):
+            return 0
         try:
             await self._document_delivery.send_pdf(
                 recipient_id=recipient.telegram_id,
@@ -223,6 +225,8 @@ class PulseReportService:
 
     async def _send_fallback(self, recipient: PulseReportRecipientDTO, fallback: str) -> int:
         """Deliver the text report fallback when PDF rendering or upload fails."""
+        if not await self._checkins.is_available_report_recipient(self._db, recipient):
+            return 0
         try:
             await self._notifications.send_message(NotifyDTO(recipient_id=recipient.telegram_id, message=fallback))
         except NotificationBlockedError:
