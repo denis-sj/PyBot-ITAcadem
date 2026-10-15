@@ -37,6 +37,7 @@ from evals.agent.run import (
     _role_prefix_token_counts,
     _safe_http_metadata,
     _toolset_pressure_result,
+    _validate_ledger_budget,
 )
 
 
@@ -122,6 +123,32 @@ def test_run_budget_obeys_stop_and_global_limits_and_rejects_non_positive_values
     assert _run_budget(None, Decimal("34"), Decimal("70"), Decimal("64")) == Decimal("64")
     with pytest.raises(ValueError, match="greater than zero"):
         _run_budget(Decimal("0"), Decimal("34"))
+
+
+def test_ledger_restores_caps_and_stops_before_spending_past_stop_limit(tmp_path) -> None:
+    ledger_path = tmp_path / "ledger.json"
+    ledger_payload = {
+        "model": TARGET_MODEL,
+        "total_cost_rub": "34.1622182716",
+        "global_limit_rub": "64.1622182716",
+        "stop_limit_rub": "59.1622182716",
+        "request_count": 879,
+        "unpriced_requests": 0,
+        "entries": [],
+    }
+    ledger_path.write_text(json.dumps(ledger_payload), encoding="utf-8")
+
+    ledger = SpendLedger(ledger_path)
+
+    assert ledger.global_limit_rub == Decimal("64.1622182716")
+    assert ledger.stop_limit_rub == Decimal("59.1622182716")
+    _validate_ledger_budget(ledger)
+
+    ledger_payload["total_cost_rub"] = "59.1622182716"
+    ledger_path.write_text(json.dumps(ledger_payload), encoding="utf-8")
+    stopped_ledger = SpendLedger(ledger_path)
+    with pytest.raises(BudgetStopError, match="maximum cost of one request"):
+        _validate_ledger_budget(stopped_ledger)
 
 
 def test_partial_run_is_not_marked_accepted_by_b3() -> None:
