@@ -100,6 +100,19 @@ async def test_expired_checkin_does_not_consume_or_parse_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_very_long_checkin_response_is_rejected_before_model_or_storage() -> None:
+    service, db, repository, _, _, _, _, parser, _ = make_checkin_service()
+    repository.find_latest_prompted_checkin.return_value = SimpleNamespace(id=22, week_start=date(2026, 10, 12))
+
+    result = await service.handle_response(42, "x" * 20_000, now=_open_checkin_time())
+
+    assert result == "Ответ слишком длинный. Сократи его до 4000 символов и отправь ещё раз."
+    parser.parse.assert_not_awaited()
+    repository.save_response.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_prompt_403_marks_user_blocked_and_keeps_task_successful() -> None:
     service, db, repository, _, _, _, _, _, notifications = make_checkin_service()
     repository.find_prompt_recipients.return_value = (

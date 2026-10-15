@@ -4,6 +4,7 @@ from ...dto.community_checkins import PulseReportDTO, UserNotificationPreference
 
 CHECKIN_SAVED = "Записал, удачи на неделе!"
 CHECKIN_PARSE_RETRY = "Не получилось разобрать ответ. Попробуй написать, чем занимаешься и что сейчас мешает."
+CHECKIN_MESSAGE_TOO_LONG = "Ответ слишком длинный. Сократи его до 4000 символов и отправь ещё раз."
 CHECKIN_PAUSED = "Чекины выключены. Включить их снова можно командой /resume_checkin."
 CHECKIN_RESUMED = "Чекины включены. Следующий опрос придёт в среду в 15:00."
 CHECKIN_ALREADY_PAUSED = "Чекины уже выключены."

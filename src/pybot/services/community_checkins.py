@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import logger
 from ..core.config import YEKATERINBURG_TZ
+from ..core.constants import MAX_MODEL_INPUT_CHARACTERS
 from ..db.models import User
 from ..domain.services.community_achievements import calculate_attendance_achievements
 from ..domain.services.community_checkins import CheckinStatus, get_current_checkin_week_start, is_checkin_response_open
@@ -17,6 +18,7 @@ from ..infrastructure.attendance_repository import AttendanceRepository
 from ..infrastructure.user_notification_preference_repository import UserNotificationPreferenceRepository
 from ..infrastructure.weekly_checkin_repository import WeeklyCheckinRepository
 from ..presentation.texts.community_checkins import (
+    CHECKIN_MESSAGE_TOO_LONG,
     CHECKIN_PARSE_RETRY,
     CHECKIN_SAVED,
     STREAK_WARNING,
@@ -113,6 +115,8 @@ class CommunityCheckinService:
         )
         if campaign is None or not is_checkin_response_open(campaign.week_start, local_now):
             return None
+        if len(source_text) > MAX_MODEL_INPUT_CHARACTERS:
+            return CHECKIN_MESSAGE_TOO_LONG
 
         try:
             parsed = await self._parser.parse(source_text)

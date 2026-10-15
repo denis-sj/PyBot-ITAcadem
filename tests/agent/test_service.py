@@ -120,6 +120,20 @@ async def test_unregistered_and_disabled_never_call_model(agent_settings, conver
 
 
 @pytest.mark.asyncio
+async def test_very_long_question_is_rejected_before_model_or_memory_load(agent_settings, conversation, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    model_mock = Mock(wraps=service.model.get_model)
+    monkeypatch.setattr(service.model, "get_model", model_mock)
+
+    result = await service.answer(conversation, "x" * 20_000)
+
+    assert result.text == "Сообщение слишком длинное. Сократите его до 4000 символов."
+    model_mock.assert_not_called()
+    memory.load.assert_not_awaited()
+    memory.append.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("error", [TimeoutError("secret detail"), RuntimeError("secret detail")])
 async def test_provider_failure_is_safe(agent_settings, conversation, error, monkeypatch):
     service, _, memory = build_service(agent_settings)
