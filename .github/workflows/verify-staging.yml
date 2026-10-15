@@ -1,0 +1,156 @@
+name: Ops - Verify Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Full main commit SHA expected in the staging application image
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pybot-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'denis-sj/PyBot-ITAcadem'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      STAGING_DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+      STAGING_DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+      STAGING_DEPLOY_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+      STAGING_DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH }}
+      STAGING_DEPLOY_SSH_KEY: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+      STAGING_DEPLOY_KNOWN_HOSTS: ${{ secrets.STAGING_DEPLOY_KNOWN_HOSTS }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - name: Validate inputs and staging SSH configuration
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variable in \
+            STAGING_DEPLOY_HOST \
+            STAGING_DEPLOY_USER \
+            STAGING_DEPLOY_PATH \
+            STAGING_DEPLOY_SSH_KEY \
+            STAGING_DEPLOY_KNOWN_HOSTS; do
+            if [[ -z "${!variable}" ]]; then
+              echo "Missing required staging environment secret: $variable" >&2
+              exit 1
+            fi
+          done
+
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "expected_sha must be a lowercase 40-character Git SHA." >&2
+            exit 1
+          fi
+          if [[ ! "$STAGING_DEPLOY_USER" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "STAGING_DEPLOY_USER contains unsupported characters." >&2
+            exit 1
+          fi
+          if [[ ! "$STAGING_DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo "STAGING_DEPLOY_HOST contains unsupported characters." >&2
+            exit 1
+          fi
+          if [[ "$STAGING_DEPLOY_PATH" == "/" ]] || \
+             [[ "$STAGING_DEPLOY_PATH" != /* ]] || \
+             [[ "$STAGING_DEPLOY_PATH" =~ [^A-Za-z0-9_./-] ]] || \
+             [[ "/$STAGING_DEPLOY_PATH/" == *"/../"* ]]; then
+            echo "STAGING_DEPLOY_PATH must be an absolute path containing only letters, digits, /, _, . and -." >&2
+            exit 1
+          fi
+
+          deploy_port="${STAGING_DEPLOY_PORT:-22}"
+          if [[ ! "$deploy_port" =~ ^[0-9]{1,5}$ ]] || \
+             (( deploy_port < 1 || deploy_port > 65535 )); then
+            echo "STAGING_DEPLOY_PORT must be a TCP port from 1 to 65535." >&2
+            exit 1
+          fi
+
+          image_ref="ghcr.io/${GITHUB_REPOSITORY,,}:${EXPECTED_SHA}"
+          {
+            echo "deploy_port=$deploy_port"
+            echo "image_ref=$image_ref"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare verified SSH connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          private_key = os.environ["STAGING_DEPLOY_SSH_KEY"]
+          private_key = private_key.replace("\\r\\n", "\n").replace("\\n", "\n")
+          private_key = private_key.replace("\r\n", "\n").replace("\r", "\n")
+          Path.home().joinpath(".ssh/staging_ed25519").write_text(private_key.strip() + "\n")
+          PY
+          chmod 600 "$HOME/.ssh/staging_ed25519"
+          if ! ssh-keygen -y -f "$HOME/.ssh/staging_ed25519" >/dev/null 2>&1; then
+            echo "STAGING_DEPLOY_SSH_KEY must contain a valid, unencrypted OpenSSH private key." >&2
+            exit 1
+          fi
+          printf '%s\n' "$STAGING_DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/staging_known_hosts"
+          chmod 644 "$HOME/.ssh/staging_known_hosts"
+
+      - name: Observe and verify staging over SSH
+        env:
+          DEPLOY_PORT: ${{ steps.prepare.outputs.deploy_port }}
+          IMAGE_REF: ${{ steps.prepare.outputs.image_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="${STAGING_DEPLOY_USER}@${STAGING_DEPLOY_HOST}"
+          ssh \
+            -i "$HOME/.ssh/staging_ed25519" \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$HOME/.ssh/staging_known_hosts" \
+            "$remote" bash -s -- "$STAGING_DEPLOY_PATH" "$IMAGE_REF" <<'REMOTE'
+          set -euo pipefail
+          deploy_path="$1"
+          expected_image="$2"
+          cd "$deploy_path"
+          compose() {
+            docker compose -p pybot-staging -f docker-compose.staging.yml "$@"
+          }
+
+          echo "Observing staging for five minutes before checking runtime and recent logs."
+          sleep 300
+
+          for service in bot taskiq-worker taskiq-scheduler; do
+            container_id="$(compose ps -q "$service")"
+            if [[ -z "$container_id" ]]; then
+              echo "$service: no container found." >&2
+              exit 1
+            fi
+            state="$(docker inspect -f '{{.State.Status}}' "$container_id")"
+            image="$(docker inspect -f '{{.Config.Image}}' "$container_id")"
+            restart_count="$(docker inspect -f '{{.RestartCount}}' "$container_id")"
+            printf '%s: state=%s image=%s restart_count=%s\n' "$service" "$state" "$image" "$restart_count"
+            if [[ "$state" != running || "$image" != "$expected_image" || "$restart_count" != 0 ]]; then
+              echo "$service failed the staging runtime checks." >&2
+              exit 1
+            fi
+          done
+
+          if ! recent_logs="$(compose logs --since=5m --no-color bot taskiq-worker taskiq-scheduler 2>&1)"; then
+            echo "Could not read staging application logs." >&2
+            exit 1
+          fi
+          if printf '%s\n' "$recent_logs" | grep -Eiq 'ERROR|CRITICAL|Traceback|Exception'; then
+            echo "Error-like markers were found in the last five minutes of application logs; log contents are suppressed." >&2
+            exit 1
+          fi
+          echo "No ERROR, CRITICAL, Traceback, or Exception markers in application logs from the last five minutes."
+          REMOTE
