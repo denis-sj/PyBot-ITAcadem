@@ -55,15 +55,25 @@
   "minimum_legacy_correct_tools_pct": 94.8718,
   "smoke_max_tool_selection_misses": 1,
   "smoke_max_security_errors": 0,
-  "baseline_exact_cost_per_question_rub": "0.0236028",
-  "maximum_exact_cost_per_question_rub": "0.025963080",
-  "baseline_cache_share_pct": 88.15,
+  "baseline_exact_cost_per_question_rub": "0.027",
+  "maximum_exact_cost_per_question_rub": "0.029700",
+  "baseline_cache_share_pct": 84.48,
   "minimum_cache_share_pct": 85.0,
+  "accepted_baseline_deviation": {
+    "stage": "B",
+    "metric": "cache_share_pct",
+    "observed_pct": 84.48,
+    "threshold_pct": 85.0,
+    "deviation_percentage_points": -0.52,
+    "accepted": true
+  },
   "maximum_reasoning_tokens": 0,
   "maximum_connection_failure_pct": 20.0,
   "source_reports": [
     "numbers-fix-run1.json",
     "cache-step1-paced.json",
-    "final-status.md"
+    "final-status.md",
+    "stage-b-repeat3.json.gz",
+    "stage-b-report.md"
   ]
 }
