@@ -58,7 +58,7 @@ sequenceDiagram
     participant B as Бот (aiogram)
     participant R as Redis (память)
     participant H as Харнесс (Pydantic AI)
-    participant M as Модель (Gemini 3.5 Flash-Lite через Polza)
+    participant M as Модель (DeepSeek V4.1 Flash через Polza)
     participant S as Сервисы бота → PostgreSQL
 
     U->>TG: «сколько у меня очков?»
@@ -87,7 +87,7 @@ sequenceDiagram
 |---|---|
 | `aiogram` | Приём сообщений и отправка ответов в Telegram |
 | `Pydantic AI` | Харнесс: цикл «модель → инструмент → модель», проверка аргументов, пауза на подтверждение действий |
-| Polza → `gemini-3.5-flash-lite` | Модель агента: выбирает инструменты и формулирует ответ (фото посещаемости распознаёт отдельная модель `POLZA_VISION_MODEL`) |
+| Polza → `deepseek/deepseek-v4.1-flash` | Модель агента: выбирает инструменты и формулирует ответ; reasoning отключён, фото посещаемости распознаёт отдельная модель `POLZA_VISION_MODEL` |
 | `Dishka` | Даёт инструментам доступ к существующим сервисам бота |
 | `PostgreSQL` | Данные — только через существующие сервисы, без прямых запросов из агента |
 | `Redis` | Память диалога и метки ответов агента |
