@@ -40,6 +40,7 @@ from ....texts import (
 )
 from ....texts.technology_stack import (
     STACK_BUTTON_AUTHOR_ONLY,
+    STACK_NO_TECHNOLOGIES,
     STACK_PARSE_RETRY,
     STACK_SAVE_FAILED,
     render_stack_confirmation,
@@ -354,6 +355,7 @@ async def _register_user_from_dialog(
     return await user_reg_service.register_student(user_data)
 
 
+@inject
 async def on_technology_stack_input(
     message: Message,
     widget: MessageInput,
@@ -382,6 +384,10 @@ async def _on_technology_stack_input_impl(
     except Exception:
         logger.exception("event=technology_stack phase=parse status=failed")
         await message.answer(STACK_PARSE_RETRY)
+        return
+
+    if not items:
+        await message.answer(STACK_NO_TECHNOLOGIES)
         return
 
     manager.dialog_data["technology_stack_draft"] = [

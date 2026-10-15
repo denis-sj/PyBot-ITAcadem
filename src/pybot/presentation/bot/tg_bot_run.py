@@ -31,6 +31,7 @@ from .handlers import (
 )
 from .handlers.agent import create_agent_router
 from .handlers.common.dialog_errors import register_dialog_error_handlers
+from .handlers.registration_stack_exit import registration_stack_exit_router
 from .middlewares import (
     LoggerMiddleware,
     RateLimitMiddleware,
@@ -109,6 +110,7 @@ async def setup_runtime_alerts_service(container: AsyncContainer) -> SystemRunti
 def setup_handlers(dp: Dispatcher) -> None:
     """Attach routers and dialog layer."""
     register_dialog_error_handlers(dp)
+    dp.include_router(registration_stack_exit_router)
     dp.include_router(common_router)
     dp.include_router(points_router)
     dp.include_router(profile_router)

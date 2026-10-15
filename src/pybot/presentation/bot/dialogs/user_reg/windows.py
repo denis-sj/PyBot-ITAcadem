@@ -2,6 +2,7 @@
 
 import operator
 
+from aiogram import F
 from aiogram.types import ContentType
 from aiogram_dialog import Dialog, Window
 from aiogram_dialog.widgets.input import MessageInput
@@ -151,3 +152,7 @@ profile_create_dialog = Dialog(
         state=CreateProfileSG.technology_stack_confirmation,
     ),
 )
+
+# Let commands and global main-menu callbacks reach their regular routers while registration is open.
+profile_create_dialog.message.filter(~F.text.startswith("/"))
+profile_create_dialog.callback_query.filter(~F.data.startswith("menu:"))
