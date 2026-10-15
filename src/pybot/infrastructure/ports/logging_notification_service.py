@@ -90,33 +90,25 @@ class LoggingNotificationService(NotificationPort):
         Raises:
             NotificationPermanentError: При критической ошибке логирования.
         """
-        recipient_id, cleaned_text = message_data.recipient_id, message_data.message
-
         event = NotificationLogEvent(
             event_type="direct_message",
-            recipient_id=recipient_id,
-            message_text=cleaned_text,
+            recipient_id=None,
+            message_text="[redacted]",
         )
 
         try:
             logger.info(
-                "Direct notification (logging backend) | recipient_id={recipient_id} "
-                "thread_id={thread_id} message_preview={message_preview} parse_mode={parse_mode}",
-                recipient_id=recipient_id,
-                thread_id=message_data.message_thread_id,
-                message_preview=cleaned_text[:120],
+                "event=direct_notification backend=logging message_length={message_length} parse_mode={parse_mode}",
+                message_length=len(message_data.message),
                 parse_mode=message_data.parse_mode,
             )
             self._events.append(event)
-        except Exception as exc:
-            logger.exception(
-                "Failed to log direct notification | recipient_id={recipient_id} "
-                "message_preview={message_preview} parse_mode={parse_mode}",
-                recipient_id=recipient_id,
-                message_preview=cleaned_text[:120],
-                parse_mode=message_data.parse_mode,
+        except Exception as error:
+            logger.error(
+                "event=direct_notification backend=logging status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
-            raise NotificationPermanentError(message="Failed to log direct notification") from exc
+            raise NotificationPermanentError(message="Failed to log direct notification") from error
 
     async def send_attendance_notification(
         self,

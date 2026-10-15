@@ -104,9 +104,10 @@ class CommunityMeetingService:
                 raise DomainError(self._missing_publication_text())
             try:
                 await self._delivery.send_announcement(target[0], target[1], message, meeting.id)
-            except Exception:
-                logger.exception(
-                    "event=community_meeting_publish status=failed meeting_id={meeting_id}", meeting_id=meeting.id
+            except Exception as error:
+                logger.warning(
+                    "event=community_meeting_publish status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
                 return (
                     "Встреча создана, анонс не отправлен. Доставлено 0, не удалось 1; "
@@ -227,11 +228,10 @@ class CommunityMeetingService:
                     await self._delivery.send_text(recipient.telegram_id, text)
                 except NotificationBlockedError:
                     await self._repository.mark_user_blocked(self._db, recipient.user_id)
-                except Exception:
-                    logger.exception(
-                        "event=community_meeting_reminder status=failed meeting_id={meeting_id} user_id={user_id}",
-                        meeting_id=claim.meeting.id,
-                        user_id=recipient.user_id,
+                except Exception as error:
+                    logger.warning(
+                        "event=community_meeting_reminder status=failed error_type={error_type}",
+                        error_type=type(error).__name__,
                     )
                 else:
                     sent_count += 1
@@ -366,12 +366,11 @@ class CommunityMeetingService:
             except NotificationBlockedError:
                 failed += 1
                 await self._repository.mark_user_blocked(self._db, member.user_id)
-            except Exception:
+            except Exception as error:
                 failed += 1
-                logger.exception(
-                    "event=community_meeting_invitation status=failed meeting_id={meeting_id} user_id={user_id}",
-                    meeting_id=meeting.id,
-                    user_id=member.user_id,
+                logger.warning(
+                    "event=community_meeting_invitation status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
             else:
                 delivered += 1
@@ -394,10 +393,11 @@ class CommunityMeetingService:
             except NotificationBlockedError:
                 failed += 1
                 await self._repository.mark_user_blocked(self._db, attendee.user_id)
-            except Exception:
+            except Exception as error:
                 failed += 1
-                logger.exception(
-                    "event=community_meeting_update status=failed user_id={user_id}", user_id=attendee.user_id
+                logger.warning(
+                    "event=community_meeting_update status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
             else:
                 sent += 1

@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from math import isclose
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import pytest_asyncio
@@ -19,6 +19,7 @@ from pytest_mock import MockerFixture
 from pybot.presentation.bot import get_admin_decision_kb
 from pybot.core.config import AppSettings
 from pybot.dto import NotifyDTO
+from pybot.infrastructure.ports import telegram_notification_service as telegram_notification_module
 from pybot.infrastructure.ports.telegram_notification_service import TelegramNotificationService
 from pybot.services.ports import NotificationBlockedError, NotificationPermanentError, NotificationTemporaryError
 
@@ -318,6 +319,38 @@ async def test_send_attendance_notification_with_photo_button(
     reply_markup = call_kwargs["reply_markup"]
     assert reply_markup is not None
     assert reply_markup.inline_keyboard[0][0].text == "📷 Номер фото #42"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "log_method"),
+    (
+        (TelegramNetworkError(_dummy_method(), "PRIVATE-TELEGRAM-DETAIL"), "warning"),
+        (RuntimeError("PRIVATE-TELEGRAM-DETAIL"), "error"),
+    ),
+)
+async def test_send_message_failure_logs_no_recipient_or_message(
+    fake_bot: BotFixture,
+    settings_obj: AppSettings,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    log_method: str,
+) -> None:
+    recipient_id = 765_432_109
+    private_message = "PRIVATE-CHECKIN-GOAL"
+    fake_bot.send_message.side_effect = error
+    service = TelegramNotificationService(fake_bot.bot, settings_obj)
+    safe_logger = Mock()
+    monkeypatch.setattr(telegram_notification_module, "logger", safe_logger)
+
+    with pytest.raises((NotificationTemporaryError, NotificationPermanentError)):
+        await service.send_message(NotifyDTO(recipient_id=recipient_id, message=private_message))
+
+    logged_call = getattr(safe_logger, log_method).call_args
+    assert logged_call is not None
+    assert str(recipient_id) not in repr(logged_call)
+    assert private_message not in repr(logged_call)
+    assert "PRIVATE-TELEGRAM-DETAIL" not in repr(logged_call)
 
 
 @pytest.mark.asyncio

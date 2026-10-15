@@ -95,9 +95,8 @@ class CommunityCheckinService:
                 raise
             except NotificationPermanentError as error:
                 logger.warning(
-                    "event=community_checkin_prompt status=failed user_id={user_id} error={error}",
-                    user_id=recipient.user_id,
-                    error=str(error),
+                    "event=community_checkin_prompt status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
                 continue
             sent_count += 1
@@ -121,8 +120,11 @@ class CommunityCheckinService:
         try:
             parsed = await self._parser.parse(source_text)
             parsed = self._normalize_parsed_response(parsed)
-        except Exception:
-            logger.exception("event=community_checkin_parse status=failed user_id={user_id}", user_id=user_id)
+        except Exception as error:
+            logger.warning(
+                "event=community_checkin_parse status=failed error_type={error_type}",
+                error_type=type(error).__name__,
+            )
             return CHECKIN_PARSE_RETRY
 
         await self._repository.save_response(
@@ -170,9 +172,8 @@ class CommunityCheckinService:
                 raise
             except NotificationPermanentError as error:
                 logger.warning(
-                    "event=community_checkin_reminder status=failed user_id={user_id} error={error}",
-                    user_id=recipient.user_id,
-                    error=str(error),
+                    "event=community_checkin_reminder status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
                 continue
             sent_count += 1
@@ -218,9 +219,8 @@ class CommunityCheckinService:
                 raise
             except NotificationPermanentError as error:
                 logger.warning(
-                    "event=streak_warning status=failed user_id={user_id} error={error}",
-                    user_id=recipient.user_id,
-                    error=str(error),
+                    "event=streak_warning status=failed error_type={error_type}",
+                    error_type=type(error).__name__,
                 )
                 continue
             sent_count += 1

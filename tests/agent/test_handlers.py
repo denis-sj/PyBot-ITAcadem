@@ -625,11 +625,11 @@ async def test_failed_confirmation_result_delivery_is_logged_and_never_reexecute
         message=confirmation_message,
     )
     callback_answer = AsyncMock()
-    log_exception = Mock()
+    log_warning = Mock()
     monkeypatch.setattr(CallbackQuery, "answer", callback_answer)
     monkeypatch.setattr(Message, "edit_reply_markup", AsyncMock())
     agent_bot.send_message = AsyncMock(side_effect=RuntimeError("Telegram result unavailable"))
-    monkeypatch.setattr(agent_handlers, "logger", Mock(exception=log_exception), raising=False)
+    monkeypatch.setattr(agent_handlers, "logger", Mock(warning=log_warning), raising=False)
 
     await handle_agent_confirmation(
         callback,
@@ -649,7 +649,10 @@ async def test_failed_confirmation_result_delivery_is_logged_and_never_reexecute
     )
 
     actions.change_role.assert_awaited_once_with(771234, RoleEnum.MENTOR, True)
-    log_exception.assert_called_once_with("event=agent_confirmation phase=result_delivery status=failed")
+    log_warning.assert_called_once_with(
+        "event=agent_confirmation phase=result_delivery status=failed error_type={error_type}",
+        error_type="RuntimeError",
+    )
     assert callback_answer.await_count == 2
 
 

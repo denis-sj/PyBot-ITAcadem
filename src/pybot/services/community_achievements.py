@@ -289,15 +289,14 @@ class CommunityAchievementService:
             user.bot_is_blocked = True
             await self._achievement_repository.mark_notified(self._db, award_ids)
             await self._db.commit()
-            logger.info("событие=achievement_notification status=blocked user_id={user_id}", user_id=user_id)
+            logger.info("event=achievement_notification status=blocked")
             return
         except NotificationTemporaryError:
             raise
         except NotificationPermanentError as error:
             logger.warning(
-                "Failed to deliver community achievement congratulations | user_id={user_id} error={error}",
-                user_id=user_id,
-                error=str(error),
+                "event=achievement_notification status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             await self._achievement_repository.mark_notified(self._db, award_ids)
             await self._db.commit()

@@ -169,9 +169,10 @@ class PulseReportService:
         """Render once and switch to text delivery if the renderer fails."""
         try:
             return render_pulse_report_pdf(report)
-        except Exception:
-            logger.exception(
-                "event=pulse_report_render status=failed week_start={week_start}", week_start=report.week_start
+        except Exception as error:
+            logger.warning(
+                "event=pulse_report_render status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             return None
 
@@ -216,9 +217,8 @@ class PulseReportService:
             raise
         except NotificationPermanentError as error:
             logger.warning(
-                "event=pulse_report_delivery status=failed user_id={user_id} error={error}",
-                user_id=recipient.user_id,
-                error=str(error),
+                "event=pulse_report_delivery status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             return await self._send_fallback(recipient, fallback)
         return 1
@@ -236,9 +236,8 @@ class PulseReportService:
             raise
         except NotificationPermanentError as error:
             logger.warning(
-                "event=pulse_report_fallback status=failed user_id={user_id} error={error}",
-                user_id=recipient.user_id,
-                error=str(error),
+                "event=pulse_report_fallback status=failed error_type={error_type}",
+                error_type=type(error).__name__,
             )
             return 0
         return 1

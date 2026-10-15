@@ -52,18 +52,21 @@ async def test_send_role_request_to_admin_maps_logger_failure_to_permanent_error
 
 
 @pytest.mark.asyncio
-async def test_send_message_logs_trimmed_text_and_buffers_event(mocker, settings_obj: AppSettings) -> None:
+async def test_send_message_logs_only_metadata_and_redacts_event(mocker, settings_obj: AppSettings) -> None:
     service = LoggingNotificationService(settings_obj)
     info_mock = mocker.patch.object(logging_module.logger, "info")
+    private_text = "PRIVATE-GOAL-TEXT"
 
-    await service.send_message(NotifyDTO(recipient_id=777, message="  hello world  "))
+    await service.send_message(NotifyDTO(recipient_id=777, message=f"  {private_text}  "))
 
     info_mock.assert_called_once()
+    assert "777" not in repr(info_mock.call_args)
+    assert private_text not in repr(info_mock.call_args)
     assert len(service.events) == 1
     event = service.events[0]
     assert event.event_type == "direct_message"
-    assert event.recipient_id == 777
-    assert event.message_text == "hello world"
+    assert event.recipient_id is None
+    assert event.message_text == "[redacted]"
     assert event.request_id is None
     assert event.requester_user_id is None
     assert event.role_name is None
@@ -87,13 +90,16 @@ async def test_send_message_maps_logger_failure_to_permanent_error(
     settings_obj: AppSettings,
 ) -> None:
     service = LoggingNotificationService(settings_obj)
-    mocker.patch.object(logging_module.logger, "exception")
+    error_mock = mocker.patch.object(logging_module.logger, "error")
     info_mock = mocker.patch.object(logging_module.logger, "info", side_effect=RuntimeError("logger down"))
 
     with pytest.raises(NotificationPermanentError, match="Failed to log direct notification"):
         await service.send_message(NotifyDTO(recipient_id=777, message="hello world"))
 
     info_mock.assert_called_once()
+    error_mock.assert_called_once()
+    assert "777" not in repr(error_mock.call_args)
+    assert "hello world" not in repr(error_mock.call_args)
     assert service.events == ()
 
 
@@ -105,8 +111,8 @@ async def test_ring_buffer_keeps_last_1000_events(settings_obj: AppSettings) -> 
         await service.send_message(NotifyDTO(recipient_id=idx + 1, message=f"msg-{idx}"))
 
     assert len(service.events) == 1000
-    assert service.events[0].message_text == "msg-5"
-    assert service.events[-1].message_text == "msg-1004"
+    assert service.events[0].message_text == "[redacted]"
+    assert service.events[-1].message_text == "[redacted]"
 
 
 @pytest.mark.asyncio
