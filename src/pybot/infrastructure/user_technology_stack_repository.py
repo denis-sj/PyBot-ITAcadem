@@ -42,6 +42,35 @@ class UserTechnologyStackRepository:
             for item in result.scalars().all()
         ]
 
+    async def find_stacks_for_users(
+        self,
+        db: AsyncSession,
+        user_ids: Sequence[int],
+    ) -> dict[int, tuple[TechnologyStackReadDTO, ...]]:
+        """Return all requested stacks in one query, grouped by participant."""
+        if not user_ids:
+            return {}
+        statement = (
+            select(UserTechnologyStack)
+            .where(UserTechnologyStack.user_id.in_(user_ids))
+            .order_by(
+                UserTechnologyStack.user_id,
+                func.lower(UserTechnologyStack.technology),
+                UserTechnologyStack.technology,
+            )
+        )
+        result = await db.execute(statement)
+        stacks: dict[int, list[TechnologyStackReadDTO]] = {}
+        for item in result.scalars().all():
+            stacks.setdefault(item.user_id, []).append(
+                TechnologyStackReadDTO(
+                    technology=item.technology,
+                    level=TechnologyLevel(item.level),
+                    updated_at=item.updated_at,
+                )
+            )
+        return {user_id: tuple(items) for user_id, items in stacks.items()}
+
     async def replace_user_stack(
         self,
         db: AsyncSession,

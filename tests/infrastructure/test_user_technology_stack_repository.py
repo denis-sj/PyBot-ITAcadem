@@ -35,8 +35,14 @@ async def test_stack_rows_are_unique_and_one_item_updates_without_replacing_othe
     )
     await db_session.commit()
     first_rows = await repository.find_user_stack(db_session, user.id)
+    grouped_stacks = await repository.find_stacks_for_users(db_session, (user.id, -1))
     first_updated_at = next(item.updated_at for item in first_rows if item.technology == "Docker")
     assert {(item.technology, item.level) for item in first_rows} == {
+        ("Docker", TechnologyLevel.LEARNING),
+        ("Python", TechnologyLevel.KNOW),
+    }
+    assert set(grouped_stacks) == {user.id}
+    assert {(item.technology, item.level) for item in grouped_stacks[user.id]} == {
         ("Docker", TechnologyLevel.LEARNING),
         ("Python", TechnologyLevel.KNOW),
     }

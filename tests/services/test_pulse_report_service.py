@@ -21,6 +21,7 @@ def make_empty_report_service():
     report = PulseReportDTO(
         week_start=date(2026, 10, 12),
         week_end=date(2026, 10, 18),
+        report_date=date(2026, 10, 15),
         invited_count=0,
         answered_count=0,
         needs_help_count=0,
@@ -87,3 +88,48 @@ async def test_empty_week_is_sent_as_pdf_when_renderer_succeeds(monkeypatch) -> 
     assert "0/0" in document_delivery.send_pdf.await_args.kwargs["caption"]
     notifications.send_message.assert_not_awaited()
     assert report.answered_count == 0
+
+
+@pytest.mark.asyncio
+async def test_build_report_counts_visits_for_last_seven_full_days_and_previous_seven_days() -> None:
+    from pybot.core.config import YEKATERINBURG_TZ
+
+    db = AsyncMock()
+    checkins = AsyncMock()
+    attendance = AsyncMock()
+    achievements = AsyncMock()
+    notifications = AsyncMock()
+    document_delivery = AsyncMock()
+    technology_stack = AsyncMock()
+    checkins.find_campaign_rows.side_effect = [(), ()]
+    checkins.find_consecutive_missed_weeks.return_value = {}
+    attendance.find_visit_dates_for_users.return_value = {}
+    attendance.find_visit_counts_for_period.return_value = {}
+    attendance.count_visits_for_period.side_effect = [11, 7]
+    achievements.find_awards_in_period.return_value = ()
+    technology_stack.get_stacks_for_users.return_value = {}
+    technology_stack.get_top_learning_technologies.return_value = ()
+    service = PulseReportService(
+        db,
+        checkins,
+        attendance,
+        achievements,
+        notifications,
+        document_delivery,
+        technology_stack,
+    )
+
+    report = await service.build_report(now=datetime(2026, 10, 15, 19, tzinfo=YEKATERINBURG_TZ))
+
+    assert report.report_date == date(2026, 10, 15)
+    assert report.visit_count == 11
+    assert report.visits_delta == 4
+    assert attendance.find_visit_counts_for_period.await_args.kwargs == {
+        "start_date": date(2026, 10, 8),
+        "end_date": date(2026, 10, 14),
+        "user_ids": (),
+    }
+    assert [item.kwargs for item in attendance.count_visits_for_period.await_args_list] == [
+        {"start_date": date(2026, 10, 8), "end_date": date(2026, 10, 14)},
+        {"start_date": date(2026, 10, 1), "end_date": date(2026, 10, 7)},
+    ]

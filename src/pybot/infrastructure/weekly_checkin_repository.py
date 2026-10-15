@@ -1,7 +1,7 @@
 """Persistence queries for weekly check-in campaigns and pulse report participants."""
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -258,6 +258,37 @@ class WeeklyCheckinRepository:
         )
         result = await db.execute(statement)
         return tuple(WeeklyCheckinReportRowDTO(**row._asdict()) for row in result.all())
+
+    async def find_consecutive_missed_weeks(
+        self,
+        db: AsyncSession,
+        *,
+        user_ids: Sequence[int],
+        current_week_start: date,
+    ) -> dict[int, int]:
+        """Count each participant's consecutive unanswered prompted campaigns."""
+        if not user_ids:
+            return {}
+        statement = select(WeeklyCheckin.user_id, WeeklyCheckin.week_start, WeeklyCheckin.answered_at).where(
+            WeeklyCheckin.user_id.in_(user_ids),
+            WeeklyCheckin.week_start <= current_week_start,
+            WeeklyCheckin.prompted_at.is_not(None),
+        )
+        result = await db.execute(statement)
+        answers_by_user: dict[int, dict[date, datetime | None]] = {}
+        for user_id, week_start, answered_at in result.all():
+            answers_by_user.setdefault(user_id, {})[week_start] = answered_at
+
+        missed_weeks_by_user: dict[int, int] = {}
+        for user_id in user_ids:
+            user_answers = answers_by_user.get(user_id, {})
+            week_start = current_week_start
+            missed_weeks = 0
+            while week_start in user_answers and user_answers[week_start] is None:
+                missed_weeks += 1
+                week_start -= timedelta(days=7)
+            missed_weeks_by_user[user_id] = missed_weeks
+        return missed_weeks_by_user
 
     async def save_response(
         self,

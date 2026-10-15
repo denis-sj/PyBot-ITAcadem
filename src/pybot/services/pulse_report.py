@@ -34,20 +34,6 @@ from ..services.ports import (
 from ..services.ports.pulse_report_delivery import PulseReportDeliveryPort
 from ..services.technology_stack import TechnologyStackService
 
-_ACHIEVEMENT_ICONS = {
-    "first_step": "👣",
-    "streak_4": "🔥",
-    "streak_8": "🔥",
-    "streak_16": "🔥",
-    "visits_10": "🔟",
-    "visits_25": "🏅",
-    "visits_50": "🏆",
-    "comeback": "🔄",
-    "top_week": "🥇",
-    "goal_done": "🎯",
-    "mentor": "🎓",
-}
-
 
 class PulseReportService:
     """Compute fixed report metrics, render one PDF, and DM all available admins."""
@@ -73,10 +59,10 @@ class PulseReportService:
     async def build_report(self, *, now: datetime | None = None) -> PulseReportDTO:
         """Assemble the completed campaign report from attendance and summary rows."""
         local_now = (now or datetime.now(YEKATERINBURG_TZ)).astimezone(YEKATERINBURG_TZ)
+        report_date = local_now.date()
         week_start = get_reported_checkin_week_start(local_now.date())
         week_end = week_start + timedelta(days=6)
         previous_start = week_start - timedelta(days=7)
-        previous_end = week_start - timedelta(days=1)
         rows = await self._checkins.find_campaign_rows(self._db, week_start=week_start)
         previous_rows = await self._checkins.find_campaign_rows(self._db, week_start=previous_start)
         answered_rows = tuple(row for row in rows if row.answered_at is not None)
@@ -91,38 +77,34 @@ class PulseReportService:
         previous_goal_count = sum(row.status == CheckinStatus.GOAL_ACHIEVED for row in previous_answered_rows)
 
         user_ids = tuple(row.user_id for row in rows)
-        all_visit_dates = await self._attendance.find_visit_dates_for_users(self._db, user_ids)
+        visits_end = report_date - timedelta(days=1)
+        visits_start = visits_end - timedelta(days=6)
+        previous_visits_end = visits_start - timedelta(days=1)
+        previous_visits_start = previous_visits_end - timedelta(days=6)
         visit_counts = await self._attendance.find_visit_counts_for_period(
             self._db,
-            start_date=week_start,
-            end_date=week_end,
+            start_date=visits_start,
+            end_date=visits_end,
             user_ids=user_ids,
         )
         current_visit_count = await self._attendance.count_visits_for_period(
             self._db,
-            start_date=week_start,
-            end_date=week_end,
+            start_date=visits_start,
+            end_date=visits_end,
         )
         previous_visit_count = await self._attendance.count_visits_for_period(
             self._db,
-            start_date=previous_start,
-            end_date=previous_end,
+            start_date=previous_visits_start,
+            end_date=previous_visits_end,
         )
-
-        answered_participants = await self._make_participants(
-            answered_rows,
-            all_visit_dates=all_visit_dates,
+        participants = await self._make_participants(
+            tuple(rows),
             visit_counts=visit_counts,
-            as_of=local_now.date(),
-            help_rows=frozenset(row.id for row in needs_help_rows),
+            as_of=report_date,
+            week_start=week_start,
         )
-        non_responders = await self._make_participants(
-            tuple(row for row in rows if row.answered_at is None),
-            all_visit_dates=all_visit_dates,
-            visit_counts=visit_counts,
-            as_of=local_now.date(),
-            help_rows=frozenset(),
-        )
+        answered_participants = tuple(item for item in participants if item.status is not None)
+        non_responders = tuple(item for item in participants if item.status is None)
         needs_help = tuple(
             item for item in answered_participants if item.status in {CheckinStatus.STUCK, CheckinStatus.NO_MOTIVATION}
         )
@@ -142,7 +124,6 @@ class PulseReportService:
             PulseAchievementDTO(
                 code=code,
                 title=achievement_title(code),
-                icon=_ACHIEVEMENT_ICONS.get(code, "🏅"),
                 participant_names=tuple(names),
             )
             for code, names in names_by_code.items()
@@ -151,6 +132,7 @@ class PulseReportService:
         return PulseReportDTO(
             week_start=week_start,
             week_end=week_end,
+            report_date=report_date,
             invited_count=len(rows),
             answered_count=len(answered_rows),
             needs_help_count=len(needs_help_rows),
@@ -261,20 +243,27 @@ class PulseReportService:
         self,
         rows: tuple[WeeklyCheckinReportRowDTO, ...],
         *,
-        all_visit_dates: dict[int, list[date]],
         visit_counts: dict[int, int],
         as_of: date,
-        help_rows: frozenset[int],
+        week_start: date,
     ) -> tuple[CheckinParticipantDTO, ...]:
+        user_ids = tuple(row.user_id for row in rows)
+        all_visit_dates = await self._attendance.find_visit_dates_for_users(self._db, user_ids)
+        missed_weeks_by_user = await self._checkins.find_consecutive_missed_weeks(
+            self._db,
+            user_ids=user_ids,
+            current_week_start=week_start,
+        )
+        stacks_by_user = await self._technology_stack.get_stacks_for_users(user_ids)
         participants: list[CheckinParticipantDTO] = []
         for row in rows:
             visit_dates = all_visit_dates.get(row.user_id, [])
             dates_before_report = [visit_date for visit_date in visit_dates if visit_date <= as_of]
             last_visit = dates_before_report[-1] if dates_before_report else None
             current_streak = calculate_attendance_achievements(dates_before_report, today=as_of).current_streak
-            silent_weeks = max(0, (as_of - last_visit).days // 7) if last_visit else 99
+            silent_weeks = missed_weeks_by_user.get(row.user_id, 0)
             helper_names: tuple[str, ...] = ()
-            if row.id in help_rows and row.status == CheckinStatus.STUCK and row.help_topic:
+            if row.status == CheckinStatus.STUCK and row.help_topic:
                 recommendation = await self._technology_stack.find_helpers(row.user_id, row.help_topic)
                 helper_names = tuple(
                     f"{'@' + helper.telegram_username if helper.telegram_username else helper.full_name}"
@@ -295,6 +284,7 @@ class PulseReportService:
                     last_visit=last_visit,
                     silent_weeks=silent_weeks,
                     helper_names=helper_names,
+                    technology_stack=stacks_by_user.get(row.user_id, ()),
                 )
             )
         return tuple(participants)

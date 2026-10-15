@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 
 from ..domain.services.community_checkins import CheckinStatus, GoalStatus
 from .base_dto import BaseDTO
+from .technology_stack import TechnologyStackItemDTO
 
 GoalText = Annotated[str, Field(min_length=1, max_length=200, strict=True)]
 
@@ -118,6 +119,7 @@ class CheckinParticipantDTO(BaseDTO):
     silent_weeks: int
     helper_names: tuple[str, ...] = ()
     achievements: tuple[str, ...] = ()
+    technology_stack: tuple[TechnologyStackItemDTO, ...] = ()
 
     @property
     def display_name(self) -> str:
@@ -144,7 +146,6 @@ class PulseAchievementDTO(BaseDTO):
 
     code: str
     title: str
-    icon: str
     participant_names: tuple[str, ...]
 
 
@@ -153,6 +154,7 @@ class PulseReportDTO(BaseDTO):
 
     week_start: date
     week_end: date
+    report_date: date
     invited_count: int
     answered_count: int
     needs_help_count: int

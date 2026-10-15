@@ -38,6 +38,13 @@ class TechnologyStackService:
         """Read a participant's stack in canonical technology order."""
         return await self._repository.find_user_stack(self._db, user_id)
 
+    async def get_stacks_for_users(
+        self,
+        user_ids: Sequence[int],
+    ) -> dict[int, tuple[TechnologyStackReadDTO, ...]]:
+        """Read several participant stacks with one repository query."""
+        return await self._repository.find_stacks_for_users(self._db, user_ids)
+
     async def get_top_learning_technologies(self, limit: int = 5) -> Sequence[PulseTechnologyDTO]:
         """Return the most common technologies that participants are learning."""
         return await self._repository.find_top_learning_technologies(self._db, limit=limit)
