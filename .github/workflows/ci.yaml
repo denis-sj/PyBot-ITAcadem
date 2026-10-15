@@ -2,7 +2,7 @@ name: CI - Code Quality
 
 on:
   push:
-    branches: [ main, dev-Ilya ]
+    branches: [ main, dev-Ilya, 'feat/**' ]
   pull_request:
     branches: [ main, dev-Ilya ]
 
@@ -42,6 +42,9 @@ jobs:
 
       - name: Validate production compose config
         run: docker compose -f docker-compose.prod.yml config > /dev/null
+
+      - name: Validate staging compose config
+        run: docker compose -f docker-compose.staging.yml config > /dev/null
 
       - name: Verify Loki production config with pinned image
         run: |
