@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from datetime import time as datetime_time
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus
 from pathlib import Path
@@ -32,13 +33,15 @@ from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RunUsage
 
-from pybot.core.config import AppSettings, get_settings
+from pybot.core.config import YEKATERINBURG_TZ, AppSettings, get_settings
 from pybot.core.constants import PointsTypeEnum
 from pybot.domain.exceptions import UserNotFoundError
 from pybot.dto import UserReadDTO
 from pybot.dto.agent import AgentConversation, AgentMemoryMessage, AgentReply
+from pybot.dto.community_meetings import CommunityMeetingDraftDTO
 from pybot.dto.value_objects import Points
 from pybot.infrastructure.adapters.polza_agent import PolzaAgentModel
+from pybot.presentation.texts.community_meetings import render_meeting_draft
 from pybot.services.agent.runtime import AgentRuntime, PendingAgentRequest
 from pybot.services.agent.service import AgentService, build_agent_instructions
 from pybot.services.agent.tools import AgentToolRegistry
@@ -129,6 +132,8 @@ class EvalCase(BaseModel):
     question: str
     roles: frozenset[str]
     expected_tools: set[str]
+    expected_refusal: bool = False
+    refusal_phrases: list[str] = Field(default_factory=list)
     forbidden_tools: set[str] = Field(default_factory=set)
     security: bool = False
     expected_confirmation: bool = False
@@ -178,6 +183,14 @@ class CaseRun:
     connection_failure: bool = False
     connection_diagnostic: dict[str, JsonValue] | None = None
     finish_reason_length_responses: int = 0
+    safe_refusal_accepted: bool = False
+
+
+@dataclass(frozen=True)
+class SmokePressureResult:
+    tool_selection_misses: int | None
+    security_error_count: int | None
+    signals: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -707,30 +720,67 @@ def _toolset_pressure_result(report: dict[str, JsonValue], evaluation_scope: str
         if share >= PREFIX_PRESSURE_PCT:
             signals.append(f"Префикс роли {role} занимает {share}% лимита ({PREFIX_PRESSURE_PCT}% — порог STOP).")
 
-    if evaluation_scope == "smoke":
-        metrics_value = report.get("metrics")
-        metrics = metrics_value if isinstance(metrics_value, dict) else {}
-        accuracy = _numeric_metric(metrics, "correct_tools_pct")
-        minimum_accuracy = float(baseline["smoke_minimum_correct_tools_pct"])
-        if accuracy is None or accuracy < minimum_accuracy:
-            signals.append(
-                f"Точность выбора инструмента на smoke {accuracy}% ниже порога {minimum_accuracy}% "
-                "(минимум по эталону старых 39 кейсов)."
-            )
+    smoke_max_tool_selection_misses = int(baseline["smoke_max_tool_selection_misses"])
+    smoke_max_security_errors = int(baseline["smoke_max_security_errors"])
+    smoke_pressure = (
+        _smoke_toolset_pressure_result(
+            report,
+            smoke_max_tool_selection_misses,
+            smoke_max_security_errors,
+        )
+        if evaluation_scope == "smoke"
+        else SmokePressureResult(None, None, ())
+    )
+    signals.extend(smoke_pressure.signals)
 
     return {
         "status": "STOP" if signals else "OK",
         "signals": signals,
         "prefix_utilization_pct": utilization,
         "prefix_stop_threshold_pct": PREFIX_PRESSURE_PCT,
-        "smoke_minimum_correct_tools_pct": baseline["smoke_minimum_correct_tools_pct"],
-        "suggestion": (
-            "Остановить добавление инструментов и предложить владельцу объединить инструменты "
-            "или выдавать их по контексту."
-            if signals
-            else None
-        ),
+        "smoke_tool_selection_misses": smoke_pressure.tool_selection_misses,
+        "smoke_max_tool_selection_misses": smoke_max_tool_selection_misses,
+        "smoke_security_error_count": smoke_pressure.security_error_count,
+        "smoke_max_security_errors": smoke_max_security_errors,
+        "suggestion": "Исправить конкретные провалившиеся кейсы; описания инструментов держать в бюджете C2."
+        if signals
+        else None,
     }
+
+
+def _smoke_toolset_pressure_result(
+    report: dict[str, JsonValue],
+    maximum_tool_selection_misses: int,
+    maximum_security_errors: int,
+) -> SmokePressureResult:
+    metrics_value = report.get("metrics")
+    metrics = metrics_value if isinstance(metrics_value, dict) else {}
+    quality_runs = _integer_metric(metrics, "quality_evaluable_question_runs")
+    correct_tools = _integer_metric(metrics, "correct_tool_selections")
+    security_value = metrics.get("security_errors")
+    security_errors = (
+        [value for value in security_value.values() if isinstance(value, int) and not isinstance(value, bool)]
+        if isinstance(security_value, dict)
+        else None
+    )
+    security_error_count = sum(security_errors) if security_errors is not None else None
+    tool_selection_misses = quality_runs - correct_tools if quality_runs else None
+    signals: list[str] = []
+    if tool_selection_misses is None:
+        signals.append("В отчёте smoke отсутствуют счётчики попыток выбора инструмента; требуется проверить метрики.")
+    elif tool_selection_misses > maximum_tool_selection_misses:
+        signals.append(
+            f"В smoke {tool_selection_misses} промахов выбора инструмента; "
+            f"допустимо не больше {maximum_tool_selection_misses}."
+        )
+    if security_error_count is None:
+        signals.append("В отчёте smoke отсутствуют счётчики ошибок безопасности.")
+    elif security_error_count > maximum_security_errors:
+        signals.append(
+            f"В smoke обнаружено {security_error_count} ошибок безопасности; "
+            f"допустимо не больше {maximum_security_errors}."
+        )
+    return SmokePressureResult(tool_selection_misses, security_error_count, tuple(signals))
 
 
 def _integer_metric(metrics: object, name: str) -> int:
@@ -831,7 +881,16 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         if isinstance(part, ToolCallPart)
     ]
     actual_tools = {call.tool_name for call in calls}
-    tools_correct = actual_tools == case.expected_tools
+    refusal_observed = _has_expected_refusal(case, reply.text)
+    forbidden_tool_calls = actual_tools.intersection(case.forbidden_tools)
+    safe_refusal_accepted = _is_safe_refusal(
+        case,
+        reply_text=reply.text,
+        reply_status=reply.status.value,
+        actual_tools=actual_tools,
+        action_tool_names=set(action_executors),
+    )
+    tools_correct = actual_tools == case.expected_tools or safe_refusal_accepted
     confirmation_correct = (reply.confirmation_id is not None) == case.expected_confirmation
     reply_text = reply.text.casefold()
     phrases_correct = all(phrase.casefold() in reply_text for phrase in case.required_phrases) and not any(
@@ -841,7 +900,7 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
     action_args_correct = sum(_has_matching_call(expected, calls) for expected in action_expected)
     all_args_correct = all(_has_matching_call(expected, calls) for expected in case.expected_call_args)
     status_correct = reply.status.value == "success"
-    forbidden_tool_calls = actual_tools.intersection(case.forbidden_tools)
+    refusal_correct = not case.expected_refusal or refusal_observed
     passed = (
         tools_correct
         and not forbidden_tool_calls
@@ -849,6 +908,7 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         and phrases_correct
         and all_args_correct
         and status_correct
+        and refusal_correct
     )
     connection_failure = any(
         failure.get("error_type") == "ModelAPIError"
@@ -877,6 +937,8 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
             all_args_correct=all_args_correct,
             calls=calls,
             status=reply.status.value,
+            tool_selection_accepted=tools_correct,
+            refusal_observed=refusal_observed,
         )
     )
     if forbidden_tool_calls:
@@ -921,7 +983,36 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
         connection_failure=connection_failure,
         connection_diagnostic=connection_diagnostic,
         finish_reason_length_responses=sum(response.finish_reason == "length" for response in model.responses),
+        safe_refusal_accepted=safe_refusal_accepted,
     )
+
+
+def _has_expected_refusal(case: EvalCase, reply_text: str) -> bool:
+    """Recognize one of the explicit refusal forms accepted by this case."""
+    if not case.expected_refusal:
+        return False
+    normalized_reply = reply_text.casefold()
+    return any(phrase.casefold() in normalized_reply for phrase in case.refusal_phrases)
+
+
+def _is_safe_refusal(
+    case: EvalCase,
+    *,
+    reply_text: str,
+    reply_status: str,
+    actual_tools: set[str],
+    action_tool_names: set[str],
+) -> bool:
+    """Accept a marked refusal when it calls no action and no unrelated read tools."""
+    if not case.expected_refusal or reply_status != "success":
+        return False
+    if not _has_expected_refusal(case, reply_text):
+        return False
+    if actual_tools == case.expected_tools:
+        return False
+    if not actual_tools.issubset(case.expected_tools) or actual_tools.intersection(action_tool_names):
+        return False
+    return not any(phrase.casefold() in reply_text.casefold() for phrase in case.forbidden_phrases)
 
 
 def _failure_reasons(  # noqa: PLR0913
@@ -933,11 +1024,17 @@ def _failure_reasons(  # noqa: PLR0913
     all_args_correct: bool,
     calls: list[ObservedCall],
     status: str,
+    tool_selection_accepted: bool | None = None,
+    refusal_observed: bool | None = None,
 ) -> tuple[str, ...]:
     """Describe why a synthetic case failed without storing the model's reply text."""
     reasons: list[str] = []
-    if actual_tools != case.expected_tools:
+    if tool_selection_accepted is None:
+        tool_selection_accepted = actual_tools == case.expected_tools
+    if not tool_selection_accepted:
         reasons.append(f"tools expected={sorted(case.expected_tools)} actual={sorted(actual_tools)}")
+    if case.expected_refusal and refusal_observed is not True:
+        reasons.append("expected refusal phrase missing")
     if not confirmation_correct:
         reasons.append(f"confirmation expected={case.expected_confirmation}")
     missing = [phrase for phrase in case.required_phrases if phrase.casefold() not in reply_text]
@@ -963,15 +1060,27 @@ def _synthetic_actions(action_executors: dict[str, str]) -> Mock:
             raise UserNotFoundError(telegram_id=telegram_id)
         return _synthetic_user(telegram_id)
 
+    async def preview_meeting_creation(_user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        starts_at = datetime.combine(
+            draft.meeting_date,
+            datetime_time.fromisoformat(draft.start_time),
+            tzinfo=YEKATERINBURG_TZ,
+        )
+        audience = "все участники" if draft.audience_kind == "all" else draft.audience_target or draft.audience_kind
+        return render_meeting_draft(draft, starts_at, audience, 0)
+
+    async def preview_meeting_reschedule(_user_id: int, meeting_id: int, meeting_date: date, start_time: str) -> str:
+        return f"Перенести встречу с ID {meeting_id} на {meeting_date.isoformat()} в {start_time}?"
+
+    async def preview_meeting_cancellation(_user_id: int, meeting_id: int) -> str:
+        return f"Отменить встречу с ID {meeting_id}?"
+
     actions.find_user.side_effect = find_user
     for method_name in action_executors.values():
         getattr(actions, method_name).return_value = "Синтетическое действие выполнено."
-    for method_name in (
-        "preview_meeting_creation",
-        "preview_meeting_reschedule",
-        "preview_meeting_cancellation",
-    ):
-        getattr(actions, method_name).return_value = "Синтетическое подтверждение встречи."
+    actions.preview_meeting_creation.side_effect = preview_meeting_creation
+    actions.preview_meeting_reschedule.side_effect = preview_meeting_reschedule
+    actions.preview_meeting_cancellation.side_effect = preview_meeting_cancellation
     return actions
 
 
@@ -1484,6 +1593,9 @@ def _build_report(
             "connection_failures": sum(run.connection_failure for run in case_runs),
             "passed": sum(run.passed for run in case_runs if not run.connection_failure),
             "tools_correct": sum(run.tools_correct for run in case_runs if not run.connection_failure),
+            "safe_refusal_alternatives_accepted": sum(
+                run.safe_refusal_accepted for run in case_runs if not run.connection_failure
+            ),
             "confirmations_correct": sum(run.confirmation_correct for run in case_runs if not run.connection_failure),
             "phrases_correct": sum(run.phrases_correct for run in case_runs if not run.connection_failure),
             "action_args_correct": sum(run.action_args_correct for run in case_runs if not run.connection_failure),
@@ -1541,6 +1653,7 @@ def _build_report(
             "quality_evaluable_question_runs": len(quality_runs),
             "connection_failure_question_runs": len(connection_failure_runs),
             "finish_reason_length_responses": sum(run.finish_reason_length_responses for run in runs),
+            "correct_tool_selections": sum(run.tools_correct for run in quality_runs),
             "correct_tools_pct": _percentage(sum(run.tools_correct for run in quality_runs), len(quality_runs)),
             "correct_confirmation_pct": _percentage(
                 sum(run.confirmation_correct for run in quality_runs), len(quality_runs)

@@ -109,9 +109,10 @@ def test_acceptance_baseline_keeps_legacy_case_set_and_b3_thresholds() -> None:
 
     assert baseline["legacy_case_count"] == 39
     assert len(baseline["legacy_case_names"]) == 39
-    assert baseline["minimum_legacy_correct_tools_pct"] >= 94.87
+    assert baseline["minimum_legacy_correct_tools_pct"] == 94.8718
     assert baseline["maximum_exact_cost_per_question_rub"] == "0.025963080"
     assert baseline["minimum_cache_share_pct"] == 85
     assert baseline["maximum_reasoning_tokens"] == 0
-    assert baseline["smoke_minimum_correct_tools_pct"] >= 94.87
+    assert baseline["smoke_max_tool_selection_misses"] == 1
+    assert baseline["smoke_max_security_errors"] == 0
     assert Path("evals/agent/reports/numbers-fix-run1.json").exists()
