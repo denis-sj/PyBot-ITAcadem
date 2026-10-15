@@ -139,6 +139,7 @@ class EvalCase(BaseModel):
     expected_confirmation: bool = False
     expected_call_args: list[ExpectedToolCall] = Field(default_factory=list)
     required_phrases: list[str]
+    required_phrase_alternatives: list[list[str]] = Field(default_factory=list)
     forbidden_phrases: list[str]
     history: list[AgentMemoryMessage] = Field(default_factory=list)
     search_mode: Literal["unique", "ambiguous", "none"] = "unique"
@@ -893,9 +894,7 @@ async def _run_case(case: EvalCase, settings: AppSettings, model: ObservedPolzaM
     tools_correct = actual_tools == case.expected_tools or safe_refusal_accepted
     confirmation_correct = (reply.confirmation_id is not None) == case.expected_confirmation
     reply_text = reply.text.casefold()
-    phrases_correct = all(phrase.casefold() in reply_text for phrase in case.required_phrases) and not any(
-        phrase.casefold() in reply_text for phrase in case.forbidden_phrases
-    )
+    phrases_correct = _phrases_correct(case, reply_text)
     action_expected = [expected for expected in case.expected_call_args if expected.tool_name in action_executors]
     action_args_correct = sum(_has_matching_call(expected, calls) for expected in action_expected)
     all_args_correct = all(_has_matching_call(expected, calls) for expected in case.expected_call_args)
@@ -995,6 +994,17 @@ def _has_expected_refusal(case: EvalCase, reply_text: str) -> bool:
     return any(phrase.casefold() in normalized_reply for phrase in case.refusal_phrases)
 
 
+def _phrases_correct(case: EvalCase, normalized_reply: str) -> bool:
+    """Check required wording and one valid phrase from every configured alternative group."""
+    required_phrases_found = all(phrase.casefold() in normalized_reply for phrase in case.required_phrases)
+    alternatives_found = all(
+        any(phrase.casefold() in normalized_reply for phrase in alternatives)
+        for alternatives in case.required_phrase_alternatives
+    )
+    forbidden_phrases_absent = not any(phrase.casefold() in normalized_reply for phrase in case.forbidden_phrases)
+    return required_phrases_found and alternatives_found and forbidden_phrases_absent
+
+
 def _is_safe_refusal(
     case: EvalCase,
     *,
@@ -1038,14 +1048,28 @@ def _failure_reasons(  # noqa: PLR0913
     if not confirmation_correct:
         reasons.append(f"confirmation expected={case.expected_confirmation}")
     missing = [phrase for phrase in case.required_phrases if phrase.casefold() not in reply_text]
+    missing_alternatives = [
+        alternatives
+        for alternatives in case.required_phrase_alternatives
+        if not any(phrase.casefold() in reply_text for phrase in alternatives)
+    ]
     forbidden = [phrase for phrase in case.forbidden_phrases if phrase.casefold() in reply_text]
     if missing:
         reasons.append(f"phrases missing={missing}")
+    if missing_alternatives:
+        reasons.append(f"phrase alternatives missing={missing_alternatives}")
     if forbidden:
         reasons.append(f"phrases forbidden_present={forbidden}")
     if not all_args_correct:
-        wrong = [expected.tool_name for expected in case.expected_call_args if not _has_matching_call(expected, calls)]
-        reasons.append(f"args mismatch tools={wrong}")
+        mismatches = [
+            (expected.tool_name, *_argument_mismatch_fields(expected, calls))
+            for expected in case.expected_call_args
+            if not _has_matching_call(expected, calls)
+        ]
+        wrong_tools = [tool_name for tool_name, _, _ in mismatches]
+        missing_fields = sorted({field for _, missing, _ in mismatches for field in missing})
+        wrong_fields = sorted({field for _, _, wrong in mismatches for field in wrong})
+        reasons.append(f"args mismatch tools={wrong_tools} missing_fields={missing_fields} wrong_fields={wrong_fields}")
     if status != "success":
         reasons.append(f"status={status}")
     return tuple(reasons)
@@ -1171,6 +1195,44 @@ def _has_matching_call(expected: ExpectedToolCall, calls: list[ObservedCall]) ->
     return any(
         call.tool_name == expected.tool_name and _contains_expected_values(call.args, expected.args) for call in calls
     )
+
+
+def _argument_mismatch_fields(expected: ExpectedToolCall, calls: list[ObservedCall]) -> tuple[list[str], list[str]]:
+    """Report only mismatched argument field paths; never include argument values."""
+    candidates = [
+        _argument_mismatch_paths(call.args, expected.args) for call in calls if call.tool_name == expected.tool_name
+    ]
+    if not candidates:
+        return [], []
+    return min(candidates, key=lambda paths: len(paths[0]) + len(paths[1]))
+
+
+def _argument_mismatch_paths(actual: JsonValue, expected: JsonValue, path: str = "") -> tuple[list[str], list[str]]:
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return [], [path]
+        missing: list[str] = []
+        wrong: list[str] = []
+        for key, expected_value in expected.items():
+            field_path = f"{path}.{key}" if path else key
+            if key not in actual:
+                missing.append(field_path)
+                continue
+            nested_missing, nested_wrong = _argument_mismatch_paths(actual[key], expected_value, field_path)
+            missing.extend(nested_missing)
+            wrong.extend(nested_wrong)
+        return missing, wrong
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return [], [path]
+        missing = []
+        wrong = []
+        for index, (actual_value, expected_value) in enumerate(zip(actual, expected, strict=True)):
+            nested_missing, nested_wrong = _argument_mismatch_paths(actual_value, expected_value, f"{path}[{index}]")
+            missing.extend(nested_missing)
+            wrong.extend(nested_wrong)
+        return missing, wrong
+    return ([], []) if actual == expected else ([], [path])
 
 
 def _contains_expected_values(actual: JsonValue, expected: JsonValue) -> bool:

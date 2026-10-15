@@ -905,8 +905,15 @@
         }
       }
     ],
-    "required_phrases": [
-      "отметились"
+    "required_phrases": [],
+    "required_phrase_alternatives": [
+      [
+        "отмет",
+        "запис",
+        "участник",
+        "прид",
+        "список"
+      ]
     ],
     "forbidden_phrases": []
   },
@@ -927,8 +934,15 @@
         }
       }
     ],
-    "required_phrases": [
-      "отметились"
+    "required_phrases": [],
+    "required_phrase_alternatives": [
+      [
+        "отмет",
+        "запис",
+        "участник",
+        "прид",
+        "список"
+      ]
     ],
     "forbidden_phrases": []
   },

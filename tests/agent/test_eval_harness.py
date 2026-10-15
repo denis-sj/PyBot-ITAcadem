@@ -641,6 +641,60 @@ def test_failure_reasons_name_wrong_tools_and_missing_phrases_without_reply_text
     assert not any("синтетический ответ" in reason for reason in reasons)
 
 
+def test_meeting_attendee_phrase_alternatives_accept_equivalent_wording() -> None:
+    from evals.agent.run import _failure_reasons, _load_cases, _phrases_correct
+
+    case = _load_cases(["meeting_attendees_admin"])[0]
+
+    assert _phrases_correct(case, "записались на встречу: анна")
+    assert _phrases_correct(case, "участники встречи: анна")
+    assert _phrases_correct(case, "отметились: анна")
+    assert not _phrases_correct(case, "встреча состоится вечером")
+
+    reasons = _failure_reasons(
+        case,
+        {"get_meeting_attendees"},
+        confirmation_correct=True,
+        reply_text="встреча состоится вечером",
+        all_args_correct=True,
+        calls=[],
+        status="success",
+    )
+    assert any(reason.startswith("phrase alternatives missing=") for reason in reasons)
+
+
+def test_argument_failure_reasons_show_field_names_without_values() -> None:
+    from evals.agent.run import ObservedCall, _failure_reasons, _load_cases
+
+    case = _load_cases(["mentor_meeting_create_competence"])[0]
+    reasons = _failure_reasons(
+        case,
+        {"create_community_meeting"},
+        confirmation_correct=True,
+        reply_text="Подготовлю встречу",
+        all_args_correct=False,
+        calls=[
+            ObservedCall(
+                tool_name="create_community_meeting",
+                args={
+                    "title": "Практика SQL",
+                    "meeting_date": "2026-10-23",
+                    "start_time": "17:00",
+                    "venue": "аудитории клуба",
+                    "audience_kind": "stack",
+                    "audience_target": "Python",
+                },
+            )
+        ],
+        status="success",
+    )
+
+    args_reason = next(reason for reason in reasons if reason.startswith("args mismatch"))
+    assert "audience_kind" in args_reason
+    assert "Python" not in args_reason
+    assert "stack" not in args_reason
+
+
 @pytest.mark.asyncio
 async def test_success_without_usage_records_upper_estimate(tmp_path, monkeypatch) -> None:
     def respond(messages, info):
