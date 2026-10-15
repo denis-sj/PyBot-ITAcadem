@@ -250,15 +250,20 @@ async def test_stack_audience_matches_technology_aliases_and_snapshots_delivered
     assert {item[0] for item in delivery.invitations} == {participant.telegram_id, invited_participant.telegram_id}
 
     # A user who no longer matches may answer only if the private invitation was delivered.
-    await db_session.execute(delete(UserTechnologyStack).where(UserTechnologyStack.user_id == invited_participant.id))
+    await db_session.execute(
+        delete(UserTechnologyStack).where(
+            UserTechnologyStack.user_id.in_((participant.id, opted_out.id, invited_participant.id))
+        )
+    )
     await db_session.commit()
     assert (
         await service.respond(meeting.id, invited_participant.id, "going", now=_CREATED_AT + timedelta(minutes=1))
         == "Отметил: Приду."
     )
-    # The initial blocked/opted-out recipients are not grandfathered into RSVP access.
-    with pytest.raises(DomainError, match="Эта встреча для участников со стеком"):
-        await service.respond(meeting.id, opted_out.id, "going", now=_CREATED_AT + timedelta(minutes=1))
+    # Former members without a delivered invitation are not grandfathered into RSVP access.
+    for former_member in (participant, opted_out):
+        with pytest.raises(DomainError, match="Эта встреча для участников со стеком"):
+            await service.respond(meeting.id, former_member.id, "going", now=_CREATED_AT + timedelta(minutes=1))
 
 
 @pytest.mark.integration
