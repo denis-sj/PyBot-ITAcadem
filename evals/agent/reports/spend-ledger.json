@@ -4487,5 +4487,7 @@
       "estimated": false,
       "source": "cost_rub"
     }
-  ]
+  ],
+  "global_limit_rub": "64.1622182716",
+  "stop_limit_rub": "59.1622182716"
 }

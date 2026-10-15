@@ -91,7 +91,7 @@ def test_goal_actions_are_available_to_registered_users_and_require_confirmation
     for name in ("set_my_goal", "mark_my_goal_achieved"):
         entry = next(entry for entry in registry.entries if entry.tool.name == name)
         assert entry.tool.requires_approval is True
-        assert entry.allowed_roles == frozenset()
+        assert entry.metadata.roles == frozenset({"Admin", "Mentor", "Student"})
         assert name in registry.for_roles(frozenset({"Student"})).policies
         assert name in registry.for_roles(frozenset({"Admin"})).policies
 

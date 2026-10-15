@@ -23,7 +23,7 @@ from pybot.core.constants import YEKATERINBURG_TZ
 from pybot.dto.agent import AgentReplyStatus
 from pybot.services.agent import service as agent_service_module
 from pybot.services.agent.service import build_agent_instructions
-from pybot.services.agent.tools import AgentDependencies, AgentToolRegistry, RegisteredAgentTool
+from pybot.services.agent.tools import AgentDependencies, AgentToolMetadata, AgentToolRegistry, RegisteredAgentTool
 from tests.agent.conftest import build_service
 
 
@@ -275,8 +275,8 @@ async def test_simultaneous_model_tools_run_sequentially(agent_settings, convers
 
     registry = AgentToolRegistry(
         (
-            RegisteredAgentTool(Tool(track_action, name="first_action")),
-            RegisteredAgentTool(Tool(track_action, name="second_action")),
+            _test_entry(track_action, name="first_action"),
+            _test_entry(track_action, name="second_action"),
         )
     )
     service, _, _ = build_service(agent_settings, model=FunctionModel(model), registry=registry)
@@ -302,8 +302,37 @@ def action_registry(executions, *, roles=frozenset({"Admin"})):
         executions.append("changed")
         return "Действие выполнено"
 
-    tool = Tool(change_data, requires_approval=True)
-    return AgentToolRegistry((RegisteredAgentTool(tool, roles, lambda call, recipient: "Изменить тестовые данные"),))
+    return AgentToolRegistry(
+        (
+            _test_entry(
+                change_data,
+                roles=roles,
+                requires_confirmation=True,
+                summary=lambda call, recipient: "Изменить тестовые данные",
+            ),
+        )
+    )
+
+
+def _test_entry(
+    function,
+    *,
+    name=None,
+    roles=frozenset({"Admin", "Mentor", "Student"}),
+    requires_confirmation=False,
+    summary=None,
+):
+    description = function.__doc__ or "Тестовый инструмент для проверки поведения агента."
+    tool = Tool(function, name=name, description=description, requires_approval=requires_confirmation)
+    metadata = AgentToolMetadata(
+        name=tool.name,
+        roles=roles,
+        kind="action" if requires_confirmation else "read",
+        requires_confirmation=requires_confirmation,
+        description=description,
+        service="TestAgentService",
+    )
+    return RegisteredAgentTool(tool, metadata, summary)
 
 
 async def defer_action(settings, conversation, executions):
@@ -358,8 +387,8 @@ async def test_one_confirmation_executes_only_first_of_multiple_actions(agent_se
 
     registry = AgentToolRegistry(
         (
-            RegisteredAgentTool(Tool(first_action, requires_approval=True), roles, summary),
-            RegisteredAgentTool(Tool(second_action, requires_approval=True), roles, summary),
+            _test_entry(first_action, roles=roles, requires_confirmation=True, summary=summary),
+            _test_entry(second_action, roles=roles, requires_confirmation=True, summary=summary),
         )
     )
 
@@ -425,7 +454,14 @@ async def test_slow_confirmed_action_is_not_limited_by_model_timeout(agent_setti
         return "Медленное действие завершено"
 
     registry = AgentToolRegistry(
-        (RegisteredAgentTool(Tool(slow_action, requires_approval=True), roles, lambda call, recipient: "Подтвердить"),)
+        (
+            _test_entry(
+                slow_action,
+                roles=roles,
+                requires_confirmation=True,
+                summary=lambda call, recipient: "Подтвердить",
+            ),
+        )
     )
     service, users, _ = build_service(
         agent_settings,
@@ -463,10 +499,11 @@ async def test_action_result_survives_memory_failure_without_followup_model_requ
 
     registry = AgentToolRegistry(
         (
-            RegisteredAgentTool(
-                Tool(change_data, requires_approval=True),
-                frozenset({"Admin"}),
-                lambda call, recipient: "Подтвердить",
+            _test_entry(
+                change_data,
+                roles=frozenset({"Admin"}),
+                requires_confirmation=True,
+                summary=lambda call, recipient: "Подтвердить",
             ),
         )
     )
@@ -687,9 +724,9 @@ def test_approval_summary_mandatory_and_duplicate_tools_rejected():
         return "test"
 
     with pytest.raises(ValueError, match="confirmation summary"):
-        AgentToolRegistry((RegisteredAgentTool(Tool(action, requires_approval=True)),))
+        AgentToolRegistry((_test_entry(action, requires_confirmation=True),))
     with pytest.raises(ValueError, match="Duplicate"):
-        AgentToolRegistry((RegisteredAgentTool(Tool(action)), RegisteredAgentTool(Tool(action))))
+        AgentToolRegistry((_test_entry(action), _test_entry(action)))
 
 
 @pytest.mark.parametrize(

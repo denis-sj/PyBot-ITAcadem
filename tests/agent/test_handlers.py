@@ -191,6 +191,22 @@ async def test_answer_keeps_chat_topic_reply_plain_text_and_queue(agent_settings
 
 
 @pytest.mark.asyncio
+async def test_agent_tool_names_and_goal_confirmation_are_sent_as_plain_text(agent_settings, agent_bot, monkeypatch):
+    service, _, memory = build_service(agent_settings)
+    memory.mark_reply = AsyncMock()
+    hostile_text = 'Помощник: <b>x</b> и <a href="tg://user?id=1">Аня</a>. Записал твою новую цель: «<b>x</b>».'
+    monkeypatch.setattr(service, "answer", AsyncMock(return_value=AgentReply(text=hostile_text)))
+    agent_bot.send_message = AsyncMock(return_value=build_message(sender_id=99, sender_is_bot=True, message_id=50))
+
+    await handle_agent_message(build_message(), service, service.runtime, memory, bot=agent_bot)
+
+    sent_message = agent_bot.send_message.await_args
+    assert sent_message is not None
+    assert sent_message.kwargs["text"] == hostile_text
+    assert sent_message.kwargs["parse_mode"] is None
+
+
+@pytest.mark.asyncio
 async def test_accepted_registered_message_shows_typing_in_its_topic_and_stops_after_reply(
     agent_settings, agent_bot, monkeypatch
 ):

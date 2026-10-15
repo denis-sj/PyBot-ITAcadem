@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "model": "deepseek/deepseek-v4.1-flash",
+  "tokenizer": "cl100k_base",
+  "measured_on": "2026-10-15",
+  "budget_method": "15% headroom above measured prefix; STOP at 95% of the committed ceiling",
+  "roles": {
+    "student": 4243,
+    "mentor": 4643,
+    "admin": 6379
+  }
+}

@@ -12,7 +12,6 @@ READ_TOOLS = {
     "get_my_technology_stack",
     "find_technology_helpers",
     "get_upcoming_meetings",
-    "get_meeting_attendees",
     "get_my_attendance",
     "get_my_visits",
     "get_attendance_week_top",
@@ -43,29 +42,31 @@ def test_registered_user_sees_public_reads_and_dynamic_meeting_actions():
         "remove_my_technology",
         "set_my_goal",
         "mark_my_goal_achieved",
-        "reschedule_community_meeting",
-        "cancel_community_meeting",
     }
     assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
     assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
     role_request = next(entry for entry in registry.entries if entry.tool.name == "request_mentor_role")
     assert role_request.tool.requires_approval
-    assert role_request.allowed_roles == frozenset({"Student"})
-    for tool_name in ("get_upcoming_meetings", "get_meeting_attendees"):
-        meeting_read = next(entry for entry in registry.entries if entry.tool.name == tool_name)
-        assert meeting_read.allowed_roles == frozenset()
+    assert role_request.metadata.roles == frozenset({"Student"})
+    upcoming_meetings = next(entry for entry in registry.entries if entry.tool.name == "get_upcoming_meetings")
+    upcoming_meeting_roles = upcoming_meetings.metadata.roles
+    assert isinstance(upcoming_meeting_roles, frozenset)
+    assert "Student" in upcoming_meeting_roles
+    meeting_attendees = next(entry for entry in registry.entries if entry.tool.name == "get_meeting_attendees")
+    assert meeting_attendees.metadata.roles == frozenset({"Admin", "Mentor"})
     create_meeting = next(entry for entry in registry.entries if entry.tool.name == "create_community_meeting")
-    assert create_meeting.allowed_roles == frozenset({"Admin", "Mentor"})
+    assert create_meeting.metadata.roles == frozenset({"Admin", "Mentor"})
     assert create_meeting.tool.requires_approval is True
     assert create_meeting.confirmation_previewer is not None
     for tool_name in ("reschedule_community_meeting", "cancel_community_meeting"):
         meeting_action = next(entry for entry in registry.entries if entry.tool.name == tool_name)
+        assert meeting_action.metadata.roles == frozenset({"Admin", "Mentor"})
         assert meeting_action.tool.requires_approval is True
         assert meeting_action.confirmation_previewer is not None
     for tool_name in ("set_my_technology", "remove_my_technology"):
         entry = next(entry for entry in registry.entries if entry.tool.name == tool_name)
         assert entry.tool.requires_approval
-        assert entry.allowed_roles == frozenset()
+        assert entry.metadata.roles == frozenset({"Admin", "Mentor", "Student"})
 
 
 @pytest.mark.asyncio
