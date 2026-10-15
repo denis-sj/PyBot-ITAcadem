@@ -9,6 +9,7 @@ from .attendance import (
     AttendanceImportStatus,
     AttendanceRecord,
 )
+from .community_meetings import CommunityMeeting, CommunityMeetingInvitee, CommunityMeetingResponse
 from .role_module import (
     Role,
     RoleEvent,
@@ -43,6 +44,9 @@ __all__ = [
     "Base",
     # shared
     "Achievement",
+    "CommunityMeeting",
+    "CommunityMeetingInvitee",
+    "CommunityMeetingResponse",
     # user_module
     "User",
     "UserGoal",

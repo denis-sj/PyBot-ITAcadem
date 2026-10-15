@@ -6,7 +6,16 @@ from typing import Any
 from taskiq import AsyncBroker, AsyncTaskiqDecoratedTask
 
 from ....core.config import AppSettings
-from . import attendance, broadcast, community_achievements, community_checkins, leaderboard, notification, system
+from . import (
+    attendance,
+    broadcast,
+    community_achievements,
+    community_checkins,
+    community_meetings,
+    leaderboard,
+    notification,
+    system,
+)
 
 
 @dataclass(slots=True)
@@ -23,11 +32,13 @@ class TaskRegistry:
     checkin_reminders_task: AsyncTaskiqDecoratedTask[..., Any]
     streak_warnings_task: AsyncTaskiqDecoratedTask[..., Any]
     pulse_report_task: AsyncTaskiqDecoratedTask[..., Any]
+    community_meeting_task: AsyncTaskiqDecoratedTask[..., Any]
 
 
 def register_all_tasks(*, broker: AsyncBroker, settings: AppSettings) -> TaskRegistry:
     achievement_tasks = community_achievements.register_tasks(broker=broker, settings=settings)
     checkin_tasks = community_checkins.register_tasks(broker=broker, settings=settings)
+    meeting_task = community_meetings.register_tasks(broker=broker, settings=settings)
     return TaskRegistry(
         broadcast_task=broadcast.register_tasks(broker=broker),
         notification_task=notification.register_tasks(broker=broker),
@@ -41,6 +52,7 @@ def register_all_tasks(*, broker: AsyncBroker, settings: AppSettings) -> TaskReg
         checkin_reminders_task=checkin_tasks[1],
         streak_warnings_task=checkin_tasks[2],
         pulse_report_task=checkin_tasks[3],
+        community_meeting_task=meeting_task,
     )
 
 

@@ -14,6 +14,7 @@
 - [Примеры использования](examples.md)
 - [ИИ-агент](ai-agent.md)
 - [Цели и еженедельный чекин](community-checkins.md)
+- [Встречи сообщества](community-meetings.md)
 
 ## С чего начать
 

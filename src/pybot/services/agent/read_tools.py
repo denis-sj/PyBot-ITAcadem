@@ -28,6 +28,18 @@ async def get_my_goal(ctx: RunContext[AgentDependencies]) -> str:
     return await ctx.deps.reads.get_my_goal(user.id)
 
 
+async def get_upcoming_meetings(ctx: RunContext[AgentDependencies]) -> str:
+    """Ближайшие встречи, доступные пользователю по аудитории."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_upcoming_meetings(user.id)
+
+
+async def get_meeting_attendees(ctx: RunContext[AgentDependencies], meeting_id: int) -> str:
+    """Кто придёт на встречу (только создатель или Admin)."""
+    user = await ctx.deps.get_actor()
+    return await ctx.deps.reads.get_meeting_attendees(meeting_id, user.id)
+
+
 async def get_my_technology_stack(ctx: RunContext[AgentDependencies]) -> str:
     """Мой стек технологий с уровнями «знаю» и «изучаю»."""
     user = await ctx.deps.get_actor()

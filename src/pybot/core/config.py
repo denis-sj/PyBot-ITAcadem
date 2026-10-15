@@ -290,6 +290,8 @@ class AppSettings(BaseSettings):
     )
     agent_group_chat_id: int | None = Field(None, alias="AGENT_GROUP_CHAT_ID", lt=0)
     agent_topic_id: int | None = Field(None, alias="AGENT_TOPIC_ID", gt=0)
+    events_chat_id: int | None = Field(None, alias="EVENTS_CHAT_ID", lt=0)
+    events_topic_id: int | None = Field(None, alias="EVENTS_TOPIC_ID", gt=0)
     agent_memory_max_messages: int = Field(10, alias="AGENT_MEMORY_MAX_MESSAGES", ge=2, le=10)
     agent_memory_ttl_s: int = Field(1800, alias="AGENT_MEMORY_TTL_S", ge=1, le=1800)
     agent_reply_mark_ttl_s: int = Field(604800, alias="AGENT_REPLY_MARK_TTL_S", ge=1)
@@ -336,6 +338,13 @@ class AppSettings(BaseSettings):
             raise ValueError("POLZA_API_KEY must be set when AGENT_ENABLED=true")
         return self
 
+    @model_validator(mode="after")
+    def validate_events_destination(self) -> Self:
+        """Require both event destination identifiers or leave the destination disabled."""
+        if (self.events_chat_id is None) != (self.events_topic_id is None):
+            raise ValueError("EVENTS_CHAT_ID and EVENTS_TOPIC_ID must be configured together")
+        return self
+
     @field_validator("agent_model")
     @classmethod
     def normalize_agent_model(cls, value: str) -> str:
@@ -345,7 +354,7 @@ class AppSettings(BaseSettings):
             raise ValueError("AGENT_MODEL must be non-empty")
         return normalized
 
-    @field_validator("agent_group_chat_id", "agent_topic_id", mode="before")
+    @field_validator("agent_group_chat_id", "agent_topic_id", "events_chat_id", "events_topic_id", mode="before")
     @classmethod
     def parse_agent_optional_id(cls, value: int | str | None) -> int | None:
         """Allow blank optional IDs in .env.example."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
 from pydantic import JsonValue, TypeAdapter
@@ -39,6 +39,18 @@ from .goal_action_tools import (
     validate_goal_completion,
     validate_my_goal,
 )
+from .meeting_action_tools import (
+    cancel_community_meeting,
+    create_community_meeting,
+    meeting_confirmation_summary,
+    preview_meeting_cancellation,
+    preview_meeting_creation,
+    preview_meeting_reschedule,
+    reschedule_community_meeting,
+    validate_meeting_cancellation,
+    validate_meeting_creation,
+    validate_meeting_reschedule,
+)
 from .read_tools import (
     ADMIN_AGENT_ROLES,
     find_technology_helpers,
@@ -50,6 +62,7 @@ from .read_tools import (
     get_competences_catalog,
     get_current_chat_id,
     get_current_month,
+    get_meeting_attendees,
     get_my_achievements,
     get_my_attendance,
     get_my_competences,
@@ -60,6 +73,7 @@ from .read_tools import (
     get_my_visits,
     get_points_leaderboard,
     get_roles_catalog,
+    get_upcoming_meetings,
     get_user_attendance,
     get_user_profile,
 )
@@ -83,6 +97,7 @@ class RegisteredAgentTool:
     allowed_roles: frozenset[str] = frozenset()
     confirmation_summary: Callable[[ToolCallPart, str | None], str] | None = None
     uses_broadcast_roles: bool = False
+    confirmation_previewer: Callable[[ToolCallPart, AgentDependencies], Awaitable[str]] | None = None
 
 
 class AgentToolRegistry:
@@ -105,6 +120,8 @@ class AgentToolRegistry:
                     get_my_goal,
                     get_my_technology_stack,
                     find_technology_helpers,
+                    get_upcoming_meetings,
+                    get_meeting_attendees,
                     get_my_attendance,
                     get_my_visits,
                     get_attendance_week_top,
@@ -221,6 +238,28 @@ class AgentToolRegistry:
                     confirmation_summary=goal_confirmation_summary,
                 ),
             )
+            meeting_action_tools = (
+                RegisteredAgentTool(
+                    Tool(create_community_meeting, args_validator=validate_meeting_creation, requires_approval=True),
+                    frozenset({"Admin", "Mentor"}),
+                    meeting_confirmation_summary,
+                    confirmation_previewer=preview_meeting_creation,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        reschedule_community_meeting, args_validator=validate_meeting_reschedule, requires_approval=True
+                    ),
+                    confirmation_summary=meeting_confirmation_summary,
+                    confirmation_previewer=preview_meeting_reschedule,
+                ),
+                RegisteredAgentTool(
+                    Tool(
+                        cancel_community_meeting, args_validator=validate_meeting_cancellation, requires_approval=True
+                    ),
+                    confirmation_summary=meeting_confirmation_summary,
+                    confirmation_previewer=preview_meeting_cancellation,
+                ),
+            )
             broadcast_tool = RegisteredAgentTool(
                 Tool(
                     send_broadcast,
@@ -237,6 +276,7 @@ class AgentToolRegistry:
                 *admin_action_tools,
                 *stack_action_tools,
                 *goal_action_tools,
+                *meeting_action_tools,
                 broadcast_tool,
             )
         else:
@@ -261,7 +301,11 @@ class AgentToolRegistry:
                 recipient = await self._recipient_label(canonical_args, dependencies)
                 if "telegram_id" in canonical_args and recipient is None:
                     return None
-                return canonical_call, entry.confirmation_summary(canonical_call, recipient)
+                if entry.confirmation_previewer is not None:
+                    summary = await entry.confirmation_previewer(canonical_call, dependencies)
+                else:
+                    summary = entry.confirmation_summary(canonical_call, recipient)
+                return canonical_call, summary
         raise AgentAccessDeniedError
 
     @staticmethod

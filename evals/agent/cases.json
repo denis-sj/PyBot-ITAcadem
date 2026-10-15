@@ -617,5 +617,14 @@
     "required_phrases": ["ID из пересылки"],
     "forbidden_phrases": ["списать участнику"],
     "is_forwarded": true
+  },
+  {
+    "name": "student_upcoming_meetings",
+    "question": "Какие ближайшие встречи доступны мне?",
+    "roles": ["Student"],
+    "expected_tools": ["get_upcoming_meetings"],
+    "required_phrases": ["ближайших встреч"],
+    "forbidden_phrases": [],
+    "private_chat": true
   }
 ]

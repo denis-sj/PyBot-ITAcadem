@@ -29,6 +29,7 @@ from .taskiq_community_achievement_schedule import (
 from .taskiq_community_checkin_schedule import (
     ensure_community_checkin_schedules as ensure_community_checkin_schedules_in_source,
 )
+from .taskiq_community_meeting_schedule import ensure_community_meeting_schedule
 from .taskiq_weekly_leaderboard_schedule import (
     LEADERBOARD_WEEKLY_SCHEDULE_ID,
     LEADERBOARD_WEEKLY_TASK_NAME,
@@ -277,6 +278,31 @@ async def _on_client_startup_community_checkins(_state: TaskiqState) -> None:
     await ensure_community_checkin_schedules()
 
 
+def _resolve_community_meeting_kicker() -> AsyncKicker[Any, Any]:
+    return get_taskiq_task_registry().community_meeting_task.kicker()
+
+
+async def ensure_community_meeting_schedules(
+    *,
+    broker: AsyncBroker | None = None,
+    schedule_source: ListRedisScheduleSource | None = None,
+    settings: AppSettings | None = None,
+) -> None:
+    """Register the recurring meeting reminder and finish-state task."""
+    runtime_settings = settings or get_settings()
+    runtime_broker = broker or get_taskiq_broker(runtime_settings)
+    if not runtime_broker.is_scheduler_process:
+        return
+    await ensure_community_meeting_schedule(
+        source=schedule_source or get_taskiq_schedule_source(runtime_settings),
+        resolve_kicker=_resolve_community_meeting_kicker,
+    )
+
+
+async def _on_client_startup_community_meetings(_state: TaskiqState) -> None:
+    await ensure_community_meeting_schedules()
+
+
 def _resolve_publish_weekly_leaderboard_kicker() -> AsyncKicker[Any, Any]:
     return get_taskiq_weekly_leaderboard_task().kicker()
 
@@ -352,6 +378,7 @@ def get_taskiq_broker(settings: AppSettings | None = None) -> AsyncBroker:
     broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_attendance)
     broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_community_achievements)
     broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_community_checkins)
+    broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_community_meetings)
     register_weekly_leaderboard_wiring(
         broker,
         ensure_weekly_leaderboard_schedule=ensure_weekly_leaderboard_schedule,

@@ -11,6 +11,7 @@ from .notification_dispatch_port import NotificationDispatchPort
 from .notification_port import NotificationPort
 from .technology_stack_parser import TechnologyStackParserPort
 from .pulse_report_delivery import PulseReportDeliveryPort
+from .meeting_delivery import MeetingDeliveryPort
 
 __all__ = [
     "AttendanceRecognitionPort",
@@ -26,4 +27,5 @@ __all__ = [
     "SupportsPing",
     "TechnologyStackParserPort",
     "PulseReportDeliveryPort",
+    "MeetingDeliveryPort",
 ]

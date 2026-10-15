@@ -11,6 +11,8 @@ READ_TOOLS = {
     "get_my_goal",
     "get_my_technology_stack",
     "find_technology_helpers",
+    "get_upcoming_meetings",
+    "get_meeting_attendees",
     "get_my_attendance",
     "get_my_visits",
     "get_attendance_week_top",
@@ -32,7 +34,7 @@ ADMIN_READ_TOOLS = {
 }
 
 
-def test_registered_user_sees_stage_one_read_tools_without_approval():
+def test_registered_user_sees_public_reads_and_dynamic_meeting_actions():
     registry = AgentToolRegistry()
     assert set(registry.for_roles(frozenset({"Student"})).policies) == READ_TOOLS | {
         "bot_capabilities",
@@ -41,12 +43,25 @@ def test_registered_user_sees_stage_one_read_tools_without_approval():
         "remove_my_technology",
         "set_my_goal",
         "mark_my_goal_achieved",
+        "reschedule_community_meeting",
+        "cancel_community_meeting",
     }
     assert ADMIN_READ_TOOLS.isdisjoint(registry.for_roles(frozenset({"Student"})).policies)
     assert ADMIN_READ_TOOLS <= registry.for_roles(frozenset({"Admin"})).policies.keys()
     role_request = next(entry for entry in registry.entries if entry.tool.name == "request_mentor_role")
     assert role_request.tool.requires_approval
     assert role_request.allowed_roles == frozenset({"Student"})
+    for tool_name in ("get_upcoming_meetings", "get_meeting_attendees"):
+        meeting_read = next(entry for entry in registry.entries if entry.tool.name == tool_name)
+        assert meeting_read.allowed_roles == frozenset()
+    create_meeting = next(entry for entry in registry.entries if entry.tool.name == "create_community_meeting")
+    assert create_meeting.allowed_roles == frozenset({"Admin", "Mentor"})
+    assert create_meeting.tool.requires_approval is True
+    assert create_meeting.confirmation_previewer is not None
+    for tool_name in ("reschedule_community_meeting", "cancel_community_meeting"):
+        meeting_action = next(entry for entry in registry.entries if entry.tool.name == tool_name)
+        assert meeting_action.tool.requires_approval is True
+        assert meeting_action.confirmation_previewer is not None
     for tool_name in ("set_my_technology", "remove_my_technology"):
         entry = next(entry for entry in registry.entries if entry.tool.name == tool_name)
         assert entry.tool.requires_approval
@@ -60,6 +75,7 @@ def test_registered_user_sees_stage_one_read_tools_without_approval():
         ("get_my_profile", "get_profile", "actor"),
         ("get_my_achievements", "get_my_achievements", "id"),
         ("get_my_goal", "get_my_goal", "id"),
+        ("get_upcoming_meetings", "get_upcoming_meetings", "id"),
         ("get_my_technology_stack", "get_my_stack", "id"),
         ("get_my_attendance", "get_attendance_summary", "id"),
         ("get_my_visits", "get_visits", "period"),
@@ -102,6 +118,28 @@ async def test_model_dispatches_reads_for_authenticated_actor(
 
 
 @pytest.mark.asyncio
+async def test_meeting_attendees_read_uses_meeting_id_and_authenticated_user() -> None:
+    from types import SimpleNamespace
+    from typing import cast
+
+    from pydantic_ai import RunContext
+
+    from pybot.services.agent.dependencies import AgentDependencies
+    from pybot.services.agent.read_tools import get_meeting_attendees
+
+    reads = Mock()
+    reads.get_meeting_attendees = AsyncMock(return_value="Придут: участники")
+    actor = SimpleNamespace(id=42)
+    dependencies = SimpleNamespace(get_actor=AsyncMock(return_value=actor), reads=reads)
+    context = SimpleNamespace(deps=dependencies)
+
+    result = await get_meeting_attendees(cast(RunContext[AgentDependencies], context), 19)
+
+    assert result == "Придут: участники"
+    reads.get_meeting_attendees.assert_awaited_once_with(19, actor.id)
+
+
+@pytest.mark.asyncio
 async def test_info_uses_canonical_text(agent_settings, conversation):
     from pydantic_ai.models.test import TestModel
 
@@ -133,6 +171,8 @@ async def test_each_read_rechecks_registration_before_service_call(agent_setting
     with pytest.raises(AgentAccessDeniedError):
         if tool_name == "find_technology_helpers":
             await read_tools.find_technology_helpers(ctx, "Python")
+        elif tool_name == "get_meeting_attendees":
+            await read_tools.get_meeting_attendees(ctx, 19)
         else:
             await getattr(read_tools, tool_name)(ctx)
     assert reads.mock_calls == []

@@ -15,8 +15,10 @@
 
 TaskIQ scheduler при запуске идемпотентно регистрирует расписания функций сообщества в часовом поясе
 `Asia/Yekaterinburg`: опрос в среду в 15:00, напоминание в четверг в 11:00, PDF-отчёт в четверг в 15:00
-и предупреждение о серии в субботу в 12:00. Для них не нужны дополнительные переменные окружения; индивидуальные
-переключатели хранятся в PostgreSQL и доступны в боте через `/notifications`.
+и предупреждение о серии в субботу в 12:00. Встречи используют отдельную ежеминутную задачу напоминаний и смены
+статуса; для анонсов всем задайте `EVENTS_CHAT_ID` и `EVENTS_TOPIC_ID` вместе или настройте тему агента как fallback.
+Для остальных расписаний не нужны дополнительные переменные окружения; индивидуальные переключатели хранятся в PostgreSQL
+и доступны в боте через `/notifications`.
 
 Production observability now also has a documented Loki retention path: the root `DEPLOYMENT.md` describes the 14-day retention target, the pinned `grafana/loki:3.5.0 -verify-config=true` validation command, the operator choice about preserving or recreating `pybot_loki_data_prod`, and the controlled rollout/rehearsal procedure.
 

@@ -79,6 +79,7 @@ def test_eval_cases_cover_required_scenarios_and_have_unique_names() -> None:
         "admin_broadcast_requires_audience",
         "admin_two_actions_one_confirmation",
         "student_injection_grant_admin",
+        "student_upcoming_meetings",
         "student_followup_previous_month",
         "off_topic",
     } <= names

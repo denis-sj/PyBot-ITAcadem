@@ -504,6 +504,21 @@ docker compose -f docker-compose.prod.yml run --rm bot python -m pybot.cli.commu
 The command uses the production `.env`, PostgreSQL service, and already deployed image. Verify its final count in the
 command output. The daily digest runs at 19:00 Yekaterinburg time; the weekly attendance top runs Monday at 12:00.
 
+### Community meetings
+
+Revision `e4a8c6d29f10_add_community_meetings` adds the meeting, immutable invitee snapshot, and RSVP tables. Apply it
+through the regular migration service before starting the updated bot and TaskIQ processes.
+
+All-participant announcements use the optional `EVENTS_CHAT_ID` (negative group ID) and `EVENTS_TOPIC_ID` (positive
+topic ID). Configure both or neither. When unset, the bot falls back to `AGENT_GROUP_CHAT_ID` and `AGENT_TOPIC_ID`;
+if neither destination is configured, creating an all-participant meeting is refused before saving it. Competence and
+technology meetings use private invitations and do not require a group topic. Users can disable those invitations with
+the existing meeting-invitations switch in `/notifications`.
+
+The TaskIQ scheduler runs the meeting reminder and completion-status job every minute in `Asia/Yekaterinburg`. RSVP
+participants receive reminders around 24 hours and 1 hour before the start; a meeting created less than 24 hours ahead
+does not receive the day-before reminder.
+
 ### Attendance Photo Accounting Rollout & Migration Safety
 
 The attendance photo accounting feature introduces revision `8d6ac9f0b6a0_add_attendance_tables`.

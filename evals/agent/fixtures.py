@@ -26,6 +26,10 @@ class EvalReads(AgentReadService):
         del user_id, technology
         return "Кстати, в Python у нас разбираются: @mentor_python (ментор), Иван Петров. Можешь написать им."
 
+    async def get_upcoming_meetings(self, user_id: int) -> str:
+        del user_id
+        return "Ближайших встреч для тебя пока нет."
+
     async def get_profile_for_telegram_id(self, telegram_id: int) -> str:
         return "Профиль участника: Тест; академические баллы: 75; репутационные баллы: 12; роль Student."
 

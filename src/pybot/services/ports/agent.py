@@ -9,6 +9,7 @@ from ...core.constants import PointsTypeEnum, RoleEnum
 from ...domain.services.technology_stack import TechnologyLevel
 from ...dto import UserReadDTO
 from ...dto.agent import AgentConversation, AgentMemoryMessage
+from ...dto.community_meetings import CommunityMeetingDraftDTO
 from ...dto.role_dto import CreateRoleRequestDTO
 
 AgentBroadcastAudience = Literal["all", "role", "competence"]
@@ -115,6 +116,32 @@ class AgentActionsPort(Protocol):
 
     async def complete_my_goal(self, user_id: int) -> str:
         """Mark the caller's active goal complete after confirmation."""
+        ...
+
+    async def preview_meeting_creation(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Validate and summarize a meeting before confirmation."""
+        ...
+
+    async def create_meeting(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Create a meeting after confirmation."""
+        ...
+
+    async def preview_meeting_reschedule(
+        self, user_id: int, meeting_id: int, meeting_date: date, start_time: str
+    ) -> str:
+        """Validate and summarize a meeting reschedule before confirmation."""
+        ...
+
+    async def reschedule_meeting(self, user_id: int, meeting_id: int, meeting_date: date, start_time: str) -> str:
+        """Reschedule a meeting after confirmation."""
+        ...
+
+    async def preview_meeting_cancellation(self, user_id: int, meeting_id: int) -> str:
+        """Validate and summarize a meeting cancellation before confirmation."""
+        ...
+
+    async def cancel_meeting(self, user_id: int, meeting_id: int) -> str:
+        """Cancel a meeting after confirmation."""
         ...
 
     async def validate_visit_update(self, telegram_id: int, visit_date: date, start_time: time, end_time: time) -> None:

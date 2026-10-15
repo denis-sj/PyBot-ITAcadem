@@ -30,9 +30,12 @@ from ..infrastructure.adapters.agent_memory import RedisAgentMemory
 from ..infrastructure.adapters.polza_agent import PolzaAgentModel
 from ..infrastructure.adapters.pydantic_ai_checkin_response_parser import PydanticAICheckinResponseParser
 from ..infrastructure.community_goal_repository import CommunityGoalRepository
+from ..infrastructure.community_meeting_repository import CommunityMeetingRepository
 from ..infrastructure.health import RedisPingProbe, SessionExecutor
 from ..infrastructure.ports import LoggingNotificationService, TelegramNotificationService
+from ..infrastructure.ports.logging_meeting_delivery import LoggingMeetingDelivery
 from ..infrastructure.ports.logging_pulse_report_delivery import LoggingPulseReportDelivery
+from ..infrastructure.ports.telegram_meeting_delivery import TelegramMeetingDelivery
 from ..infrastructure.ports.telegram_pulse_report_delivery import TelegramPulseReportDelivery
 from ..infrastructure.taskiq.taskiq_community_achievement_dispatcher import TaskIQCommunityAchievementDispatcher
 from ..infrastructure.taskiq.taskiq_notification_dispatcher import TaskIQNotificationDispatcher
@@ -60,6 +63,7 @@ from ..services.agent.tools import AgentToolRegistry
 from ..services.broadcast import BroadcastService
 from ..services.community_checkins import CommunityCheckinService
 from ..services.community_goals import CommunityGoalService
+from ..services.community_meetings import CommunityMeetingService
 from ..services.competence import CompetenceService
 from ..services.health import HealthService
 from ..services.levels import LevelService
@@ -69,6 +73,7 @@ from ..services.ports import (
     AttendanceRecognitionPort,
     CheckinResponseParserPort,
     CommunityAchievementDispatchPort,
+    MeetingDeliveryPort,
     NotificationDispatchPort,
     NotificationPort,
     PulseReportDeliveryPort,
@@ -157,6 +162,10 @@ class RepositoryProvider(Provider):
     @provide(scope=Scope.APP)
     def community_goal_repository(self) -> CommunityGoalRepository:
         return CommunityGoalRepository()
+
+    @provide(scope=Scope.APP)
+    def community_meeting_repository(self) -> CommunityMeetingRepository:
+        return CommunityMeetingRepository()
 
     @provide(scope=Scope.APP)
     def user_notification_preference_repository(self) -> UserNotificationPreferenceRepository:
@@ -397,6 +406,16 @@ class ServiceProvider(Provider):
         )
 
     @provide(scope=Scope.REQUEST)
+    def community_meeting_service(
+        self,
+        db: AsyncSession,
+        community_meeting_repository: CommunityMeetingRepository,
+        settings: AppSettings,
+        meeting_delivery: MeetingDeliveryPort,
+    ) -> CommunityMeetingService:
+        return CommunityMeetingService(db, community_meeting_repository, settings, meeting_delivery)
+
+    @provide(scope=Scope.REQUEST)
     def pulse_report_service(  # noqa: PLR0913
         self,
         db: AsyncSession,
@@ -472,6 +491,7 @@ class AgentProvider(Provider):
         community_achievements: CommunityAchievementService,
         technology_stack: TechnologyStackService,
         community_goals: CommunityGoalService,
+        community_meetings: CommunityMeetingService,
     ) -> AgentReadService:
         return AgentReadService(
             profiles,
@@ -484,6 +504,7 @@ class AgentProvider(Provider):
             community_achievements,
             technology_stack,
             community_goals,
+            community_meetings,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -501,6 +522,7 @@ class AgentProvider(Provider):
         technology_stack: TechnologyStackService,
         settings: AppSettings,
         community_goals: CommunityGoalService,
+        community_meetings: CommunityMeetingService,
     ) -> AgentActionService:
         return AgentActionService(
             role_request_service,
@@ -515,6 +537,7 @@ class AgentProvider(Provider):
             settings,
             technology_stack,
             community_goals,
+            community_meetings,
         )
 
     @provide(scope=Scope.REQUEST)
@@ -612,6 +635,14 @@ class PortsProvider(Provider):
             return TelegramPulseReportDelivery(bot)
         if settings.notification_backend == "logging":
             return LoggingPulseReportDelivery()
+        raise ValueError(f"Unsupported NOTIFICATION_BACKEND value: {settings.notification_backend}")
+
+    @provide(scope=Scope.APP)
+    async def meeting_delivery(self, settings: AppSettings, bot: Bot) -> MeetingDeliveryPort:
+        if settings.notification_backend == "telegram":
+            return TelegramMeetingDelivery(bot)
+        if settings.notification_backend == "logging":
+            return LoggingMeetingDelivery()
         raise ValueError(f"Unsupported NOTIFICATION_BACKEND value: {settings.notification_backend}")
 
     @provide(scope=Scope.APP)

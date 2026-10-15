@@ -26,6 +26,7 @@ from ...dto import (
     UserReadDTO,
 )
 from ...dto.attendance import AttendanceRecordReadDTO
+from ...dto.community_meetings import CommunityMeetingDraftDTO
 from ...dto.competence_dto import CompetenceReadDTO
 from ...dto.role_dto import CreateRoleRequestDTO
 from ...dto.value_objects import Points
@@ -34,6 +35,7 @@ from ...utils import normalize_message
 from ..attendance_service import AttendanceService
 from ..broadcast import BroadcastService
 from ..community_goals import CommunityGoalService
+from ..community_meetings import CommunityMeetingService
 from ..competence import CompetenceService
 from ..notification_facade import NotificationFacade
 from ..points import PointsService
@@ -62,6 +64,7 @@ class AgentActionService:
         settings: AppSettings,
         technology_stack: TechnologyStackService | None = None,
         community_goals: CommunityGoalService | None = None,
+        community_meetings: CommunityMeetingService | None = None,
     ) -> None:
         self.role_requests = role_requests
         self.users = users
@@ -75,6 +78,7 @@ class AgentActionService:
         self.settings = settings
         self.technology_stack = technology_stack
         self.community_goals = community_goals
+        self.community_meetings = community_meetings
 
     async def validate_role_request(self, user_id: int) -> None:
         """Check current eligibility before asking the user to confirm a role request."""
@@ -251,6 +255,40 @@ class AgentActionService:
         if goal is None:
             raise DomainError("Активной цели нет.")
         return f"Цель «{goal.text}» отмечена достигнутой. Добавил достижение «Цель взята»."
+
+    async def preview_meeting_creation(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Prepare a code-owned meeting preview after checking the current actor."""
+        if self.community_meetings is None:
+            raise DomainError("Создание встреч сейчас недоступно.")
+        return await self.community_meetings.preview_creation(user_id, draft)
+
+    async def create_meeting(self, user_id: int, draft: CommunityMeetingDraftDTO) -> str:
+        """Create a checked meeting and publish its RSVP controls."""
+        if self.community_meetings is None:
+            raise DomainError("Создание встреч сейчас недоступно.")
+        return await self.community_meetings.create_meeting(user_id, draft)
+
+    async def preview_meeting_reschedule(
+        self, user_id: int, meeting_id: int, meeting_date: date, start_time: str
+    ) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.preview_reschedule(meeting_id, user_id, meeting_date, start_time)
+
+    async def reschedule_meeting(self, user_id: int, meeting_id: int, meeting_date: date, start_time: str) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.reschedule(meeting_id, user_id, meeting_date, start_time)
+
+    async def preview_meeting_cancellation(self, user_id: int, meeting_id: int) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.preview_cancellation(meeting_id, user_id)
+
+    async def cancel_meeting(self, user_id: int, meeting_id: int) -> str:
+        if self.community_meetings is None:
+            raise DomainError("Управление встречами сейчас недоступно.")
+        return await self.community_meetings.cancel(meeting_id, user_id)
 
     async def validate_visit_update(
         self,
