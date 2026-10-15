@@ -11,6 +11,7 @@ from pybot.services.ports import (
     AttendanceRecognitionPort,
     CheckinResponseParserPort,
     CommunityAchievementDispatchPort,
+    MeetingDeliveryPort,
     NotificationPort,
     PulseReportDeliveryPort,
 )
@@ -48,6 +49,19 @@ class FakePulseReportDeliveryPort(PulseReportDeliveryPort):
 
     async def send_pdf(self, *, recipient_id: int, filename: str, content: bytes, caption: str) -> None:
         del recipient_id, filename, content, caption
+
+
+class FakeMeetingDeliveryPort(MeetingDeliveryPort):
+    """Keep meeting notifications inside tests without using Telegram."""
+
+    async def send_announcement(self, chat_id: int, topic_id: int, text: str, meeting_id: int) -> None:
+        del chat_id, topic_id, text, meeting_id
+
+    async def send_invitation(self, telegram_id: int, text: str, meeting_id: int) -> None:
+        del telegram_id, text, meeting_id
+
+    async def send_text(self, telegram_id: int, text: str) -> None:
+        del telegram_id, text
 
 
 class FakeNotificationPort(NotificationPort):
@@ -168,6 +182,10 @@ class TestOverridesProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_pulse_report_delivery_port(self) -> PulseReportDeliveryPort:
         return FakePulseReportDeliveryPort()
+
+    @provide(scope=Scope.APP)
+    def provide_meeting_delivery_port(self) -> MeetingDeliveryPort:
+        return FakeMeetingDeliveryPort()
 
     @provide(scope=Scope.APP)
     def provide_fake_notification_port(self) -> FakeNotificationPort:

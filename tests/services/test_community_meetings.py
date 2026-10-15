@@ -237,7 +237,7 @@ async def test_stack_audience_matches_technology_aliases_and_snapshots_delivered
     )
     meeting = await db_session.scalar(select(CommunityMeeting))
     assert meeting is not None and meeting.audience == "stack:PostgreSQL"
-    assert "доставлено 0, не удалось 1, пропущено по настройке 1" in result
+    assert "доставлено 1, не удалось 1, пропущено по настройке 1" in result
     invitees = (
         await db_session.scalars(
             select(CommunityMeetingInvitee).where(CommunityMeetingInvitee.meeting_id == meeting.id)
