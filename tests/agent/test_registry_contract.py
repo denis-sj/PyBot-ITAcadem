@@ -53,6 +53,29 @@ def test_each_tool_has_complete_bounded_metadata() -> None:
             assert not metadata.requires_confirmation
 
 
+def test_visit_tool_resolves_relative_month_from_checked_dialogue_history() -> None:
+    registry = _registry()
+    visit_tool = next(entry for entry in registry.entries if entry.metadata.name == "get_my_visits")
+
+    assert "Месяц из вопроса/истории передай в period" in visit_tool.metadata.description
+
+
+def test_meeting_tool_requires_complete_user_provided_details() -> None:
+    registry = _registry()
+    meeting_tool = next(entry for entry in registry.entries if entry.metadata.name == "create_community_meeting")
+
+    assert "Role groups such as mentors are unsupported" in meeting_tool.metadata.description
+    assert "user-provided title, date, time, and venue" in meeting_tool.metadata.description
+
+
+def test_admin_profile_followups_use_candidate_search_before_profile_lookup() -> None:
+    registry = _registry()
+    descriptions = {entry.metadata.name: entry.metadata.description for entry in registry.entries}
+
+    assert "по имени сначала вызови find_user_candidates" in descriptions["get_user_profile"]
+    assert "имени из уточнения в истории" in descriptions["find_user_candidates"]
+
+
 def test_every_tool_has_two_allowed_cases_and_one_rights_denial_case() -> None:
     registry = _registry()
     cases = _load_cases(None)

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from datetime import datetime
 from unittest.mock import Mock
 
@@ -33,6 +34,14 @@ def test_relative_month_instruction_anchors_followup_to_last_assistant_answer():
     assert "месяца, обсуждавшегося в последнем ответе истории" in instructions
     assert "если в том ответе месяц не назван, считай от текущей даты" in instructions
     assert "«позапрошлый» — два месяца до него" in instructions
+
+
+def test_checked_history_can_answer_an_exact_repeat_without_a_new_read():
+    instructions = build_agent_instructions()
+
+    assert "На точную просьбу «повтори» можно повторить последний проверенный ответ из истории без нового чтения" in (
+        instructions
+    )
 
 
 def test_technology_stack_instructions_route_reads_and_confirm_only_own_stack_actions():
@@ -204,12 +213,196 @@ async def test_numbers_guard_has_separate_safe_event(agent_settings, conversatio
     result = await service.answer(conversation, "Покажи мои баллы")
 
     assert result.status == AgentReplyStatus.UNAVAILABLE
-    log.warning.assert_called_once_with("event=agent_numbers_guard_rejected")
+    assert log.warning.call_count == 2
+    for warning_call in log.warning.call_args_list:
+        assert warning_call.args == (
+            "event=agent_numbers_guard_rejected rejected_count={rejected_count} "
+            "list_item_number_count={list_item_number_count} time_or_date_count={time_or_date_count} "
+            "dialog_history_count={dialog_history_count} other_count={other_count}",
+        )
+        assert warning_call.kwargs == {
+            "rejected_count": 1,
+            "list_item_number_count": 0,
+            "time_or_date_count": 0,
+            "dialog_history_count": 0,
+            "other_count": 1,
+        }
     failure_call = log.error.call_args
     assert failure_call is not None
     assert failure_call.kwargs["category"] == "numbers_guard"
     assert failure_call.kwargs["root_exception"] == "AgentNumbersGuardError"
     assert "991337" not in repr(log.mock_calls)
+
+
+@pytest.mark.asyncio
+async def test_numbers_guard_retries_once_with_short_hint_only_after_rejection(agent_settings, conversation):
+    model_prompts = []
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        model_prompts.append(
+            [part.content for message in messages for part in message.parts if isinstance(part, UserPromptPart)][-1]
+        )
+        if len(model_prompts) == 1:
+            return ModelResponse(parts=[TextPart("У вас 991337 баллов")])
+        return ModelResponse(parts=[TextPart("Данных о баллах нет")])
+
+    service, _, memory = build_service(agent_settings, model=FunctionModel(model))
+
+    result = await service.answer(conversation, "Сколько у меня баллов?")
+
+    assert result.text == "Данных о баллах нет"
+    assert result.status == AgentReplyStatus.SUCCESS
+    assert len(model_prompts) == 2
+    assert model_prompts[1] == "используй только числа из результатов инструментов, при необходимости вызови инструмент"
+    memory.append.assert_awaited_once_with(conversation, "Сколько у меня баллов?", result.text)
+
+
+@pytest.mark.asyncio
+async def test_normal_numbered_answer_uses_one_model_request(agent_settings, conversation):
+    model_calls = 0
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal model_calls
+        model_calls += 1
+        return ModelResponse(parts=[TextPart("Уточните параметры:\n1. дату\n2) место")])
+
+    service, _, _ = build_service(agent_settings, model=FunctionModel(model))
+
+    result = await service.answer(conversation, "Создай встречу")
+
+    assert result.text == "Уточните параметры:\n1. дату\n2) место"
+    assert result.status == AgentReplyStatus.SUCCESS
+    assert model_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_numbers_guard_accepts_the_date_appended_to_the_current_prompt(agent_settings, conversation):
+    model_calls = 0
+    observed_date = ""
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal model_calls, observed_date
+        model_calls += 1
+        current_prompt = [
+            part.content
+            for message in messages
+            for part in message.parts
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str)
+        ][-1]
+        date_match = re.search(r"Текущая дата \(Екатеринбург\): (\d{4}-\d{2}-\d{2})", current_prompt)
+        assert date_match is not None
+        observed_date = date_match.group(1)
+        return ModelResponse(parts=[TextPart(f"Сегодня {observed_date}.")])
+
+    service, _, _ = build_service(agent_settings, model=FunctionModel(model))
+
+    result = await service.answer(conversation, "Какая сегодня дата?")
+
+    assert result.text == f"Сегодня {observed_date}."
+    assert result.status == AgentReplyStatus.SUCCESS
+    assert model_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_screenshot_conversation_chain_accepts_numbered_clarifications(agent_settings, conversation):
+    model_calls = 0
+
+    def model(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        nonlocal model_calls
+        model_calls += 1
+        if model_calls == 1:
+            return ModelResponse(parts=[ToolCallPart("bot_capabilities", {}, tool_call_id="capabilities")])
+        if model_calls == 2:
+            assert any(isinstance(part, ToolReturnPart) for message in messages for part in message.parts)
+            return ModelResponse(parts=[TextPart("Я помощник.\n1. Профиль\n2) Ближайшие встречи")])
+        if model_calls == 3:
+            prior_questions = [
+                part.content
+                for message in messages
+                for part in message.parts
+                if isinstance(part, UserPromptPart) and isinstance(part.content, str)
+            ]
+            prior_answers = [
+                part.content for message in messages for part in message.parts if isinstance(part, TextPart)
+            ]
+            assert any(question == "КТО ТЫ" for question in prior_questions)
+            assert any("1. Профиль\n2) Ближайшие встречи" in answer for answer in prior_answers)
+            return ModelResponse(parts=[TextPart("Чтобы подготовить встречу:\n1. Уточните дату\n2) Уточните место")])
+        return ModelResponse(parts=[TextPart("Уточните название и место, время 13:00 учту.")])
+
+    service, _, memory = build_service(agent_settings, model=FunctionModel(model))
+    memory.load.side_effect = [
+        [],
+        [
+            Mock(role="user", text="КТО ТЫ"),
+            Mock(role="assistant", text="Я помощник.\n1. Профиль\n2) Ближайшие встречи"),
+        ],
+        [
+            Mock(role="user", text="КТО ТЫ"),
+            Mock(role="assistant", text="Я помощник.\n1. Профиль\n2) Ближайшие встречи"),
+            Mock(role="user", text="хочу создать встречу и созвать всех менторов"),
+            Mock(role="assistant", text="Чтобы подготовить встречу:\n1. Уточните дату\n2) Уточните место"),
+        ],
+    ]
+
+    first = await service.answer(conversation, "КТО ТЫ")
+    second = await service.answer(conversation, "хочу создать встречу и созвать всех менторов")
+    third = await service.answer(
+        conversation,
+        "хочу создать встречу и созвать всех менторов завтра в 13:00",
+    )
+
+    assert first.text.startswith("Я помощник.")
+    assert "Уточните дату" in second.text
+    assert "время 13:00" in third.text
+    assert model_calls == 4
+    assert memory.append.await_count == 3
+
+
+def test_number_validation_allows_dialog_history_and_ignores_list_numbers():
+    from pybot.services.agent.service import AgentService
+
+    history = [
+        ModelRequest(parts=[UserPromptPart("Мои посещения за сентябрь 2020")]),
+        ModelResponse(parts=[TextPart("За сентябрь 2020 было 2 посещения.")]),
+    ]
+    messages: list[ModelMessage] = [ModelRequest(parts=[ToolReturnPart("read", "Итог за октябрь 2026: 4 посещения.")])]
+    answer = "В прошлом ответе было 2 посещения за 2020 год.\n1. Октябрь 2026\n2) Всего 4 посещения."
+
+    assert AgentService._validate_numbers(answer, messages, "Повтори итог", history) == answer
+
+
+def test_number_guard_allows_only_dates_resolved_from_an_explicit_relative_day():
+    from pybot.services.agent.service import AgentService
+
+    question = "Создай встречу завтра в 13:00\n\nТекущая дата (Екатеринбург): 2026-10-16."
+    grounded_answer = "Подготовлю встречу на 17.10.2026 в 13:00."
+    unsupported_answer = "Подготовлю встречу на 18.10.2026 в 13:00."
+
+    assert AgentService._validate_numbers(grounded_answer, [], question) == grounded_answer
+    with pytest.raises(ValueError, match="numbers absent from approved evidence"):
+        AgentService._validate_numbers(unsupported_answer, [], question)
+
+
+def test_number_guard_error_classifies_rejected_values_without_preserving_them():
+    from pybot.services.agent.diagnostics import AgentNumbersGuardError
+    from pybot.services.agent.service import AgentService
+
+    with pytest.raises(AgentNumbersGuardError) as error:
+        AgentService._validate_numbers(
+            "Завтра 13:00 будет 991337 баллов.\n1. Уточнение",
+            [],
+            "Что дальше?",
+        )
+
+    assert error.value.rejected_count == 3
+    assert error.value.number_categories == {
+        "list_item_number": 1,
+        "time_or_date": 2,
+        "dialog_history": 0,
+        "other": 1,
+    }
+    assert "991337" not in repr(error.value)
 
 
 @pytest.mark.asyncio
@@ -735,6 +928,7 @@ def test_approval_summary_mandatory_and_duplicate_tools_rejected():
         ("9 минут; 1,50 балла", "09 минут; 1.5 балла"),
         ("-5 баллов", "−5 баллов"),
         ("2020-09-09", "2020-09-09"),
+        ("07.09.2020", "2020-09-07"),
         (
             "В октябре 2026 у вас было 0 посещений.",
             "Мои посещения за 2026-10: 0; подтверждённых записей нет.",

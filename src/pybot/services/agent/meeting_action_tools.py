@@ -59,9 +59,10 @@ async def create_community_meeting(  # noqa: PLR0913
     audience_target: str | None = Field(default=None, max_length=100, strict=True),
     description: MeetingDescription = None,
 ) -> str:
-    """Use audience_kind='all' for everyone; 'competence' or 'stack' uses audience_target for its name.
+    """Audience 'all' means everyone; 'competence' or 'stack' needs audience_target.
 
-    Omit leading в/на from venue: 'в аудитории клуба' -> 'аудитории клуба'.
+    Role groups such as mentors are unsupported. Require a user-provided title, date, time, and venue; ask if missing.
+    Never guess. Strip leading в/на from venue.
     """
     user = await ctx.deps.get_actor()
     draft = CommunityMeetingDraftDTO(
