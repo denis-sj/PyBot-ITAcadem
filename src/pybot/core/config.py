@@ -225,6 +225,22 @@ class AppSettings(BaseSettings):
         gt=0,
     )
 
+    meme_enabled: bool = Field(False, alias="MEME_ENABLED", description="Enable weekly Lemmy meme publication")
+    meme_chat_id: int | None = Field(None, alias="MEME_CHAT_ID", lt=0)
+    meme_topic_id: int | None = Field(None, alias="MEME_TOPIC_ID", gt=0)
+    meme_communities: Annotated[tuple[str, ...], NoDecode] = Field(
+        default=("programmer_humor@programming.dev",),
+        alias="MEME_COMMUNITIES",
+        description="Comma-separated Lemmy communities in community@instance form",
+    )
+    meme_instances: Annotated[tuple[str, ...], NoDecode] = Field(
+        default=("https://programming.dev", "https://lemmy.world"),
+        alias="MEME_INSTANCES",
+        description="Comma-separated HTTPS Lemmy API base URLs, in failover order",
+    )
+    meme_min_score: int = Field(20, alias="MEME_MIN_SCORE", ge=0)
+    meme_max_replacements_per_week: int = Field(3, alias="MEME_MAX_REPLACEMENTS_PER_WEEK", ge=0, le=3)
+
     # Middleware toggles
     enable_logging_middleware: bool = Field(
         True,
@@ -364,6 +380,59 @@ class AppSettings(BaseSettings):
         if not normalized:
             raise ValueError("EVENTS_TOPIC_NAME must be non-empty")
         return normalized
+
+    @field_validator("meme_chat_id", "meme_topic_id", mode="before")
+    @classmethod
+    def parse_optional_meme_id(cls, value: int | str | None) -> int | None:
+        """Allow empty meme destination IDs in local and deployment environment files."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return int(normalized) if normalized else None
+        return value
+
+    @field_validator("meme_communities", "meme_instances", mode="before")
+    @classmethod
+    def parse_meme_string_list(cls, value: tuple[str, ...] | str | list[str]) -> tuple[str, ...]:
+        """Parse environment lists while also accepting typed values in tests."""
+        if isinstance(value, str):
+            values = tuple(part.strip() for part in value.split(","))
+        else:
+            values = tuple(str(part).strip() for part in value)
+        if not values or any(not part for part in values):
+            raise ValueError("Meme communities and instances must be non-empty lists")
+        if len(set(values)) != len(values):
+            raise ValueError("Meme communities and instances must not contain duplicates")
+        return values
+
+    @field_validator("meme_communities")
+    @classmethod
+    def validate_meme_communities(cls, communities: tuple[str, ...]) -> tuple[str, ...]:
+        """Require the Lemmy community@instance identifier format."""
+        for community in communities:
+            name, separator, instance = community.partition("@")
+            if not separator or not name or not instance or any(character.isspace() for character in community):
+                raise ValueError("MEME_COMMUNITIES entries must use community@instance form")
+        return communities
+
+    @field_validator("meme_instances")
+    @classmethod
+    def validate_meme_instances(cls, instances: tuple[str, ...]) -> tuple[str, ...]:
+        """Accept only HTTPS origins as Lemmy instance bases."""
+        for instance in instances:
+            parsed = urlsplit(instance)
+            if (
+                parsed.scheme.lower() != "https"
+                or parsed.hostname is None
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.query
+                or parsed.fragment
+                or parsed.path not in {"", "/"}
+            ):
+                raise ValueError("MEME_INSTANCES entries must be HTTPS origins without credentials or paths")
+        return tuple(instance.rstrip("/") for instance in instances)
 
     @field_validator("agent_group_chat_id", "agent_topic_id", "events_chat_id", "events_topic_id", mode="before")
     @classmethod
@@ -560,10 +629,23 @@ class AppSettings(BaseSettings):
             raise ValueError("ACHIEVEMENTS_CHAT_ID and ACHIEVEMENTS_TOPIC_ID must be configured together")
         return self
 
+    @model_validator(mode="after")
+    def validate_meme_publication_config(self: Self) -> Self:
+        if (self.meme_chat_id is None) != (self.meme_topic_id is None):
+            raise ValueError("MEME_CHAT_ID and MEME_TOPIC_ID must be configured together")
+        if self.meme_enabled and not self.meme_publication_enabled:
+            raise ValueError("MEME_CHAT_ID and MEME_TOPIC_ID must be set when MEME_ENABLED=true")
+        return self
+
     @property
     def achievements_publication_enabled(self: Self) -> bool:
         """Return whether the complete group publication destination is configured."""
         return self.achievements_chat_id is not None and self.achievements_topic_id is not None
+
+    @property
+    def meme_publication_enabled(self: Self) -> bool:
+        """Return whether weekly meme publication is enabled and has a complete destination."""
+        return self.meme_enabled and self.meme_chat_id is not None and self.meme_topic_id is not None
 
 
 @functools.lru_cache(maxsize=1)

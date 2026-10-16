@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from aiogram.types import InlineKeyboardMarkup
@@ -7,11 +8,14 @@ from dishka import Provider, Scope, provide
 
 from pybot.dto import AttendanceRecognitionResultDTO, NotifyDTO
 from pybot.dto.community_checkins import ParsedCheckinResponseDTO
+from pybot.dto.meme_of_the_week import LemmyPostDTO, MemeImageDTO
 from pybot.services.ports import (
     AttendanceRecognitionPort,
     CheckinResponseParserPort,
     CommunityAchievementDispatchPort,
+    LemmyClientPort,
     MeetingDeliveryPort,
+    MemeDeliveryPort,
     NotificationPort,
     PulseReportDeliveryPort,
 )
@@ -62,6 +66,41 @@ class FakeMeetingDeliveryPort(MeetingDeliveryPort):
 
     async def send_text(self, telegram_id: int, text: str) -> None:
         del telegram_id, text
+
+
+class FakeLemmyClientPort(LemmyClientPort):
+    """Fail loudly if a test tries to access Lemmy over the network."""
+
+    async def find_posts(self, community: str, sort: str) -> Sequence[LemmyPostDTO]:
+        del community, sort
+        raise AssertionError("Lemmy access requires an explicit test result; network calls are forbidden")
+
+    async def download_image(self, url: str) -> MemeImageDTO:
+        del url
+        raise AssertionError("Lemmy image downloads are forbidden in isolated tests")
+
+
+class FakeMemeDeliveryPort(MemeDeliveryPort):
+    """Fail loudly if a test unexpectedly tries to publish a meme."""
+
+    async def send_images(
+        self,
+        *,
+        chat_id: int,
+        topic_id: int,
+        images: Sequence[MemeImageDTO],
+        caption: str,
+    ) -> Sequence[int]:
+        del chat_id, topic_id, images, caption
+        raise AssertionError("Meme publication requires an explicit test result; external delivery is forbidden")
+
+    async def send_text(self, *, chat_id: int, topic_id: int, text: str) -> int:
+        del chat_id, topic_id, text
+        raise AssertionError("Meme publication requires an explicit test result; external delivery is forbidden")
+
+    async def delete_message(self, *, chat_id: int, message_id: int) -> None:
+        del chat_id, message_id
+        raise AssertionError("Meme publication requires an explicit test result; external delivery is forbidden")
 
 
 class FakeNotificationPort(NotificationPort):
@@ -158,6 +197,8 @@ class TestOverridesProvider(Provider):
         self._fake_bot = FakeBot()
         self._notification_port = FakeNotificationPort()
         self._attendance_recognition_port = FakeAttendanceRecognitionPort()
+        self._lemmy_client_port = FakeLemmyClientPort()
+        self._meme_delivery_port = FakeMemeDeliveryPort()
 
     @provide(scope=Scope.APP)
     def provide_bot(self) -> FakeBot:
@@ -186,6 +227,14 @@ class TestOverridesProvider(Provider):
     @provide(scope=Scope.APP)
     def provide_meeting_delivery_port(self) -> MeetingDeliveryPort:
         return FakeMeetingDeliveryPort()
+
+    @provide(scope=Scope.APP)
+    def provide_lemmy_client_port(self) -> LemmyClientPort:
+        return self._lemmy_client_port
+
+    @provide(scope=Scope.APP)
+    def provide_meme_delivery_port(self) -> MemeDeliveryPort:
+        return self._meme_delivery_port
 
     @provide(scope=Scope.APP)
     def provide_fake_notification_port(self) -> FakeNotificationPort:

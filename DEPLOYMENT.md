@@ -637,6 +637,33 @@ The TaskIQ scheduler runs the meeting reminder and completion-status job every m
 participants receive reminders around 24 hours and 1 hour before the start; a meeting created less than 24 hours ahead
 does not receive the day-before reminder.
 
+### Weekly Lemmy meme
+
+Revision `f2e6a17b9c40_add_weekly_meme_publications` adds only the publication history needed to prevent repeated weekly
+posts and to delete every message when an Admin replaces a meme. The regular migration service applies it before the
+updated bot and TaskIQ processes start.
+
+Meme publication is disabled unless `MEME_ENABLED=true` and both destination IDs are set in `STAGING_ENV_FILE` or the
+production environment:
+
+- `MEME_CHAT_ID` — negative Telegram group ID;
+- `MEME_TOPIC_ID` — positive forum topic ID;
+- `MEME_COMMUNITIES` — comma-separated `community@instance` names; defaults to
+  `programmer_humor@programming.dev`;
+- `MEME_INSTANCES` — comma-separated HTTPS Lemmy API origins in failover order; defaults to
+  `https://programming.dev,https://lemmy.world`;
+- `MEME_MIN_SCORE=20` — minimum Lemmy score;
+- `MEME_MAX_REPLACEMENTS_PER_WEEK=3` — maximum number of `/meme_next` replacements in one week.
+
+The scheduler posts once on Wednesday at 16:16 `Asia/Yekaterinburg`. All commands require the `Admin` role. To test
+the configured destination after deployment, send `/meme_now` in a private chat with the bot. It publishes a test meme
+without taking the weekly slot or changing the scheduled publication. `/meme_next` is also private-chat-only and
+replaces the current weekly publication after a suitable next candidate has been prepared.
+
+Lemmy v3 API reads and image downloads use bounded timeouts. The downloader accepts only HTTPS, rejects redirects,
+resolves destinations through a public-IP-only resolver, checks JPEG/PNG/WebP/GIF signatures, and enforces 10 MiB per
+image and 40 MiB total. If no suitable post is available, nothing is sent to the group.
+
 ### Attendance Photo Accounting Rollout & Migration Safety
 
 The attendance photo accounting feature introduces revision `8d6ac9f0b6a0_add_attendance_tables`.

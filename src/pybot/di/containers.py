@@ -26,6 +26,7 @@ from ..infrastructure import (
 )
 from ..infrastructure.adapters import PolzaVisionAdapter, PydanticAITechnologyStackParser
 from ..infrastructure.adapters.agent_memory import RedisAgentMemory
+from ..infrastructure.adapters.lemmy_http_client import LemmyHttpClient, create_lemmy_session
 from ..infrastructure.adapters.polza_agent import PolzaAgentModel
 from ..infrastructure.adapters.pydantic_ai_checkin_response_parser import PydanticAICheckinResponseParser
 from ..infrastructure.community_goal_repository import CommunityGoalRepository
@@ -35,12 +36,14 @@ from ..infrastructure.ports import LoggingNotificationService, TelegramNotificat
 from ..infrastructure.ports.logging_meeting_delivery import LoggingMeetingDelivery
 from ..infrastructure.ports.logging_pulse_report_delivery import LoggingPulseReportDelivery
 from ..infrastructure.ports.telegram_meeting_delivery import TelegramMeetingDelivery
+from ..infrastructure.ports.telegram_meme_delivery import TelegramMemeDelivery
 from ..infrastructure.ports.telegram_pulse_report_delivery import TelegramPulseReportDelivery
 from ..infrastructure.taskiq.taskiq_community_achievement_dispatcher import TaskIQCommunityAchievementDispatcher
 from ..infrastructure.taskiq.taskiq_notification_dispatcher import TaskIQNotificationDispatcher
 from ..infrastructure.telegram_proxy_session import create_telegram_proxy_session
 from ..infrastructure.user_notification_preference_repository import UserNotificationPreferenceRepository
 from ..infrastructure.weekly_checkin_repository import WeeklyCheckinRepository
+from ..infrastructure.weekly_meme_publication_repository import WeeklyMemePublicationRepository
 from ..services import (
     AttendanceService,
     CommunityAchievementService,
@@ -67,13 +70,16 @@ from ..services.community_meetings import CommunityMeetingService
 from ..services.competence import CompetenceService
 from ..services.health import HealthService
 from ..services.levels import LevelService
+from ..services.meme_of_the_week import MemeOfTheWeekService
 from ..services.notification_facade import NotificationFacade
 from ..services.points import PointsService
 from ..services.ports import (
     AttendanceRecognitionPort,
     CheckinResponseParserPort,
     CommunityAchievementDispatchPort,
+    LemmyClientPort,
     MeetingDeliveryPort,
+    MemeDeliveryPort,
     NotificationDispatchPort,
     NotificationPort,
     PulseReportDeliveryPort,
@@ -166,6 +172,10 @@ class RepositoryProvider(Provider):
     @provide(scope=Scope.APP)
     def community_meeting_repository(self) -> CommunityMeetingRepository:
         return CommunityMeetingRepository()
+
+    @provide(scope=Scope.APP)
+    def weekly_meme_publication_repository(self) -> WeeklyMemePublicationRepository:
+        return WeeklyMemePublicationRepository()
 
     @provide(scope=Scope.APP)
     def user_notification_preference_repository(self) -> UserNotificationPreferenceRepository:
@@ -416,6 +426,23 @@ class ServiceProvider(Provider):
         return CommunityMeetingService(db, community_meeting_repository, settings, meeting_delivery)
 
     @provide(scope=Scope.REQUEST)
+    def meme_of_the_week_service(
+        self,
+        db: AsyncSession,
+        weekly_meme_publication_repository: WeeklyMemePublicationRepository,
+        lemmy_client: LemmyClientPort,
+        meme_delivery: MemeDeliveryPort,
+        settings: AppSettings,
+    ) -> MemeOfTheWeekService:
+        return MemeOfTheWeekService(
+            db,
+            weekly_meme_publication_repository,
+            lemmy_client,
+            meme_delivery,
+            settings,
+        )
+
+    @provide(scope=Scope.REQUEST)
     def pulse_report_service(  # noqa: PLR0913
         self,
         db: AsyncSession,
@@ -620,6 +647,20 @@ class BotProvider(Provider):
 
 
 class PortsProvider(Provider):
+    @provide(scope=Scope.APP)
+    async def lemmy_client(self, settings: AppSettings) -> AsyncGenerator[LemmyClientPort]:
+        session = create_lemmy_session()
+        try:
+            yield LemmyHttpClient(instances=settings.meme_instances, session=session)
+        finally:
+            await session.close()
+
+    @provide(scope=Scope.APP)
+    async def meme_delivery(self, settings: AppSettings, bot: Bot) -> MemeDeliveryPort:
+        if settings.notification_backend == "telegram":
+            return TelegramMemeDelivery(bot)
+        raise ValueError("Weekly meme publication requires Telegram delivery")
+
     @provide(scope=Scope.APP)
     async def notification_port(self, settings: AppSettings, bot: Bot) -> NotificationPort:
         if settings.notification_backend == "telegram":

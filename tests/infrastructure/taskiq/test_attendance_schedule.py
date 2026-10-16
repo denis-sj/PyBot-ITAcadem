@@ -138,6 +138,7 @@ def test_register_all_tasks_includes_attendance_cleanup() -> None:
     assert isinstance(registry, TaskRegistry)
     assert registry.attendance_cleanup_task is not None
     assert registry.attendance_cleanup_task.task_name == ATTENDANCE_CLEANUP_TASK_NAME
+    assert registry.weekly_meme_task.task_name == "weekly_meme.publish"
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ _WORKER_KEY = "TASKIQ_WORKERS"
 _SUPPORTED_WORKER_VALUE = "1"
 _DATABASE_SCHEME = "postgresql+asyncpg"
 _DATABASE_HOSTNAME = "postgres"
-_ORCHESTRATION_BOOLEAN_KEYS = ("HEALTH_API_ENABLED", "AGENT_ENABLED")
+_ORCHESTRATION_BOOLEAN_KEYS = ("HEALTH_API_ENABLED", "AGENT_ENABLED", "MEME_ENABLED")
 _SUPPORTED_BOOLEAN_VALUES = frozenset({"0", "1", "false", "true", "no", "yes", "off", "on"})
 _QUOTED_VALUE_MIN_LENGTH = 2
 
@@ -55,6 +55,7 @@ def validate_deploy_env(env_values: dict[str, str]) -> list[str]:
 
     errors.extend(_validate_orchestration_switches(env_values))
     errors.extend(_validate_agent_env(env_values))
+    errors.extend(_validate_meme_env(env_values))
 
     return errors
 
@@ -106,6 +107,88 @@ def _validate_agent_env(env_values: dict[str, str]) -> list[str]:
     provider_json = env_values.get("AGENT_PROVIDER")
     if provider_json is not None and not _is_valid_agent_provider_json(provider_json):
         errors.append("AGENT_PROVIDER must be valid routing JSON with supported fields")
+    return errors
+
+
+def _validate_meme_env(env_values: dict[str, str]) -> list[str]:
+    """Validate weekly meme destination, community list and public HTTPS instance origins."""
+    return (
+        _validate_meme_destination(env_values)
+        + _validate_meme_numeric_settings(env_values)
+        + _validate_meme_communities(env_values)
+        + _validate_meme_instances(env_values)
+    )
+
+
+def _validate_meme_destination(env_values: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    enabled = env_values.get("MEME_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+    chat_id = env_values.get("MEME_CHAT_ID", "").strip()
+    topic_id = env_values.get("MEME_TOPIC_ID", "").strip()
+    if bool(chat_id) != bool(topic_id):
+        errors.append("MEME_CHAT_ID and MEME_TOPIC_ID must be configured together")
+    if enabled and (not chat_id or not topic_id):
+        errors.append("MEME_CHAT_ID and MEME_TOPIC_ID must be set when MEME_ENABLED=true")
+    return errors
+
+
+def _validate_meme_numeric_settings(env_values: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    for key, value, minimum, maximum in (
+        ("MEME_CHAT_ID", env_values.get("MEME_CHAT_ID", "").strip(), None, -1),
+        ("MEME_TOPIC_ID", env_values.get("MEME_TOPIC_ID", "").strip(), 1, None),
+        ("MEME_MIN_SCORE", env_values.get("MEME_MIN_SCORE", "20"), 0, None),
+        ("MEME_MAX_REPLACEMENTS_PER_WEEK", env_values.get("MEME_MAX_REPLACEMENTS_PER_WEEK", "3"), 0, 3),
+    ):
+        if not value:
+            continue
+        try:
+            number = int(value)
+        except ValueError:
+            errors.append(f"{key} must be an integer")
+            continue
+        if (minimum is not None and number < minimum) or (maximum is not None and number > maximum):
+            errors.append(f"{key} is outside its supported range")
+    return errors
+
+
+def _validate_meme_communities(env_values: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    communities = env_values.get("MEME_COMMUNITIES")
+    if communities is not None:
+        values = [item.strip() for item in communities.split(",")]
+        if not values or any(not item for item in values):
+            errors.append("MEME_COMMUNITIES must contain non-empty community@instance entries")
+        elif any("@" not in item or item.startswith("@") or item.endswith("@") for item in values):
+            errors.append("MEME_COMMUNITIES entries must use community@instance form")
+    return errors
+
+
+def _validate_meme_instances(env_values: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    instances = env_values.get("MEME_INSTANCES")
+    if instances is not None:
+        values = [item.strip() for item in instances.split(",")]
+        if not values or any(not item for item in values):
+            errors.append("MEME_INSTANCES must contain non-empty HTTPS origins")
+        else:
+            for instance in values:
+                try:
+                    parsed = urlsplit(instance)
+                except ValueError:
+                    errors.append("MEME_INSTANCES entries must be valid HTTPS origins")
+                    continue
+                if (
+                    parsed.scheme.lower() != "https"
+                    or parsed.hostname is None
+                    or parsed.username is not None
+                    or parsed.password is not None
+                    or parsed.query
+                    or parsed.fragment
+                    or parsed.path not in {"", "/"}
+                ):
+                    errors.append("MEME_INSTANCES entries must be HTTPS origins without credentials or paths")
+                    break
     return errors
 
 

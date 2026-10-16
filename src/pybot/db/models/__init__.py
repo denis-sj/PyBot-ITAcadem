@@ -10,6 +10,7 @@ from .attendance import (
     AttendanceRecord,
 )
 from .community_meetings import CommunityMeeting, CommunityMeetingInvitee, CommunityMeetingResponse
+from .weekly_meme_publication import WeeklyMemePublication
 from .role_module import (
     Role,
     RoleEvent,
@@ -47,6 +48,7 @@ __all__ = [
     "CommunityMeeting",
     "CommunityMeetingInvitee",
     "CommunityMeetingResponse",
+    "WeeklyMemePublication",
     # user_module
     "User",
     "UserGoal",

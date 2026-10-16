@@ -12,6 +12,8 @@ from .notification_port import NotificationPort
 from .technology_stack_parser import TechnologyStackParserPort
 from .pulse_report_delivery import PulseReportDeliveryPort
 from .meeting_delivery import MeetingDeliveryPort
+from .lemmy_client import LemmyClientError, LemmyClientPort
+from .meme_delivery import MemeDeliveryError, MemeDeliveryPort
 
 __all__ = [
     "AttendanceRecognitionPort",
@@ -28,4 +30,8 @@ __all__ = [
     "TechnologyStackParserPort",
     "PulseReportDeliveryPort",
     "MeetingDeliveryPort",
+    "LemmyClientPort",
+    "LemmyClientError",
+    "MemeDeliveryError",
+    "MemeDeliveryPort",
 ]

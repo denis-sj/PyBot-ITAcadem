@@ -7,3 +7,4 @@ from .attendance import attendance_router as attendance_router
 from .community_checkins import community_checkin_router as community_checkin_router
 from .notification_preferences import notification_preferences_router as notification_preferences_router
 from .community_meetings import community_meetings_router as community_meetings_router
+from .meme_of_the_week import weekly_meme_router as weekly_meme_router
