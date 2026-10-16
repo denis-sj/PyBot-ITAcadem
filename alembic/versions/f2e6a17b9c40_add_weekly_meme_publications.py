@@ -28,7 +28,11 @@ def upgrade() -> None:
         sa.Column("image_urls", sa.JSON(), nullable=False),
         sa.Column("community", sa.String(length=200), nullable=False),
         sa.Column("score", sa.Integer(), nullable=False),
-        sa.Column("telegram_message_ids", sa.JSON(), server_default=sa.text("'[]'"), nullable=False),
+        sa.Column(
+            "telegram_message_ids",
+            sa.JSON(),
+            nullable=False,
+        ),
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("delivery_state", sa.String(length=16), nullable=False),
         sa.Column("replaced_by_id", sa.BigInteger(), nullable=True),

@@ -38,7 +38,7 @@ class WeeklyMemePublication(Base):
     image_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     community: Mapped[str] = mapped_column(String(200), nullable=False)
     score: Mapped[int] = mapped_column(Integer, nullable=False)
-    telegram_message_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, server_default=text("'[]'"))
+    telegram_message_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     delivery_state: Mapped[str] = mapped_column(String(16), nullable=False)
     replaced_by_id: Mapped[int | None] = mapped_column(
