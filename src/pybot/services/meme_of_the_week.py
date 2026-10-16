@@ -256,6 +256,9 @@ class MemeOfTheWeekService:
                 if images is None:
                     self._log_candidate_status(post, "download_failed")
                     continue
+                if len(images) > 1 and any(image.is_animation for image in images):
+                    self._log_candidate_status(post, "animated_album_filtered")
+                    continue
                 caption, continuation = build_meme_caption(post.title, post.body)
                 return MemeCandidate(post, image_urls, images, caption, continuation)
             if sort == "TopWeek":
