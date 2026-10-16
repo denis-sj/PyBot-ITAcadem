@@ -256,6 +256,9 @@ class MemeOfTheWeekService:
                 if images is None:
                     self._log_candidate_status(post, "download_failed")
                     continue
+                if _contains_mixed_static_and_animated_images(images):
+                    self._log_candidate_status(post, "media_filtered")
+                    continue
                 caption, continuation = build_meme_caption(post.title, post.body)
                 return MemeCandidate(post, image_urls, images, caption, continuation)
             if sort == "TopWeek":
@@ -406,6 +409,12 @@ class MemeOfTheWeekService:
 def _extract_markdown_image_urls(body: str) -> tuple[str, ...]:
     matches = (*_MARKDOWN_IMAGE_PATTERN.finditer(body), *_HTML_IMAGE_PATTERN.finditer(body))
     return tuple(match.group("url") for match in sorted(matches, key=lambda match: match.start()))
+
+
+def _contains_mixed_static_and_animated_images(images: Sequence[MemeImageDTO]) -> bool:
+    has_animated_images = any(image.is_animation for image in images)
+    has_static_images = any(not image.is_animation for image in images)
+    return has_animated_images and has_static_images
 
 
 def _is_image_url(url: str, content_type: str | None = None) -> bool:
