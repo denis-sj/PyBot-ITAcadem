@@ -10,7 +10,7 @@ from .base_dto import BaseDTO
 
 
 class AgentMonth(BaseDTO):
-    """An explicit calendar month, never a future attendance period."""
+    """A current or past month named or resolved from checked dialogue history."""
 
     year: int = Field(ge=1, le=9999)
     month: int = Field(ge=1, le=12)

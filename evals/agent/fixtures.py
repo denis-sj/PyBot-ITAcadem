@@ -97,6 +97,8 @@ class EvalReads(AgentReadService):
             return "Уточните месяц посещений. Доступные месяцы: 2020-09, 2020-08."
         if period == AgentMonth(year=2020, month=9):
             return "Мои посещения за 2020-09: 2; итого 90 минут. Даты: 2020-09-07, 2020-09-09."
+        if period == AgentMonth(year=2026, month=9):
+            return "Мои посещения за 2026-09: 0; записей нет."
         return "За выбранный месяц посещений нет. Доступные месяцы: 2020-09, 2020-08."
 
     async def get_week_top(self, user_id: int) -> str:

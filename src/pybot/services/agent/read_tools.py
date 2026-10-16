@@ -62,9 +62,10 @@ async def get_my_attendance(ctx: RunContext[AgentDependencies]) -> str:
 
 
 async def get_my_visits(ctx: RunContext[AgentDependencies], period: AgentMonth | None = None) -> str:
-    """История моих посещений по датам и выбранному месяцу.
+    """История посещений.
 
-    Для числа и часов за текущий месяц используй get_my_attendance.
+    Месяц из вопроса/истории передай в period, если он ясен; иначе опусти period. Текущую сводку читай через
+    get_my_attendance.
     """
     user = await ctx.deps.get_actor()
     return await ctx.deps.reads.get_visits(user.id, period)
@@ -129,12 +130,12 @@ async def get_club_attendance_report(ctx: RunContext[AgentDependencies], detaile
 
 
 async def get_user_profile(ctx: RunContext[AgentDependencies], telegram_id: int) -> str:
-    """Профиль другого участника по точному Telegram ID (только Admin)."""
+    """Профиль по Telegram ID из поиска (только Admin); по имени сначала вызови find_user_candidates."""
     return await ctx.deps.reads.get_profile_for_telegram_id(telegram_id)
 
 
 async def find_user_candidates(ctx: RunContext[AgentDependencies], name_query: str) -> str:
-    """Найти зарегистрированных пользователей по ФИО или точному @username."""
+    """Найти пользователей по имени из уточнения в истории, ФИО или точному @username."""
     result = await ctx.deps.reads.find_user_candidates(name_query)
     ctx.deps.record_recipient_search(result)
     return format_user_candidates(result)

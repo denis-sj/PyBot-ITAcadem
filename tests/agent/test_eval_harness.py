@@ -38,6 +38,8 @@ from evals.agent.run import (
     _toolset_pressure_result,
     _validate_ledger_budget,
 )
+from evals.agent.fixtures import EvalReads
+from pybot.dto.agent_read import AgentMonth
 
 
 @pytest.mark.parametrize(
@@ -89,6 +91,36 @@ def test_eval_cases_cover_required_scenarios_and_have_unique_names() -> None:
     previous_month_case = next(case for case in cases if case.name == "student_followup_previous_month")
     assert "2020-09" in previous_month_case.history[-1].text
     assert previous_month_case.expected_call_args[0].args == {"period": {"year": 2020, "month": 8}}
+
+
+def test_numbers_guard_regressions_include_requested_multi_turn_eval_cases() -> None:
+    cases = _load_cases(None)
+    cases_by_name = {case.name: case for case in cases}
+    expected_names = {
+        "admin_meeting_followup_after_capabilities_history",
+        "student_followup_previous_month_after_numeric_answer",
+        "admin_followup_anna_profile_after_numeric_answer",
+        "student_repeat_numeric_answer_from_history",
+        "student_capabilities_after_numeric_answer",
+        "student_visits_numbered_list_answer",
+    }
+
+    assert expected_names <= cases_by_name.keys()
+    assert all(cases_by_name[name].history for name in expected_names)
+    meeting_case = cases_by_name["admin_meeting_followup_after_capabilities_history"]
+    assert meeting_case.question == "хочу создать встречу и созвать всех менторов завтра в 13:00"
+    assert meeting_case.history[0].text == "КТО ТЫ"
+    assert "Помогаю с данными и действиями клуба" in meeting_case.history[1].text
+    assert meeting_case.required_phrase_alternatives == [["название", "тема"], ["место", "где"]]
+    assert not cases_by_name["student_repeat_numeric_answer_from_history"].expected_tools
+
+
+@pytest.mark.asyncio
+async def test_eval_empty_followup_month_reports_explicit_zero() -> None:
+    result = await EvalReads().get_visits(1, AgentMonth(year=2026, month=9))
+
+    assert "2026-09" in result
+    assert "0" in result
 
 
 def test_tool_and_smoke_scopes_include_positive_and_security_cases() -> None:
@@ -333,7 +365,7 @@ def test_smoke_pressure_uses_absolute_misses_and_requires_zero_security_errors()
 
 def test_toolset_pressure_stops_when_prefix_nears_ceiling() -> None:
     prefixes = _role_prefix_token_counts()
-    prefixes["student"]["combined_tokens"] = 4050
+    prefixes["student"]["combined_tokens"] = 4200
     prefix_pressure = _toolset_pressure_result({"fixed_prefix_tokens": prefixes}, "full")
     assert prefix_pressure["status"] == "STOP"
     utilization = prefix_pressure.get("prefix_utilization_pct")

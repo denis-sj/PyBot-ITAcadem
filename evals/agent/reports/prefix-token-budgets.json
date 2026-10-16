@@ -5,13 +5,13 @@
   "measured_on": "2026-10-16",
   "budget_method": "15% headroom above measured prefix; STOP at 95% of the committed ceiling",
   "measured_prefix_tokens": {
-    "student": 3689,
-    "mentor": 4083,
-    "admin": 5594
+    "student": 3786,
+    "mentor": 4182,
+    "admin": 5709
   },
   "roles": {
-    "student": 4243,
-    "mentor": 4696,
-    "admin": 6434
+    "student": 4354,
+    "mentor": 4810,
+    "admin": 6566
   }
 }

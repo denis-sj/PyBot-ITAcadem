@@ -16,6 +16,13 @@ _MAX_HTTP_STATUS_CODE = 599
 class AgentNumbersGuardError(ValueError):
     """The model response contained a number absent from the approved evidence."""
 
+    def __init__(self, number_categories: dict[str, int]) -> None:
+        self.number_categories = number_categories
+        self.rejected_count = sum(
+            count for category, count in number_categories.items() if category != "list_item_number"
+        )
+        super().__init__("Model returned numbers absent from approved evidence")
+
 
 @dataclass(frozen=True)
 class AgentFailureDiagnostic:
