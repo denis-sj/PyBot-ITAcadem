@@ -40,7 +40,7 @@ async def test_single_gif_is_sent_as_animation_with_plain_caption() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gif_album_uses_ordered_documents_to_keep_original_files() -> None:
+async def test_mixed_photo_and_gif_album_uses_ordered_documents_to_keep_original_files() -> None:
     bot = Mock(spec=Bot)
     bot.send_media_group = AsyncMock(
         return_value=[
