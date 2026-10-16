@@ -142,6 +142,10 @@ async def test_taskiq_runtime_smoke_builds_singletons_and_wires_worker_hooks(
             Any,
             SimpleNamespace(task_name="community_meetings.process", kicker=lambda: SimpleNamespace()),
         ),
+        weekly_meme_task=cast(
+            Any,
+            SimpleNamespace(task_name="weekly_meme.publish", kicker=lambda: SimpleNamespace()),
+        ),
     )
     register_all_tasks = Mock(return_value=fake_registry)
 
@@ -185,6 +189,7 @@ async def test_taskiq_runtime_smoke_builds_singletons_and_wires_worker_hooks(
         (taskiq_app.TaskiqEvents.CLIENT_STARTUP, taskiq_app._on_client_startup_community_achievements),
         (taskiq_app.TaskiqEvents.CLIENT_STARTUP, taskiq_app._on_client_startup_community_checkins),
         (taskiq_app.TaskiqEvents.CLIENT_STARTUP, taskiq_app._on_client_startup_community_meetings),
+        (taskiq_app.TaskiqEvents.CLIENT_STARTUP, taskiq_app._on_client_startup_weekly_meme),
         (taskiq_app.TaskiqEvents.CLIENT_STARTUP, taskiq_weekly_leaderboard_wiring._on_client_startup_weekly),
     ], "Worker lifecycle hooks were not attached. Startup and shutdown diagnostics would become misleading."
     register_all_tasks.assert_called_once_with(broker=broker, settings=runtime_settings)

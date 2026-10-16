@@ -13,6 +13,7 @@ from . import (
     community_checkins,
     community_meetings,
     leaderboard,
+    meme_of_the_week,
     notification,
     system,
 )
@@ -33,12 +34,14 @@ class TaskRegistry:
     streak_warnings_task: AsyncTaskiqDecoratedTask[..., Any]
     pulse_report_task: AsyncTaskiqDecoratedTask[..., Any]
     community_meeting_task: AsyncTaskiqDecoratedTask[..., Any]
+    weekly_meme_task: AsyncTaskiqDecoratedTask[..., Any]
 
 
 def register_all_tasks(*, broker: AsyncBroker, settings: AppSettings) -> TaskRegistry:
     achievement_tasks = community_achievements.register_tasks(broker=broker, settings=settings)
     checkin_tasks = community_checkins.register_tasks(broker=broker, settings=settings)
     meeting_task = community_meetings.register_tasks(broker=broker, settings=settings)
+    meme_task = meme_of_the_week.register_tasks(broker=broker, settings=settings)
     return TaskRegistry(
         broadcast_task=broadcast.register_tasks(broker=broker),
         notification_task=notification.register_tasks(broker=broker),
@@ -53,6 +56,7 @@ def register_all_tasks(*, broker: AsyncBroker, settings: AppSettings) -> TaskReg
         streak_warnings_task=checkin_tasks[2],
         pulse_report_task=checkin_tasks[3],
         community_meeting_task=meeting_task,
+        weekly_meme_task=meme_task,
     )
 
 

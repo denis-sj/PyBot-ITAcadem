@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from pybot.core.config import AppSettings
 from pybot.di import containers as di_containers
 from pybot.infrastructure import AttendanceRepository
-from pybot.services import AttendanceService, UserService
-from pybot.services.ports import AttendanceRecognitionPort
+from pybot.services import AttendanceService, MemeOfTheWeekService, UserService
+from pybot.services.ports import AttendanceRecognitionPort, LemmyClientPort, MemeDeliveryPort
 
 pytestmark = pytest.mark.integration
 
@@ -37,11 +37,14 @@ async def test_setup_container_smoke_resolves_key_dependencies(
         engine = await container.get(AsyncEngine)
         attendance_repo = await container.get(AttendanceRepository)
         recognition_port = await container.get(AttendanceRecognitionPort)
+        lemmy_client = await container.get(LemmyClientPort)
+        meme_delivery = await container.get(MemeDeliveryPort)
 
         async with container() as request_container:
             session = await request_container.get(AsyncSession)
             user_service = await request_container.get(UserService)
             attendance_service = await request_container.get(AttendanceService)
+            meme_service = await request_container.get(MemeOfTheWeekService)
 
         assert isinstance(bot, FakeBot)
         assert bot.token == "123456:SMOKE_TOKEN"
@@ -52,6 +55,9 @@ async def test_setup_container_smoke_resolves_key_dependencies(
         assert attendance_repo is not None
         assert recognition_port is not None
         assert isinstance(attendance_service, AttendanceService)
+        assert isinstance(meme_service, MemeOfTheWeekService)
+        assert lemmy_client is not None
+        assert meme_delivery is not None
     finally:
         await container.close()
 

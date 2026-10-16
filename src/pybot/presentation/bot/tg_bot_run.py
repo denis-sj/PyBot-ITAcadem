@@ -28,6 +28,7 @@ from .handlers import (
     points_router,
     profile_router,
     roles_router,
+    weekly_meme_router,
 )
 from .handlers.agent import create_agent_router
 from .handlers.common.dialog_errors import register_dialog_error_handlers
@@ -122,6 +123,7 @@ def setup_handlers(dp: Dispatcher) -> None:
     dp.include_router(community_checkin_router)
     dp.include_router(notification_preferences_router)
     dp.include_router(community_meetings_router)
+    dp.include_router(weekly_meme_router)
 
 
 async def setup_agent_handler(dp: Dispatcher, container: AsyncContainer, settings: AppSettings) -> None:

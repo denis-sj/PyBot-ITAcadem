@@ -3,6 +3,7 @@ from .community_achievements import CommunityAchievementService as CommunityAchi
 from .competence import CompetenceService as CompetenceService
 from .leaderboard import LeaderboardService as LeaderboardService
 from .levels import LevelService as LevelService
+from .meme_of_the_week import MemeOfTheWeekService as MemeOfTheWeekService
 from .points import PointsService as PointsService
 from .system_runtime_alerts import SystemRuntimeAlertsService as SystemRuntimeAlertsService
 from .technology_stack import TechnologyStackService as TechnologyStackService
@@ -20,6 +21,7 @@ __all__ = [
     "CompetenceService",
     "LeaderboardService",
     "LevelService",
+    "MemeOfTheWeekService",
     "PointsService",
     "SystemRuntimeAlertsService",
     "TechnologyStackParsingService",

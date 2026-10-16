@@ -30,6 +30,7 @@ from .taskiq_community_checkin_schedule import (
     ensure_community_checkin_schedules as ensure_community_checkin_schedules_in_source,
 )
 from .taskiq_community_meeting_schedule import ensure_community_meeting_schedule
+from .taskiq_meme_schedule import ensure_weekly_meme_schedule as ensure_weekly_meme_schedule_in_source
 from .taskiq_weekly_leaderboard_schedule import (
     LEADERBOARD_WEEKLY_SCHEDULE_ID,
     LEADERBOARD_WEEKLY_TASK_NAME,
@@ -303,6 +304,32 @@ async def _on_client_startup_community_meetings(_state: TaskiqState) -> None:
     await ensure_community_meeting_schedules()
 
 
+def _resolve_weekly_meme_kicker() -> AsyncKicker[Any, Any]:
+    return get_taskiq_task_registry().weekly_meme_task.kicker()
+
+
+async def ensure_weekly_meme_schedule(
+    *,
+    broker: AsyncBroker | None = None,
+    schedule_source: ListRedisScheduleSource | None = None,
+    settings: AppSettings | None = None,
+) -> None:
+    """Register the Wednesday 16:16 Yekaterinburg meme publication schedule."""
+    runtime_settings = settings or get_settings()
+    runtime_broker = broker or get_taskiq_broker(runtime_settings)
+    if not runtime_broker.is_scheduler_process:
+        return
+    await ensure_weekly_meme_schedule_in_source(
+        source=schedule_source or get_taskiq_schedule_source(runtime_settings),
+        settings=runtime_settings,
+        resolve_kicker=_resolve_weekly_meme_kicker,
+    )
+
+
+async def _on_client_startup_weekly_meme(_state: TaskiqState) -> None:
+    await ensure_weekly_meme_schedule()
+
+
 def _resolve_publish_weekly_leaderboard_kicker() -> AsyncKicker[Any, Any]:
     return get_taskiq_weekly_leaderboard_task().kicker()
 
@@ -379,6 +406,7 @@ def get_taskiq_broker(settings: AppSettings | None = None) -> AsyncBroker:
     broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_community_achievements)
     broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_community_checkins)
     broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_community_meetings)
+    broker.add_event_handler(TaskiqEvents.CLIENT_STARTUP, _on_client_startup_weekly_meme)
     register_weekly_leaderboard_wiring(
         broker,
         ensure_weekly_leaderboard_schedule=ensure_weekly_leaderboard_schedule,
