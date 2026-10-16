@@ -310,7 +310,7 @@ async def test_candidate_filtering_checks_score_status_urls_and_image_count_in_o
                 post(
                     "accepted",
                     score=50,
-                    url="https://cdn.example.test/good.gif",
+                    url="https://cdn.example.test/good.jpg",
                     body="![other](https://cdn.example.test/second.webp)",
                 ),
             ]
@@ -322,10 +322,41 @@ async def test_candidate_filtering_checks_score_status_urls_and_image_count_in_o
     assert candidate is not None
     assert candidate.post.post_id == "accepted"
     assert candidate.image_urls == (
-        "https://cdn.example.test/good.gif",
+        "https://cdn.example.test/good.jpg",
         "https://cdn.example.test/second.webp",
     )
     assert client.image_calls == list(candidate.image_urls)
+
+
+@pytest.mark.asyncio
+async def test_candidate_skips_multi_gif_and_mixed_albums_for_next_photo_post() -> None:
+    mixed_photo_url = "https://cdn.example.test/mixed.jpg"
+    mixed_gif_url = "https://cdn.example.test/mixed.gif"
+    first_gif_url = "https://cdn.example.test/first.gif"
+    second_gif_url = "https://cdn.example.test/second.gif"
+    photo_urls = ("https://cdn.example.test/photo.jpg", "https://cdn.example.test/photo.webp")
+    client = FakeLemmyClient(
+        {
+            "TopWeek": [
+                post("mixed", score=60, url=mixed_photo_url, body=f"![animation]({mixed_gif_url})"),
+                post("multiple-gifs", score=50, url=first_gif_url, body=f"![animation]({second_gif_url})"),
+                post("photos-only", score=40, url=photo_urls[0], body=f"![photo]({photo_urls[1]})"),
+            ]
+        },
+        {
+            mixed_gif_url: MemeImageDTO(mixed_gif_url, b"gif", "image/gif", ".gif"),
+            first_gif_url: MemeImageDTO(first_gif_url, b"gif", "image/gif", ".gif"),
+            second_gif_url: MemeImageDTO(second_gif_url, b"gif", "image/gif", ".gif"),
+        },
+    )
+
+    candidate = await service(client)._find_candidate(set(), set())
+
+    assert candidate is not None
+    assert candidate.post.post_id == "photos-only"
+    assert candidate.image_urls == photo_urls
+    assert all(not image.is_animation for image in candidate.images)
+    assert client.image_calls == [mixed_photo_url, mixed_gif_url, first_gif_url, second_gif_url, *photo_urls]
 
 
 @pytest.mark.asyncio
