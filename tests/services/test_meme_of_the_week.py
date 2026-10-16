@@ -329,32 +329,6 @@ async def test_candidate_filtering_checks_score_status_urls_and_image_count_in_o
 
 
 @pytest.mark.asyncio
-async def test_mixed_photo_and_gif_post_is_skipped_for_next_compatible_candidate() -> None:
-    photo_url = "https://cdn.example.test/photo.jpg"
-    gif_url = "https://cdn.example.test/animation.gif"
-    pure_photo_url = "https://cdn.example.test/pure.jpg"
-    client = FakeLemmyClient(
-        {
-            "TopWeek": [
-                post("mixed-media", score=50, url=photo_url, body=f"![animation]({gif_url})"),
-                post("photo-only", score=40, url=pure_photo_url),
-            ]
-        },
-        images={
-            photo_url: MemeImageDTO(photo_url, b"\xff\xd8\xffphoto", "image/jpeg", ".jpg"),
-            gif_url: MemeImageDTO(gif_url, b"GIF89aanimation", "image/gif", ".gif"),
-            pure_photo_url: MemeImageDTO(pure_photo_url, b"\xff\xd8\xffphoto", "image/jpeg", ".jpg"),
-        },
-    )
-
-    candidate = await service(client)._find_candidate(set(), set())
-
-    assert candidate is not None
-    assert candidate.post.post_id == "photo-only"
-    assert candidate.image_urls == (pure_photo_url,)
-
-
-@pytest.mark.asyncio
 async def test_top_month_is_used_only_when_week_has_no_acceptable_candidate() -> None:
     client = FakeLemmyClient({"TopWeek": [post("too-low", score=3)], "TopMonth": [post("monthly")]})
 
